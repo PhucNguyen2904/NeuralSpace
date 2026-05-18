@@ -1,42 +1,28 @@
-import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
-import "./globals.css";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains",
-  subsets: ["latin"],
-});
+import type { Metadata } from 'next'
+import './globals.css'
+import AppLayout from '@/components/layout/AppLayout'
 
 export const metadata: Metadata = {
-  title: "NeuralForge - AI Model Management Platform",
-  description: "Import, manage, and run AI models locally",
-};
+  title: 'NeuralForge',
+  description: 'AI Model Management Platform — import, manage, and run models locally',
+  themeColor: '#0f1117',
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${inter.variable} ${jetbrainsMono.variable} dark h-full`}
-      suppressHydrationWarning
-    >
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <link
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-          rel="stylesheet"
-        />
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="theme-color" content="#0f1117" />
       </head>
-      <body className="bg-background text-on-surface antialiased h-full">
-        {children}
+      <body>
+        <AppLayout>{children}</AppLayout>
       </body>
     </html>
-  );
+  )
 }

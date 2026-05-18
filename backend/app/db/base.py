@@ -1,0 +1,25 @@
+"""SQLAlchemy base classes and mixins."""
+
+from datetime import datetime
+from sqlalchemy import DateTime, func
+from sqlalchemy.orm import declarative_base, Mapped, mapped_column
+from uuid import UUID, uuid4
+
+
+Base = declarative_base()
+
+
+class TimestampMixin:
+    """Mixin that adds created_at and updated_at timestamp columns."""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

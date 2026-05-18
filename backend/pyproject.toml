@@ -1,0 +1,81 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ml-model-download-service"
+version = "1.0.0"
+description = "Async ML Model Download & Management Service"
+requires-python = ">=3.11"
+authors = [
+    { name = "ML Team", email = "ml@example.com" }
+]
+
+dependencies = [
+    # Web Framework
+    "fastapi==0.104.1",
+    "uvicorn[standard]==0.24.0",
+    "gunicorn==21.2.0",
+    
+    # Database
+    "sqlalchemy==2.0.23",
+    "asyncpg==0.29.0",
+    "psycopg2-binary==2.9.9",
+    "alembic==1.12.1",
+    
+    # Task Queue & Caching
+    "celery==5.3.4",
+    "redis==5.0.1",
+    
+    # HTTP & ML Hub
+    "httpx==0.25.1",
+    "requests==2.31.0",
+    "huggingface-hub==0.18.0",
+    
+    # Data Validation
+    "pydantic==2.5.0",
+    "pydantic-settings==2.1.0",
+    
+    # Logging
+    "structlog==23.2.0",
+    
+    # Utilities
+    "python-dotenv==1.0.0",
+    "nanoid==2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==7.4.3",
+    "pytest-asyncio==0.21.1",
+    "pytest-cov==4.1.0",
+    "pytest-mock==3.12.0",
+    "black==23.11.0",
+    "isort==5.13.2",
+    "flake8==6.1.0",
+    "mypy==1.7.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--strict-markers --cov=app"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+disallow_untyped_defs = false
+warn_unused_ignores = true

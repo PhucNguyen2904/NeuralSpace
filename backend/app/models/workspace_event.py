@@ -1,3 +1,4 @@
+
 """Workspace event ORM model."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || '/api/v1'
 
 /* ─────────────────────────────────────────────────────────────────────────
    TYPES
@@ -135,7 +135,6 @@ export async function fetchTasks(): Promise<{ items: Task[]; total: number }> {
     if (!res.ok) throw new Error('Failed to fetch tasks')
     return res.json()
   } catch (err) {
-    console.error('fetchTasks error:', err)
     throw err
   }
 }

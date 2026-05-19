@@ -21,8 +21,14 @@ from app.workers.download_worker import download_model_task
 
 router = APIRouter(prefix="/models", tags=["downloads"])
 
-# Redis client for progress tracking
-redis_client = redis.from_url(settings.REDIS_URL)
+# Redis client for progress tracking (lazy so a missing Redis doesn't crash startup)
+_redis_client = None
+
+def get_redis():
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(settings.REDIS_URL)
+    return _redis_client
 
 
 @router.post("/download", status_code=202)
@@ -92,7 +98,10 @@ async def get_task_status(
 
     # Try to get real-time progress from Redis first
     progress_key = f"task:{task_id}:progress"
-    progress_data = redis_client.get(progress_key)
+    try:
+        progress_data = get_redis().get(progress_key)
+    except Exception:
+        progress_data = None
 
     if progress_data:
         progress = json.loads(progress_data)
@@ -166,6 +175,30 @@ async def retry_task(
         "retry_count": task.retry_count,
         "poll_url": f"/api/v1/tasks/{task.id}",
     }
+
+
+@router.post("/tasks/{task_id}/cancel", status_code=200)
+async def cancel_task(
+    task_id: str,
+    db = Depends(get_db_session),
+):
+    """Cancel a pending or running download task."""
+    task_svc = TaskService(db)
+    task = await task_svc.get_task(task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status.value in ("completed", "cancelled"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Task is already {task.status.value} and cannot be cancelled",
+        )
+
+    await task_svc.cancel_task(task_id)
+    await db.commit()
+
+    return {"success": True, "task_id": task_id}
 
 
 @router.get("/tasks")

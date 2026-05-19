@@ -15,7 +15,7 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const [activeDownloadCount, setActiveDownloadCount] = useState(2)
+  const [activeDownloadCount, setActiveDownloadCount] = useState(0)
 
   // Poll active downloads every 5 seconds
   useEffect(() => {
@@ -23,11 +23,12 @@ export default function Sidebar() {
       try {
         const data = await fetchTasks()
         setActiveDownloadCount(data.total)
-      } catch (err) {
-        console.error('Failed to poll tasks:', err)
+      } catch {
+        setActiveDownloadCount(0)
       }
     }
 
+    pollTasks()
     const interval = setInterval(pollTasks, 5000)
     return () => clearInterval(interval)
   }, [])

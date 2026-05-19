@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   api:
@@ -64,7 +63,7 @@ services:
       POSTGRES_PASSWORD: ChangeThisInProd_App_123!
       POSTGRES_DB: ml_model_store
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ../ml_model_store_schema.sql:/docker-entrypoint-initdb.d/01_initial.sql

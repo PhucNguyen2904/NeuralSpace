@@ -201,6 +201,19 @@ class TaskService:
 
         return tasks, total
 
+    async def cancel_task(self, task_id: str) -> DownloadTask:
+        """Cancel a pending or downloading task."""
+        task = await self.get_task(task_id)
+        if not task:
+            raise ValueError(f"Task not found: {task_id}")
+
+        task.status = TaskStatus.CANCELLED
+        task.completed_at = datetime.utcnow()
+
+        await self.db.flush()
+        logger.info(f"Task cancelled: {task_id}")
+        return task
+
     async def get_stale_downloading_tasks(
         self,
         minutes_threshold: int = 10,

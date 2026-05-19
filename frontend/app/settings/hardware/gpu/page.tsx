@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import MonoLabel from '@/components/ui/MonoLabel'
 import ProgressBar from '@/components/ui/ProgressBar'
+import { updateGpuSettings, checkDriverUpdates } from '@/services/api'
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 
@@ -78,6 +79,50 @@ export default function GpuSettingsPage() {
   const [computePriority, setComputePriority] = useState<'LOW' | 'BALANCED' | 'HIGH'>('BALANCED')
   const [cudaEnabled, setCudaEnabled] = useState(true)
   const [performanceProfile, setPerformanceProfile] = useState('standard')
+  const [saving, setSaving] = useState(false)
+  const [checkingUpdates, setCheckingUpdates] = useState(false)
+
+  const handleResetToDefaults = () => {
+    if (!window.confirm('Reset all settings to defaults?')) return
+    setVramLimit(18)
+    setComputePriority('BALANCED')
+    setCudaEnabled(true)
+    setPerformanceProfile('standard')
+    alert('✅ Settings reset to defaults')
+  }
+
+  const handleSaveChanges = async () => {
+    setSaving(true)
+    try {
+      const result = await updateGpuSettings({
+        vramLimit,
+        computePriority,
+        cudaEnabled,
+        performanceProfile,
+      })
+      alert('✅ GPU settings saved successfully')
+    } catch (err) {
+      alert(`❌ Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCheckUpdates = async () => {
+    setCheckingUpdates(true)
+    try {
+      const result = await checkDriverUpdates()
+      if (result.available) {
+        alert(`✅ Update available: ${result.currentVersion} → ${result.newVersion}`)
+      } else {
+        alert(`✅ Driver is up to date: ${result.currentVersion}`)
+      }
+    } catch (err) {
+      alert(`❌ Failed to check: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setCheckingUpdates(false)
+    }
+  }
 
   return (
     <div className="flex flex-col min-h-[calc(100vh-56px)]">
@@ -267,9 +312,13 @@ export default function GpuSettingsPage() {
                   <p className="font-mono font-bold text-white text-2xl mt-1">
                     v550.54.14
                   </p>
-                  <button className="mt-3 border border-[#2a3347] text-[#7a8ba0] text-sm px-4 py-2 rounded-lg flex items-center gap-2 hover:text-white hover:border-[#3d4f6e] transition-colors cursor-pointer">
+                  <button
+                    onClick={handleCheckUpdates}
+                    disabled={checkingUpdates}
+                    className="mt-3 border border-[#2a3347] text-[#7a8ba0] text-sm px-4 py-2 rounded-lg flex items-center gap-2 hover:text-white hover:border-[#3d4f6e] disabled:opacity-50 transition-colors cursor-pointer"
+                  >
                     <RefreshCw size={14} />
-                    Check for Updates
+                    {checkingUpdates ? 'Checking...' : 'Check for Updates'}
                   </button>
                   <div className="mt-4">
                     <MonoLabel>Kernel Interface</MonoLabel>
@@ -358,12 +407,19 @@ export default function GpuSettingsPage() {
           Last synced: 2 minutes ago
         </span>
         <div className="flex gap-3">
-          <button className="bg-[#161b27] border border-[#2a3347] text-[#7a8ba0] px-5 py-2.5 rounded-lg text-sm hover:text-white hover:border-[#3d4f6e] transition-colors cursor-pointer">
+          <button
+            onClick={handleResetToDefaults}
+            className="bg-[#161b27] border border-[#2a3347] text-[#7a8ba0] px-5 py-2.5 rounded-lg text-sm hover:text-white hover:border-[#3d4f6e] transition-colors cursor-pointer"
+          >
             Reset to Defaults
           </button>
-          <button className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 transition-colors cursor-pointer">
+          <button
+            onClick={handleSaveChanges}
+            disabled={saving}
+            className="bg-[#1d4ed8] hover:bg-[#1e40af] disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-lg text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          >
             <Save size={15} />
-            Save Changes
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>

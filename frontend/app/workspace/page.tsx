@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import {
   Link,
   Download,
@@ -15,10 +16,12 @@ import {
 } from 'lucide-react'
 import MonoLabel from '@/components/ui/MonoLabel'
 import ProgressBar from '@/components/ui/ProgressBar'
+import { downloadModel, fetchTasks, cancelDownload } from '@/services/api'
+import type { Task } from '@/services/api'
 
 /* ─── Mock data ─────────────────────────────────────────────────────── */
 
-const activeTasks = [
+const mockActiveTasks: Task[] = [
   {
     id: '1',
     filename: 'llama-3-8b-instruct.Q4_K_M.gguf',
@@ -69,6 +72,57 @@ const featureChips = ['Git LFS Support', 'Automated Quantization', 'Pytorch & Sa
 /* ─── Page ──────────────────────────────────────────────────────────── */
 
 export default function WorkspacePage() {
+  const [modelId, setModelId] = useState('')
+  const [tasks, setTasks] = useState<Task[]>(mockActiveTasks)
+  const [loading, setLoading] = useState(false)
+
+  // Poll tasks every 5 seconds
+  useEffect(() => {
+    const pollTasks = async () => {
+      try {
+        const data = await fetchTasks()
+        setTasks(data.items)
+      } catch (err) {
+        console.error('Failed to poll tasks:', err)
+      }
+    }
+
+    const interval = setInterval(pollTasks, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleDownload = async () => {
+    if (!modelId.trim()) {
+      alert('⚠️ Please enter a Model ID or URL')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const result = await downloadModel(modelId)
+      alert(`✅ Download started: ${modelId}`)
+      setModelId('')
+    } catch (err) {
+      alert(`❌ Failed to start download: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await cancelDownload(taskId)
+      alert('✅ Download cancelled')
+      setTasks(tasks.filter((t) => t.id !== taskId))
+    } catch (err) {
+      alert(`❌ Failed to cancel: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleClearCompleted = () => {
+    setTasks(tasks.filter((t) => t.progress < 100))
+  }
+
   return (
     <div>
 
@@ -97,15 +151,21 @@ export default function WorkspacePage() {
             />
             <input
               type="text"
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
               className="w-full bg-[#0f1117] border border-[#2a3347] rounded-lg pl-9 pr-4 py-3 font-mono text-sm text-[#e2e8f0] placeholder-[#4a5568] focus:outline-none focus:border-[#3b82f6] transition-colors"
               placeholder="e.g. meta-llama/Llama-2-7b-hf or https://hf.co/..."
             />
           </div>
 
           {/* Download button */}
-          <button className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold px-6 py-3 rounded-lg flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer">
+          <button
+            onClick={handleDownload}
+            disabled={loading}
+            className="bg-[#1d4ed8] hover:bg-[#1e40af] disabled:opacity-50 text-white font-bold px-6 py-3 rounded-lg flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer"
+          >
             <Download size={18} />
-            Download
+            {loading ? 'Downloading...' : 'Download'}
           </button>
         </div>
 
@@ -128,17 +188,20 @@ export default function WorkspacePage() {
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-lg text-white">Active Tasks</h2>
             <span className="bg-[#1e3a2e] text-[#22c55e] font-mono text-[11px] uppercase tracking-wide px-2.5 py-0.5 rounded-md">
-              {activeTasks.length} Running
+              {tasks.length} Running
             </span>
           </div>
-          <button className="text-sm text-[#4a5568] hover:text-white transition-colors cursor-pointer">
+          <button
+            onClick={handleClearCompleted}
+            className="text-sm text-[#4a5568] hover:text-white transition-colors cursor-pointer"
+          >
             Clear Completed
           </button>
         </div>
 
         {/* Task cards */}
         <div className="space-y-3">
-          {activeTasks.map((task) => (
+          {tasks.map((task) => (
             <div
               key={task.id}
               className="bg-[#161b27] border border-[#2a3347] rounded-xl p-5"
@@ -153,7 +216,10 @@ export default function WorkspacePage() {
                     {task.filename}
                   </span>
                 </div>
-                <button className="border border-[#ef4444] text-[#ef4444] text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors cursor-pointer shrink-0">
+                <button
+                  onClick={() => handleCancelTask(task.id)}
+                  className="border border-[#ef4444] text-[#ef4444] text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors cursor-pointer shrink-0"
+                >
                   <X size={12} />
                   Cancel
                 </button>

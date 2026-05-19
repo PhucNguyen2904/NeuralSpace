@@ -1,3 +1,4 @@
+import { useRouter } from 'next/navigation'
 import {
   Play,
   RefreshCw,
@@ -11,6 +12,7 @@ import {
 import StatusBadge from '@/components/ui/StatusBadge'
 import ProgressBar from '@/components/ui/ProgressBar'
 import IconButton from '@/components/ui/IconButton'
+import { runModel, retryModel, deleteModel, cancelDownload } from '@/services/api'
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -83,9 +85,53 @@ function Thumbnail({ visual }: { visual: Model['visual'] }) {
 /* ─── ModelCard ─────────────────────────────────────────────────────── */
 
 export function ModelCard({ model }: { model: Model }) {
+  const router = useRouter()
   const isDownloading = model.status === 'downloading'
   const isError = model.status === 'error'
   const isReady = model.status === 'ready'
+
+  const handleRun = async () => {
+    try {
+      await runModel(model.id)
+      alert(`✅ Model running: ${model.name}`)
+    } catch (err) {
+      alert(`❌ Failed to run model: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleRetry = async () => {
+    try {
+      await retryModel(model.id)
+      alert(`✅ Retrying: ${model.name}`)
+    } catch (err) {
+      alert(`❌ Retry failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${model.name}"? This cannot be undone.`)) return
+    try {
+      await deleteModel(model.id)
+      alert(`✅ Model deleted: ${model.name}`)
+      window.location.reload()
+    } catch (err) {
+      alert(`❌ Failed to delete: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleCancel = async () => {
+    try {
+      await cancelDownload(model.id)
+      alert('✅ Download cancelled')
+      window.location.reload()
+    } catch (err) {
+      alert(`❌ Failed to cancel: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleSettings = () => {
+    router.push(`/hub/${model.id}/settings`)
+  }
 
   return (
     <div className="bg-[#161b27] border border-[#2a3347] rounded-xl overflow-hidden hover:border-[#3d4f6e] transition-colors">
@@ -136,7 +182,10 @@ export function ModelCard({ model }: { model: Model }) {
         <div className="flex items-center gap-2">
           {/* Primary button */}
           {isReady && (
-            <button className="flex-1 bg-[#1d4ed8] hover:bg-[#1e40af] text-white rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer">
+            <button
+              onClick={handleRun}
+              className="flex-1 bg-[#1d4ed8] hover:bg-[#1e40af] text-white rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
               <Play size={14} fill="white" />
               Run
             </button>
@@ -150,21 +199,60 @@ export function ModelCard({ model }: { model: Model }) {
             </button>
           )}
           {isError && (
-            <button className="flex-1 border border-[#ef4444] text-[#ef4444] rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors cursor-pointer">
+            <button
+              onClick={handleRetry}
+              className="flex-1 border border-[#ef4444] text-[#ef4444] rounded-lg py-2 text-sm font-medium flex items-center justify-center gap-1.5 hover:bg-[#ef4444]/10 transition-colors cursor-pointer"
+            >
               <RefreshCw size={14} />
               Retry
             </button>
           )}
 
           {/* Icon buttons */}
-          {(isReady || isError) && (
+          {isReady && (
             <>
-              <IconButton icon={Settings} label="Settings" />
-              <IconButton icon={Trash2} label="Delete" />
+              <button
+                onClick={handleSettings}
+                className="w-9 h-9 bg-[#1c2333] border border-[#2a3347] rounded-lg flex items-center justify-center text-[#7a8ba0] hover:text-white hover:border-[#3d4f6e] transition-colors cursor-pointer"
+                title="Settings"
+              >
+                <Settings size={16} />
+              </button>
+              <button
+                onClick={handleDelete}
+                className="w-9 h-9 bg-[#1c2333] border border-[#2a3347] rounded-lg flex items-center justify-center text-[#7a8ba0] hover:text-[#ef4444] hover:border-[#ef4444] transition-colors cursor-pointer"
+                title="Delete"
+              >
+                <Trash2 size={16} />
+              </button>
+            </>
+          )}
+          {isError && (
+            <>
+              <button
+                onClick={handleSettings}
+                className="w-9 h-9 bg-[#1c2333] border border-[#2a3347] rounded-lg flex items-center justify-center text-[#7a8ba0] hover:text-white hover:border-[#3d4f6e] transition-colors cursor-pointer"
+                title="Settings"
+              >
+                <Settings size={16} />
+              </button>
+              <button
+                onClick={handleDelete}
+                className="w-9 h-9 bg-[#1c2333] border border-[#2a3347] rounded-lg flex items-center justify-center text-[#7a8ba0] hover:text-[#ef4444] hover:border-[#ef4444] transition-colors cursor-pointer"
+                title="Delete"
+              >
+                <Trash2 size={16} />
+              </button>
             </>
           )}
           {isDownloading && (
-            <IconButton icon={X} label="Cancel download" />
+            <button
+              onClick={handleCancel}
+              className="w-9 h-9 bg-[#1c2333] border border-[#2a3347] rounded-lg flex items-center justify-center text-[#7a8ba0] hover:text-[#ef4444] hover:border-[#ef4444] transition-colors cursor-pointer"
+              title="Cancel download"
+            >
+              <X size={16} />
+            </button>
           )}
         </div>
       </div>
@@ -175,8 +263,16 @@ export function ModelCard({ model }: { model: Model }) {
 /* ─── ImportCard ────────────────────────────────────────────────────── */
 
 export function ImportCard() {
+  const router = useRouter()
+  const handleImport = () => {
+    router.push('/workspace')
+  }
+
   return (
-    <div className="border-2 border-dashed border-[#2a3347] rounded-xl flex flex-col items-center justify-center min-h-[280px] cursor-pointer group hover:border-[#3b82f6] hover:bg-[#161b27]/40 transition-all duration-200">
+    <div
+      onClick={handleImport}
+      className="border-2 border-dashed border-[#2a3347] rounded-xl flex flex-col items-center justify-center min-h-[280px] cursor-pointer group hover:border-[#3b82f6] hover:bg-[#161b27]/40 transition-all duration-200"
+    >
       <div className="w-12 h-12 rounded-xl bg-[#1c2333] group-hover:bg-[#1e3050] flex items-center justify-center transition-colors">
         <Plus size={24} className="text-[#2a3347] group-hover:text-[#3b82f6] transition-colors" />
       </div>

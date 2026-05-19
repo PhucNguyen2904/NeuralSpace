@@ -1,12 +1,35 @@
-import { Search, Settings, LayoutGrid, BarChart2 } from 'lucide-react'
+'use client'
 
-const systemStats = [
-  { label: 'CPU', value: '24%',    color: 'bg-[#f59e0b]', width: '24%' },
-  { label: 'GPU', value: '68%',    color: 'bg-[#ef4444]', width: '68%' },
-  { label: 'RAM', value: '12.4GB', color: 'bg-[#3b82f6]', width: '52%' },
-]
+import { useState, useEffect } from 'react'
+import { Search, Settings, LayoutGrid, BarChart2 } from 'lucide-react'
+import { fetchHardwareStats } from '@/services/api'
 
 export default function TopBar() {
+  const [systemStats, setSystemStats] = useState([
+    { label: 'CPU', value: '24%',    color: 'bg-[#f59e0b]', width: '24%' },
+    { label: 'GPU', value: '68%',    color: 'bg-[#ef4444]', width: '68%' },
+    { label: 'RAM', value: '12.4GB', color: 'bg-[#3b82f6]', width: '52%' },
+  ])
+
+  // Poll hardware stats every 3 seconds
+  useEffect(() => {
+    const pollStats = async () => {
+      try {
+        const stats = await fetchHardwareStats()
+        setSystemStats([
+          { label: 'CPU', value: `${stats.cpu}%`,   color: 'bg-[#f59e0b]', width: `${stats.cpu}%` },
+          { label: 'GPU', value: `${stats.gpu}%`,   color: 'bg-[#ef4444]', width: `${stats.gpu}%` },
+          { label: 'RAM', value: String(stats.ram), color: 'bg-[#3b82f6]', width: '52%' },
+        ])
+      } catch (err) {
+        console.error('Failed to poll hardware stats:', err)
+      }
+    }
+
+    const interval = setInterval(pollStats, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <header className="h-[56px] bg-[#0f1117]/80 backdrop-blur-sm border-b border-[#2a3347] sticky top-0 z-40 flex items-center justify-between px-6">
 

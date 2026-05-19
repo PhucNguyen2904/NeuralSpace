@@ -1,8 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import { Network, LayoutGrid, Layers, Settings, Rocket } from 'lucide-react'
+import { fetchTasks } from '@/services/api'
 
 const navItems = [
   { href: '/hub',       icon: LayoutGrid,  label: 'Hub' },
@@ -12,6 +14,27 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [activeDownloadCount, setActiveDownloadCount] = useState(2)
+
+  // Poll active downloads every 5 seconds
+  useEffect(() => {
+    const pollTasks = async () => {
+      try {
+        const data = await fetchTasks()
+        setActiveDownloadCount(data.total)
+      } catch (err) {
+        console.error('Failed to poll tasks:', err)
+      }
+    }
+
+    const interval = setInterval(pollTasks, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleDeployNewModel = () => {
+    router.push('/workspace')
+  }
 
   return (
     <aside className="fixed left-0 top-0 w-[248px] h-screen bg-[#0d1018] flex flex-col z-50">
@@ -53,7 +76,10 @@ export default function Sidebar() {
       {/* [C] Bottom section */}
       <div className="p-4 space-y-3">
         {/* CTA button */}
-        <button className="w-full bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] text-white font-bold text-sm py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer">
+        <button
+          onClick={handleDeployNewModel}
+          className="w-full bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] text-white font-bold text-sm py-2.5 px-4 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity cursor-pointer"
+        >
           <Rocket size={16} />
           Deploy New Model
         </button>
@@ -63,7 +89,7 @@ export default function Sidebar() {
           <div className="w-5 h-5 rounded-full border-2 border-[#3b82f6] border-t-transparent animate-spin shrink-0" />
           <span className="text-[#7a8ba0] text-xs">Active Downloads</span>
           <span className="bg-[#1d4ed8] text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full ml-auto">
-            2
+            {activeDownloadCount}
           </span>
         </div>
       </div>

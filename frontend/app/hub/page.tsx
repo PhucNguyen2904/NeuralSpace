@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { SlidersHorizontal } from 'lucide-react'
+import { SlidersHorizontal, ChevronDown } from 'lucide-react'
 import { ModelCard, ImportCard } from '@/components/hub/ModelCard'
 import type { Model } from '@/components/hub/ModelCard'
 
@@ -63,12 +63,15 @@ const models: Model[] = [
 ]
 
 const FILTERS = ['All', 'LLM', 'Computer Vision', 'Audio'] as const
+const SORT_OPTIONS = ['Recently Used', 'Largest', 'Smallest'] as const
 type Filter = (typeof FILTERS)[number]
 
 /* ─── Page ──────────────────────────────────────────────────────────── */
 
 export default function HubPage() {
   const [activeFilter, setActiveFilter] = useState<Filter>('All')
+  const [sortBy, setSortBy] = useState<typeof SORT_OPTIONS[number]>('Recently Used')
+  const [showSortDropdown, setShowSortDropdown] = useState(false)
 
   const filteredModels =
     activeFilter === 'All'
@@ -97,10 +100,36 @@ export default function HubPage() {
           ))}
         </div>
 
-        {/* Sort label */}
-        <div className="flex items-center gap-1.5 text-sm text-[#7a8ba0]">
-          <SlidersHorizontal size={14} />
-          Sort: Recently Used
+        {/* Sort dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSortDropdown(!showSortDropdown)}
+            className="flex items-center gap-1.5 text-sm text-[#7a8ba0] hover:text-white px-3 py-2 rounded-lg hover:bg-[#161b27] transition-colors"
+          >
+            <SlidersHorizontal size={14} />
+            Sort: {sortBy}
+            <ChevronDown size={14} className={`transition-transform ${showSortDropdown ? 'rotate-180' : ''}`} />
+          </button>
+          {showSortDropdown && (
+            <div className="absolute right-0 mt-2 bg-[#161b27] border border-[#2a3347] rounded-lg overflow-hidden z-10 min-w-[200px]">
+              {SORT_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  onClick={() => {
+                    setSortBy(option)
+                    setShowSortDropdown(false)
+                  }}
+                  className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                    sortBy === option
+                      ? 'bg-[#1d4ed8] text-white font-medium'
+                      : 'text-[#7a8ba0] hover:text-white hover:bg-[#1c2333]'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

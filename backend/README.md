@@ -1,0 +1,236 @@
+# Cloud IDE Platform - Backend
+
+FastAPI-based backend for Cloud IDE Platform, similar to Google Colab.
+
+## Project Structure
+
+```
+backend/
+├── app/                          # Main application package
+│   ├── __init__.py
+│   ├── main.py                   # FastAPI app entrypoint
+│   ├── config.py                 # Pydantic Settings configuration
+│   ├── dependencies.py           # FastAPI dependency injection
+│   ├── celery_config.py          # Celery configuration
+│   │
+│   ├── core/                     # Core utilities
+│   │   ├── exceptions.py         # Custom exceptions
+│   │   ├── security.py           # JWT and token utilities
+│   │   └── logging.py            # Structured logging
+│   │
+│   ├── api/v1/                   # API v1 endpoints
+│   │   ├── router.py             # Router collection
+│   │   └── health_router.py      # Health check endpoints
+│   │
+│   ├── models/                   # SQLAlchemy ORM models (placeholder)
+│   ├── schemas/                  # Pydantic request/response schemas (placeholder)
+│   ├── services/                 # Business logic layer (placeholder)
+│   └── workers/                  # Celery tasks (placeholder)
+│
+├── alembic/                      # Database migrations
+│   ├── env.py
+│   └── versions/                 # Migration scripts
+│
+├── tests/                        # Test suite
+│   ├── conftest.py               # Pytest configuration
+│   └── test_health.py            # Health check tests
+│
+├── Dockerfile                    # Container image definition
+├── docker-compose.yml            # Local development stack
+├── pyproject.toml                # Project metadata and dependencies
+├── alembic.ini                   # Alembic configuration
+├── .env.example                  # Environment template
+└── README.md                     # This file
+```
+
+## Setup
+
+### Prerequisites
+
+- Python 3.10+
+- Docker & Docker Compose
+- PostgreSQL 16
+- Redis 7
+
+### Local Development
+
+1. **Install dependencies:**
+
+```bash
+pip install -e .
+```
+
+2. **Copy environment file:**
+
+```bash
+cp .env.example .env
+```
+
+3. **Start services with Docker Compose:**
+
+```bash
+docker-compose up -d
+```
+
+This starts:
+- PostgreSQL (port 5432)
+- Redis (port 6379)
+- FastAPI API (port 8000)
+- Celery Worker
+- Celery Beat Scheduler
+
+4. **Run migrations (when needed):**
+
+```bash
+alembic upgrade head
+```
+
+5. **Access the API:**
+
+- API: http://localhost:8000
+- API Docs (Swagger): http://localhost:8000/docs
+- API Docs (ReDoc): http://localhost:8000/redoc
+- Health Check: http://localhost:8000/health
+
+### Testing
+
+Run tests:
+
+```bash
+pytest
+```
+
+Run tests with coverage:
+
+```bash
+pytest --cov=app
+```
+
+Run specific test:
+
+```bash
+pytest tests/test_health.py::test_health_check
+```
+
+## Configuration
+
+Configuration is managed via Pydantic Settings in `app/config.py`. Settings are loaded from:
+
+1. Environment variables
+2. `.env` file
+
+Key settings:
+
+- `ENVIRONMENT`: development/staging/production
+- `DATABASE_URL`: PostgreSQL connection string
+- `REDIS_URL`: Redis connection string
+- `SECRET_KEY`: JWT signing key (min 32 chars)
+- `KUBERNETES_IN_CLUSTER`: Run in Kubernetes cluster
+- `JUPYTER_BASE_IMAGE`: Base Docker image for Jupyter
+- `MINIO_*`: MinIO S3 configuration
+- `MAX_WORKSPACES_PER_USER`: Workspace quota per user
+- `IDLE_TIMEOUT_SECONDS`: Workspace idle timeout
+
+## Architecture
+
+### Security
+
+- JWT tokens for API authentication (`app/core/security.py`)
+- Workspace tokens for notebook access
+- Token hashing with SHA-256 for database storage
+
+### Logging
+
+- Structured JSON logging with structlog
+- Request ID tracking across logs
+- Environment-specific formatting (pretty console for dev, JSON for prod)
+
+### Dependencies Injection
+
+- SQLAlchemy async sessions (`get_db`)
+- Redis clients (`get_redis`)
+- User authentication (`get_current_user`)
+- Role-based access control (`require_role`)
+
+### Error Handling
+
+Custom exceptions for domain errors:
+- `WorkspaceNotFoundError` (404)
+- `WorkspaceNotOwnedError` (403)
+- `QuotaExceededError` (429)
+- `WorkspaceNotRunningError` (409)
+- `ProvisioningError` (500)
+
+## API Endpoints
+
+### Health Check
+
+```
+GET /health
+GET /api/v1/health
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "version": "1.0.0"
+}
+```
+
+## Next Steps
+
+Following prompts will implement:
+
+1. **Prompt 02**: Database models and migration setup
+2. **Prompt 03**: User and authentication endpoints
+3. **Prompt 04**: Workspace management API
+4. **Prompt 05**: Jupyter integration and notebook execution
+5. **Prompt 06**: Worker and scheduler configuration
+
+## Deployment
+
+### Production
+
+1. Set `ENVIRONMENT=production`
+2. Update `SECRET_KEY` to a secure random value (min 32 chars)
+3. Configure `DATABASE_URL` to managed PostgreSQL
+4. Configure `REDIS_URL` to managed Redis
+5. Set `KUBERNETES_IN_CLUSTER=true` for K8s deployment
+6. Build image: `docker build -t cloud-ide-platform:1.0.0 .`
+7. Push to registry and deploy
+
+## Development Commands
+
+```bash
+# Run API server
+uvicorn app.main:app --reload
+
+# Run Celery worker
+celery -A app.workers worker -l debug
+
+# Run Celery beat scheduler
+celery -A app.workers beat -l debug
+
+# Generate migration
+alembic revision --autogenerate -m "Description"
+
+# Run migration
+alembic upgrade head
+
+# Downgrade migration
+alembic downgrade -1
+
+# Format code
+black app tests
+
+# Lint code
+flake8 app tests
+
+# Type check
+mypy app
+```
+
+## License
+
+MIT

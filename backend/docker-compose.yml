@@ -1,0 +1,143 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloud-ide-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: cloud_ide
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cloud_ide"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: cloud-ide-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-ide-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/cloud_ide
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-change-in-production-min-32-chars-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      KUBERNETES_IN_CLUSTER: "false"
+      KUBERNETES_NAMESPACE_PREFIX: "ws-"
+      JUPYTER_BASE_IMAGE: "registry.platform.com/jupyter-base:latest"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "workspace-data"
+      MAX_WORKSPACES_PER_USER: "2"
+      IDLE_TIMEOUT_SECONDS: "1800"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-ide-worker
+    command: celery -A app.workers worker -l debug -c 4
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/cloud_ide
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-change-in-production-min-32-chars-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      KUBERNETES_IN_CLUSTER: "false"
+      KUBERNETES_NAMESPACE_PREFIX: "ws-"
+      JUPYTER_BASE_IMAGE: "registry.platform.com/jupyter-base:latest"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "workspace-data"
+      MAX_WORKSPACES_PER_USER: "2"
+      IDLE_TIMEOUT_SECONDS: "1800"
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - backend-network
+
+  beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cloud-ide-beat
+    command: celery -A app.workers beat -l debug --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/cloud_ide
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: dev-secret-key-change-in-production-min-32-chars-long
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      KUBERNETES_IN_CLUSTER: "false"
+      KUBERNETES_NAMESPACE_PREFIX: "ws-"
+      JUPYTER_BASE_IMAGE: "registry.platform.com/jupyter-base:latest"
+      MINIO_ENDPOINT: "minio:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "workspace-data"
+      MAX_WORKSPACES_PER_USER: "2"
+      IDLE_TIMEOUT_SECONDS: "1800"
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - backend-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  backend-network:
+    driver: bridge

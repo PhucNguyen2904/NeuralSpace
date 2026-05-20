@@ -107,4 +107,35 @@ class WorkspaceTokenResponse(BaseModel):
 class HeartbeatResponse(BaseModel):
     """Heartbeat response payload."""
 
+    workspace_id: str | None = None
     next_kill_at: datetime | None = None
+    message: str = "Session extended"
+
+
+class WorkspaceCreateAcceptedResponse(BaseModel):
+    """Accepted response for async workspace creation."""
+
+    workspace_id: str
+    status: WorkspaceStatus
+    estimated_ready_in_seconds: int = 30
+    poll_url: str
+
+
+class WorkspaceStatusPollResponse(BaseModel):
+    """Lightweight polling response."""
+
+    workspace_id: str
+    status: WorkspaceStatus
+    access_url: str | None = None
+    created_at: datetime
+    idle_since: datetime | None = None
+    auto_kill_at: datetime | None = None
+    resource_usage: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkspaceOperationResponse(BaseModel):
+    """Generic operation response."""
+
+    workspace_id: str
+    status: WorkspaceStatus
+    message: str

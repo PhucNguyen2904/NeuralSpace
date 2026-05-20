@@ -10,12 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import verify_jwt
+from app.services.k8s_service import K8sService
 
 logger = get_logger(__name__)
 
 _db_engine = None
 _redis_pool = None
 _async_session_maker = None
+_k8s_service = K8sService()
 
 
 @dataclass
@@ -75,6 +77,11 @@ def get_redis_client() -> redis.Redis:
     if _redis_pool is None:
         raise RuntimeError("Redis not initialized. Call init_redis() on startup.")
     return redis.Redis(connection_pool=_redis_pool)
+
+
+def get_k8s_service() -> K8sService:
+    """Get Kubernetes service dependency."""
+    return _k8s_service
 
 
 async def get_current_user(request: Request, authorization: str = Depends(lambda: None)) -> UserContext:

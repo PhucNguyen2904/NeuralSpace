@@ -12,3 +12,4 @@ cloud_ide_platform.egg-info/requires.txt
 cloud_ide_platform.egg-info/top_level.txt
 tests/test_auth.py
 tests/test_health.py
+tests/test_workspace_api.py

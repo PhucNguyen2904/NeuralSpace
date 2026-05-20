@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "workspace-data"
 
+    # Upstream module
+    UPSTREAM_BASE_URL: str = "http://localhost:9000"
+
     # Workspace Configuration
     MAX_WORKSPACES_PER_USER: int = 2
     IDLE_TIMEOUT_SECONDS: int = 1800

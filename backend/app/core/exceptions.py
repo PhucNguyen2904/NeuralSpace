@@ -80,4 +80,4 @@ class ProvisioningError(AppException):
 
     def __init__(self, message: str) -> None:
         """Initialize with error message."""
-        super().__init__(f"Workspace provisioning failed: {message}", message=message)
+        super().__init__(f"Workspace provisioning failed: {message}", detail=message)

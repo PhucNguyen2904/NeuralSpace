@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 _db_engine = None
 _redis_pool = None
 _async_session_maker = None
-_k8s_service = K8sService()
+_k8s_service = None
 
 
 @dataclass
@@ -81,6 +81,9 @@ def get_redis_client() -> redis.Redis:
 
 def get_k8s_service() -> K8sService:
     """Get Kubernetes service dependency."""
+    global _k8s_service
+    if _k8s_service is None:
+        _k8s_service = K8sService()
     return _k8s_service
 
 

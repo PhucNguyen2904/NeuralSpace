@@ -60,6 +60,11 @@ async def close_redis() -> None:
         await _redis_pool.disconnect()
 
 
+def get_db_engine():
+    """Return initialized async engine for cross-cutting integrations."""
+    return _db_engine
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     if _async_session_maker is None:
         raise RuntimeError("Database not initialized. Call init_db() on startup.")

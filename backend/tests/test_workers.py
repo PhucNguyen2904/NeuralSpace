@@ -67,6 +67,7 @@ def _workspace(status: WorkspaceStatus = WorkspaceStatus.PROVISIONING) -> Simple
         pod_ip="10.0.0.9",
         access_url=None,
         jupyter_token_hash=None,
+        created_at=datetime.now(timezone.utc) - timedelta(minutes=30),
         started_at=None,
         stopped_at=None,
         last_heartbeat=None,

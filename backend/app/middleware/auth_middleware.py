@@ -15,7 +15,15 @@ logger = get_logger(__name__)
 class AuthMiddleware(BaseHTTPMiddleware):
     """Verify bearer JWT and inject user into request.state."""
 
-    SKIP_PATHS = {"/health", "/openapi.json", "/api/v1/docs", "/api/v1/openapi.json", "/api/v1/health"}
+    SKIP_PATHS = {
+        "/health",
+        "/openapi.json",
+        "/api/v1/docs",
+        "/api/v1/openapi.json",
+        "/api/v1/health",
+        "/api/v1/health/ready",
+        "/api/v1/metrics",
+    }
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in self.SKIP_PATHS or request.url.path.startswith("/docs"):

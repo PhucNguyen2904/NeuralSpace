@@ -29,6 +29,7 @@ import httpx
 import redis as sync_redis
 
 from app.config import get_settings
+from app.core.metrics import workspace_idle_kill_total
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 from app.services.k8s_service import KubernetesService
@@ -118,6 +119,7 @@ def scan_and_kill_idle_workspaces() -> dict[str, int]:
         action = result.get("action")
         if action == "killed":
             killed += 1
+            workspace_idle_kill_total.inc()
         elif action == "extended":
             extended += 1
         elif action == "warned":

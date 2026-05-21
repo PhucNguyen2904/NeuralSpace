@@ -17,6 +17,7 @@ from app.core.exceptions import (
     WorkspaceNotRunningError,
 )
 from app.core.logging import get_logger
+from app.core.metrics import workspace_active_gauge, workspace_created_total
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_event import WorkspaceEventType
 from app.repositories.workspace_repository import WorkspaceRepository
@@ -55,6 +56,7 @@ class WorkspaceService:
             logger.warning("Upstream validation failed, continuing", user_id=user_id, error=str(exc))
 
         workspace = await WorkspaceRepository.create(db=db, user_id=user_id, data=request)
+        workspace_created_total.labels(tier=request.tier, status="accepted").inc()
         workspace.status = WorkspaceStatus.PROVISIONING
         await WorkspaceRepository.add_event(
             db=db,
@@ -136,6 +138,10 @@ class WorkspaceService:
             raise WorkspaceNotRunningError(workspace_id=workspace.id, current_status=workspace.status.value)
 
         workspace = await WorkspaceRepository.update_status(db, workspace.id, WorkspaceStatus.STOPPING)
+        try:
+            workspace_active_gauge.labels(tier=workspace.tier).dec()
+        except Exception:
+            pass
         await WorkspaceRepository.add_event(
             db=db,
             workspace_id=workspace.id,

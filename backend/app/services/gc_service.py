@@ -44,7 +44,10 @@ from app.core.logging import get_logger
 from app.models.workspace import WorkspaceStatus
 from app.models.workspace_event import WorkspaceEventType
 from app.repositories.workspace_repository import WorkspaceRepository
-from app.workers.tasks import stop_workspace_task
+# NOTE: stop_workspace_task is imported lazily inside graceful_kill() to avoid
+# pulling the entire Celery/workers import chain (including prometheus_client)
+# into the FastAPI process at startup.  gc_service is only *instantiated* inside
+# Celery workers where those dependencies are always present.
 
 logger = get_logger(__name__)
 
@@ -497,6 +500,12 @@ class GarbageCollector:
                     )
 
             # ── Step 3: Enqueue Celery stop task ─────────────────────────────
+            # Lazy import: keeps the Celery/workers import chain (which includes
+            # prometheus_client and other heavy deps) out of the FastAPI process.
+            # GarbageCollector is only ever instantiated inside Celery workers
+            # where these dependencies are guaranteed to be present.
+            from app.workers.tasks import stop_workspace_task  # noqa: PLC0415
+
             # This is fire-and-forget; the task handles K8s teardown + MinIO sync.
             stop_workspace_task.delay(workspace_id, save_notebooks=True)
             steps.append("stop_task_queued")

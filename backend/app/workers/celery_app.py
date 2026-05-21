@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from celery import Celery
 
 from app.config import get_settings
@@ -42,6 +44,8 @@ celery_app.conf.update(
         "app.workers.gc_tasks.kill_workspace_task": {"queue": "gc"},
         "app.workers.gc_tasks.cleanup_orphan_namespaces": {"queue": "gc"},
     },
+    task_always_eager=os.getenv("CELERY_TASK_ALWAYS_EAGER", "false").lower() == "true",
+    task_eager_propagates=os.getenv("CELERY_TASK_EAGER_PROPAGATES", "false").lower() == "true",
 )
 celery_app.autodiscover_tasks(["app.workers"])
 

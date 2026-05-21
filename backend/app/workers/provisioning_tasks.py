@@ -12,6 +12,11 @@ from celery import Task
 from app.clients.upstream_client import UpstreamClient
 from app.config import get_settings
 from app.core.security import generate_workspace_token, hash_token
+from app.core.metrics import (
+    workspace_active_gauge,
+    workspace_created_total,
+    workspace_provisioning_duration_seconds,
+)
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 from app.services.k8s_service import KubernetesService
@@ -70,6 +75,7 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
                 return
             user_id = workspace.user_id
             tier = workspace.tier
+            created_at = workspace.created_at
             dataset_ids = workspace.dataset_ids or []
             model_ids = workspace.model_ids or []
 
@@ -118,6 +124,10 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
             workspace.last_heartbeat = now
             workspace.auto_kill_at = now + timedelta(seconds=settings.IDLE_TIMEOUT_SECONDS)
             workspace.error_message = None
+            duration = max(0.0, (now - created_at).total_seconds()) if created_at else 0.0
+            workspace_provisioning_duration_seconds.observe(duration)
+            workspace_created_total.labels(tier=tier, status="running").inc()
+            workspace_active_gauge.labels(tier=tier).inc()
             db.add(
                 WorkspaceEvent(
                     workspace_id=workspace_id,
@@ -133,6 +143,7 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
         with get_db_session() as db:
             workspace = db.get(Workspace, workspace_id)
             if workspace is not None:
+                workspace_created_total.labels(tier=getattr(workspace, "tier", "unknown"), status="error").inc()
                 workspace.status = WorkspaceStatus.ERROR
                 workspace.error_message = str(exc)
                 db.add(
@@ -176,7 +187,13 @@ def stop_workspace_task(self: Task, workspace_id: str, save_notebooks: bool = Tr
             with httpx.Client(timeout=5.0) as client:
                 client.post(f"http://{pod_ip}:8888/api/contents", headers={"Authorization": f"token {token}"})
             asyncio.run(asyncio.sleep(5))
-            asyncio.run(StorageService().sync_notebooks_to_minio(user_id=user_id, namespace=namespace or ""))
+            asyncio.run(
+                StorageService().sync_notebooks_to_minio(
+                    user_id=user_id,
+                    namespace=workspace_id,
+                    pod_ip=pod_ip,
+                )
+            )
         except Exception:
             # autosave/sync best-effort for shutdown path
             pass

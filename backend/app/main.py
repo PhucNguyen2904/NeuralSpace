@@ -1,6 +1,7 @@
 """FastAPI application entrypoint."""
 
 from contextlib import asynccontextmanager
+from time import perf_counter
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,11 +14,14 @@ from app import __version__
 from app.api.v1.router import router as api_v1_router
 from app.config import get_settings
 from app.core.logging import configure_logging, get_logger, generate_request_id, set_request_id
+from app.core.metrics import api_request_duration_seconds
+from app.core.tracing import setup_tracing
 from app.middleware.auth_middleware import AuthMiddleware
 from app.middleware.rate_limit_middleware import RateLimitMiddleware
 from app.dependencies import (
     close_db,
     close_redis,
+    get_db_engine,
     init_db,
     init_redis,
 )
@@ -101,8 +105,15 @@ def create_app() -> FastAPI:
         """Add request ID to all requests."""
         request_id = request.headers.get("X-Request-ID", generate_request_id())
         set_request_id(request_id)
+        trace_id = request.headers.get("X-Trace-ID", request_id)
+        request.state.trace_id = trace_id
+        start = perf_counter()
         response = await call_next(request)
+        duration = perf_counter() - start
+        endpoint = request.url.path
+        api_request_duration_seconds.labels(endpoint=endpoint, method=request.method).observe(duration)
         response.headers["X-Request-ID"] = request_id
+        response.headers["X-Trace-ID"] = trace_id
         return response
 
     # Global exception handlers
@@ -141,6 +152,7 @@ def create_app() -> FastAPI:
 
     # Include API routers
     app.include_router(api_v1_router, prefix="/api/v1")
+    setup_tracing(app, db_engine=get_db_engine())
 
     logger.info("FastAPI application created", environment=settings.ENVIRONMENT)
 

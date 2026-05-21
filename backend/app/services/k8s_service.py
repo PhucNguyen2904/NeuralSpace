@@ -97,9 +97,6 @@ class KubernetesService:
             },
         )
         created = await asyncio.to_thread(self.core_api.create_namespaced_pod, namespace, pod)
-
-        policy = build_network_policy(workspace_id)
-        await asyncio.to_thread(self.network_api.create_namespaced_network_policy, namespace, policy)
         return created.metadata.name
 
     async def wait_for_pod_ready(self, namespace: str, pod_name: str, timeout: int = 120) -> str:
@@ -155,6 +152,10 @@ class KubernetesService:
 
     async def restart_pod(self, namespace: str, pod_name: str) -> None:
         await asyncio.to_thread(self.core_api.delete_namespaced_pod, pod_name, namespace)
+
+    async def apply_network_policy(self, namespace: str, workspace_id: str) -> None:
+        policy = build_network_policy(workspace_id)
+        await asyncio.to_thread(self.network_api.create_namespaced_network_policy, namespace, policy)
 
     async def list_workspace_namespaces(self) -> list[str]:
         namespaces = await asyncio.to_thread(

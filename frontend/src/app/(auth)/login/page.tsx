@@ -1,0 +1,2 @@
+import { Card, CardContent, CardHeader, Input, Button } from "@/components/ui";
+export default function LoginPage(){return <Card variant="elevated" className="w-full max-w-md"><CardHeader><h1 className="text-xl">Sign in to Cloud IDE</h1><p className="mt-1 text-sm text-text-secondary">Access your workspaces and notebooks.</p></CardHeader><CardContent className="space-y-3"><Input placeholder="Email" type="email"/><Input placeholder="Password" type="password"/><Button className="w-full">Sign in</Button></CardContent></Card>;}

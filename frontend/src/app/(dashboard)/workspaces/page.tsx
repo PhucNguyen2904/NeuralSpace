@@ -1,0 +1,3 @@
+import Link from "next/link";
+import { Button, Card, CardContent, CardHeader, WorkspaceStatusBadge } from "@/components/ui";
+export default function WorkspaceListPage(){return <div className="space-y-4"><div className="flex items-center justify-between"><h1 className="text-xl">Workspaces</h1><Link href="/workspaces/new"><Button>Create Workspace</Button></Link></div><Card variant="interactive"><CardHeader><div className="flex items-center justify-between"><span>example-notebook</span><WorkspaceStatusBadge status="RUNNING" /></div></CardHeader><CardContent className="text-sm text-text-secondary">CPU Standard, active 3m ago</CardContent></Card></div>;}

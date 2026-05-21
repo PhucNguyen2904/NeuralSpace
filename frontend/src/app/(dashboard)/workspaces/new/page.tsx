@@ -1,0 +1,2 @@
+import { Button, Card, CardContent, CardHeader, Input } from "@/components/ui";
+export default function NewWorkspacePage(){return <Card className="max-w-2xl"><CardHeader><h1 className="text-xl">Create Workspace</h1></CardHeader><CardContent className="space-y-4"><Input placeholder="Workspace name"/><div className="grid gap-3 md:grid-cols-3"><Button variant="secondary">CPU Standard</Button><Button variant="secondary">CPU Large</Button><Button variant="secondary">GPU T4</Button></div><Button>Create</Button></CardContent></Card>;}

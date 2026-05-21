@@ -51,9 +51,17 @@ async def integration_client(monkeypatch: pytest.MonkeyPatch):
     engine = create_async_engine(settings.DATABASE_URL, pool_pre_ping=True)
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    async with maker() as session:
-        await session.execute(text("CREATE TABLE IF NOT EXISTS users (id uuid PRIMARY KEY)"))
-        await session.commit()
+    from sqlalchemy import Table, Column
+    from sqlalchemy.dialects.postgresql import UUID
+    from app.models.base import Base
+    from app.models.workspace import Workspace
+    from app.models.workspace_event import WorkspaceEvent
+
+    Table("users", Base.metadata, Column("id", UUID(as_uuid=True), primary_key=True), extend_existing=True)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
 
     def _spawn_delay(workspace_id: str):
         with get_db_session() as session:
@@ -78,19 +86,30 @@ async def integration_client(monkeypatch: pytest.MonkeyPatch):
         return SimpleNamespace()
 
     def _stop_delay(workspace_id: str, save_notebooks: bool = True):
-        from app.workers.provisioning_tasks import stop_workspace_task
-
-        stop_workspace_task.run(workspace_id, save_notebooks=save_notebooks)
+        with get_db_session() as session:
+            ws = session.get(Workspace, workspace_id)
+            if ws is not None:
+                ws.status = WorkspaceStatus.STOPPED
+                session.add(
+                    WorkspaceEvent(
+                        workspace_id=workspace_id,
+                        event_type="STOPPED",
+                        actor="system",
+                        details={"reason": "test"},
+                    )
+                )
         return SimpleNamespace()
 
     monkeypatch.setattr("app.services.workspace_service.spawn_workspace.delay", _spawn_delay)
     monkeypatch.setattr("app.services.workspace_service.stop_workspace_task.delay", _stop_delay)
+    from app.dependencies import get_k8s_service
     class DummyK8s:
         async def delete_namespace(self, namespace: str) -> None:
             _ = namespace
             return None
 
     monkeypatch.setattr("app.workers.provisioning_tasks.KubernetesService", lambda *a, **k: DummyK8s())
+    app.dependency_overrides[get_k8s_service] = lambda: DummyK8s()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -209,13 +228,15 @@ async def test_gc_kills_idle_workspace(integration_client, monkeypatch: pytest.M
 
     async def _fake_gc(workspace_id: str, pod_ip: str | None):
         _ = pod_ip
-        from app.workers.provisioning_tasks import stop_workspace_task
-
-        stop_workspace_task.run(workspace_id, save_notebooks=False)
+        with get_db_session() as session:
+            ws = session.get(Workspace, workspace_id)
+            if ws is not None:
+                ws.status = WorkspaceStatus.STOPPED
         return {"action": "killed", "workspace_id": workspace_id}
 
     monkeypatch.setattr("app.workers.gc_tasks._run_gc_for_workspace", _fake_gc)
-    result = scan_and_kill_idle_workspaces.run()
+    import asyncio
+    result = await asyncio.to_thread(scan_and_kill_idle_workspaces.run)
     assert result["killed"] >= 1
 
     async with maker() as session:

@@ -1,0 +1,5 @@
+"use client";
+import * as React from "react";
+import { AnimatePresence, motion } from "framer-motion";
+/** Storybook: Dialog with escape and outside click dismissal. */
+export function Dialog({open,onOpenChange,title,children}:{open:boolean;onOpenChange:(open:boolean)=>void;title?:string;children:React.ReactNode}){React.useEffect(()=>{const h=(e:KeyboardEvent)=>{if(e.key==="Escape")onOpenChange(false);}; if(open)window.addEventListener("keydown",h); return ()=>window.removeEventListener("keydown",h);},[open,onOpenChange]); return <AnimatePresence>{open?<motion.div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>onOpenChange(false)}><motion.div className="w-full max-w-lg rounded-lg border border-border bg-bg-elevated p-5 shadow-panel" initial={{opacity:0,scale:0.96,y:8}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:0.96,y:8}} onClick={(e)=>e.stopPropagation()}>{title?<h3 className="mb-4 text-lg font-semibold">{title}</h3>:null}{children}</motion.div></motion.div>:null}</AnimatePresence>;}

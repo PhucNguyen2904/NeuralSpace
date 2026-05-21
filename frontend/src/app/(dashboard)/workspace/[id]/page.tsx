@@ -1,0 +1,1 @@
+export default function WorkspaceIdePage({ params }: { params: { id: string } }) { return <div className="h-full rounded-lg border border-border bg-bg-surface p-4"><h1 className="mb-2 text-lg">Workspace {params.id}</h1><p className="text-sm text-text-secondary">JupyterLab embed container will be integrated in next prompt.</p></div>; }

@@ -1,62 +1,97 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: ["class"],
   content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
-      fontFamily: {
-        display: ["var(--font-space-mono)", "monospace"],
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        mono: ["var(--font-jetbrains)", "monospace"]
-      },
       colors: {
         bg: {
-          base: "var(--bg-base)",
-          surface: "var(--bg-surface)",
-          elevated: "var(--bg-elevated)",
-          overlay: "var(--bg-overlay)"
+          base: "var(--color-bg-base)",
+          surface: "var(--color-bg-surface)",
+          elevated: "var(--color-bg-elevated)",
+          sunken: "var(--color-bg-sunken)"
         },
-        border: { DEFAULT: "var(--border)", focus: "var(--border-focus)" },
+        border: {
+          DEFAULT: "var(--color-border-default)",
+          strong: "var(--color-border-strong)"
+        },
         text: {
-          primary: "var(--text-primary)",
-          secondary: "var(--text-secondary)",
-          muted: "var(--text-muted)",
-          code: "var(--text-code)"
+          primary: "var(--color-text-primary)",
+          secondary: "var(--color-text-secondary)",
+          tertiary: "var(--color-text-tertiary)"
         },
-        accent: {
-          DEFAULT: "var(--accent)",
-          hover: "var(--accent-hover)",
-          glow: "var(--accent-glow)"
+        brand: {
+          50: "var(--color-brand-50)",
+          100: "#E0E7FF",
+          500: "var(--color-brand-500)",
+          600: "var(--color-brand-600)"
         },
-        success: "var(--success)",
-        warning: "var(--warning)",
-        error: "var(--error)",
-        info: "var(--info)",
-        status: {
-          provisioning: "var(--status-provisioning)",
-          running: "var(--status-running)",
-          stopping: "var(--status-stopping)",
-          stopped: "var(--status-stopped)",
-          error: "var(--status-error)"
+        success: {
+          50: "var(--color-success-50)",
+          500: "var(--color-success-500)"
+        },
+        warning: {
+          50: "var(--color-warning-50)",
+          500: "var(--color-warning-500)"
+        },
+        error: {
+          50: "var(--color-error-50)",
+          500: "var(--color-error-500)"
+        },
+        info: {
+          500: "var(--color-info-500)"
         }
       },
-      spacing: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 5: "20px", 6: "24px", 8: "32px", 12: "48px", 16: "64px" },
       fontSize: {
-        xs: ["12px", "16px"],
-        sm: ["13px", "18px"],
-        base: ["14px", "20px"],
-        md: ["16px", "24px"],
-        lg: ["20px", "28px"],
-        xl: ["24px", "32px"],
-        "2xl": ["32px", "40px"]
+        xs: ["11px", { lineHeight: "1.5" }],
+        sm: ["13px", { lineHeight: "1.5" }],
+        base: ["14px", { lineHeight: "1.6" }],
+        md: ["15px", { lineHeight: "1.6" }],
+        lg: ["17px", { lineHeight: "1.5" }],
+        xl: ["20px", { lineHeight: "1.4" }],
+        "2xl": ["24px", { lineHeight: "1.3" }],
+        "3xl": ["30px", { lineHeight: "1.2" }]
       },
-      boxShadow: { glow: "0 0 0 4px var(--accent-glow)", panel: "0 10px 30px rgba(0, 0, 0, 0.35)" },
+      borderRadius: {
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
+        xl: "var(--radius-xl)",
+        full: "var(--radius-full)"
+      },
+      boxShadow: {
+        xs: "var(--shadow-xs)",
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+        brand: "var(--shadow-brand)"
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"]
+      },
       keyframes: {
-        shimmer: { "0%": { backgroundPosition: "-200% 0" }, "100%": { backgroundPosition: "200% 0" } },
-        pulseDot: { "0%, 100%": { opacity: "0.5", transform: "scale(1)" }, "50%": { opacity: "1", transform: "scale(1.15)" } }
+        fadeIn: {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" }
+        },
+        slideUp: {
+          "0%": { opacity: "0", transform: "translateY(8px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" }
+        },
+        scaleIn: {
+          "0%": { opacity: "0", transform: "scale(0.95)" },
+          "100%": { opacity: "1", transform: "scale(1)" }
+        }
       },
-      animation: { shimmer: "shimmer 2s linear infinite", pulseDot: "pulseDot 1.5s ease-in-out infinite" }
+      animation: {
+        fadeIn: "fadeIn 0.2s ease-out",
+        slideUp: "slideUp 0.3s ease-out",
+        scaleIn: "scaleIn 0.15s ease-out"
+      },
+      backgroundImage: {
+        "brand-gradient": "var(--color-brand-gradient)"
+      }
     }
   },
   plugins: []

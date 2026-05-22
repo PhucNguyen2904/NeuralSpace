@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
@@ -35,6 +35,44 @@ async def generate_download_url(
     service = StorageService()
     url = await service.generate_presigned_url(current_user.user_id, path, expires=expires)
     return {"url": url, "expires_in": expires}
+
+
+@router.get("/notebooks/{path:path}/content")
+async def read_notebook_content(
+    path: str,
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Read raw notebook/script content for preview panel."""
+    service = StorageService()
+    content = await service.read_user_notebook_content(current_user.user_id, path)
+    return {"path": path, "content": content}
+
+
+@router.post("/notebooks/upload")
+async def upload_notebook(
+    file: UploadFile = File(...),
+    workspace_id: str = Form(...),
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Upload one .ipynb or .py file to user notebook storage."""
+    filename = file.filename or ""
+    if not (filename.endswith(".ipynb") or filename.endswith(".py")):
+        raise HTTPException(status_code=400, detail="Only .ipynb and .py are supported")
+    service = StorageService()
+    payload = await file.read()
+    notebook = await service.upload_user_notebook(current_user.user_id, workspace_id, filename, payload)
+    return {"item": notebook.__dict__}
+
+
+@router.delete("/notebooks/{path:path}")
+async def delete_notebook(
+    path: str,
+    current_user: UserContext = Depends(get_current_user),
+):
+    """Delete a notebook/script object from storage."""
+    service = StorageService()
+    await service.delete_user_notebook(current_user.user_id, path)
+    return {"deleted": True, "path": path}
 
 
 @router.post("/notebooks/{path:path}/restore")

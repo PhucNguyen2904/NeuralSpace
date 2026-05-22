@@ -7,6 +7,7 @@ import io
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import PurePosixPath
 from urllib.parse import quote
 
 import httpx
@@ -139,9 +140,12 @@ class StorageService:
         if not object_name.startswith(f"users/{user_id}/"):
             object_name = f"users/{user_id}/notebooks/{file_path.lstrip('/')}"
         payload = self.minio.get_object(self.bucket, object_name).read()
-        notebook_json = json.loads(payload.decode("utf-8"))
         notebook_rel_path = object_name.split("/notebooks/", maxsplit=1)[-1].split("/", maxsplit=1)[-1]
-        await asyncio.wait_for(self._write_notebook_to_pod(pod_ip, notebook_rel_path, notebook_json), timeout=30.0)
+        if notebook_rel_path.endswith(".ipynb"):
+            notebook_json = json.loads(payload.decode("utf-8"))
+            await asyncio.wait_for(self._write_notebook_to_pod(pod_ip, notebook_rel_path, notebook_json), timeout=30.0)
+        else:
+            await asyncio.wait_for(self._write_file_to_pod(pod_ip, notebook_rel_path, payload.decode("utf-8")), timeout=30.0)
         return SyncResult(files_synced=1, bytes_transferred=len(payload), errors=[])
 
     async def generate_presigned_url(self, user_id: str, file_path: str, expires: int = 3600) -> str:
@@ -154,6 +158,35 @@ class StorageService:
             object_name,
             expires=timedelta(seconds=expires),
         )
+
+    async def upload_user_notebook(self, user_id: str, workspace_id: str, filename: str, payload: bytes) -> NotebookMeta:
+        """Upload one user notebook/script object to MinIO."""
+        await self.ensure_user_buckets(user_id)
+        safe_name = PurePosixPath(filename).name
+        object_name = f"{self._workspace_prefix(user_id, workspace_id)}{safe_name}"
+        self.minio.put_object(self.bucket, object_name, io.BytesIO(payload), length=len(payload))
+        return NotebookMeta(
+            name=safe_name,
+            size=len(payload),
+            last_modified=datetime.now(timezone.utc),
+            workspace_id=workspace_id,
+            path=object_name,
+        )
+
+    async def delete_user_notebook(self, user_id: str, file_path: str) -> None:
+        """Delete one user notebook object from MinIO."""
+        object_name = file_path
+        if not object_name.startswith(f"users/{user_id}/"):
+            object_name = f"users/{user_id}/notebooks/{file_path.lstrip('/')}"
+        self.minio.remove_object(self.bucket, object_name)
+
+    async def read_user_notebook_content(self, user_id: str, file_path: str) -> str:
+        """Read notebook/script content from MinIO for preview usage."""
+        object_name = file_path
+        if not object_name.startswith(f"users/{user_id}/"):
+            object_name = f"users/{user_id}/notebooks/{file_path.lstrip('/')}"
+        payload = self.minio.get_object(self.bucket, object_name).read()
+        return payload.decode("utf-8")
 
     async def list_user_notebooks(self, user_id: str, workspace_id: str | None = None) -> list[NotebookMeta]:
         """List notebook objects for a user, optionally filtered by workspace id."""
@@ -271,6 +304,19 @@ class StorageService:
             response = await client.get(endpoint, headers=headers)
             response.raise_for_status()
             return response.json()
+
+    async def _write_file_to_pod(self, pod_ip: str, file_path: str, text_content: str) -> None:
+        """Write text file (e.g. .py) into pod using Jupyter Contents API PUT."""
+        endpoint = f"http://{pod_ip}:8888/api/contents/{quote('notebooks/' + file_path, safe='/')}"
+        payload = {
+            "type": "file",
+            "format": "text",
+            "content": text_content,
+        }
+        headers = {"Authorization": f"token {self.jupyter_token}"} if self.jupyter_token else {}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.put(endpoint, json=payload, headers=headers)
+            response.raise_for_status()
 
     def _workspace_prefix(self, user_id: str, workspace_id: str) -> str:
         """Build MinIO object prefix for a specific user workspace."""

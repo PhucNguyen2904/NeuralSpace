@@ -1,1 +1,5 @@
-export default function AuthLayout({ children }: { children: React.ReactNode }) { return <main className="flex min-h-screen items-center justify-center p-6">{children}</main>; }
+import { AuthLayout } from "@/components/shared";
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return <AuthLayout>{children}</AuthLayout>;
+}

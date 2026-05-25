@@ -2,7 +2,9 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { GlobalErrorBoundary } from "@/components/error/GlobalErrorBoundary";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+import { setupApiErrorHandler } from "@/lib/api/ApiErrorHandler";
 import { useNotificationStore } from "@/lib/stores/notificationStore";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -10,7 +12,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
     new QueryClient({
       defaultOptions: {
         queries: {
-          retry: 1,
+          staleTime: 30_000,
+          gcTime: 5 * 60_000,
+          retry: 2,
+          retryDelay: (attempt) => Math.min(1_000 * 2 ** attempt, 8_000),
           refetchOnWindowFocus: false
         }
       }
@@ -20,21 +25,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const addNotification = useNotificationStore((state) => state.addNotification);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      addNotification({
-        type: "SAVE_COMPLETE",
-        title: "Autosave hoàn tất",
-        description: "Notebook đã được lưu tự động",
-        workspaceId: "ws_1"
-      });
-    }, 120000);
-
-    return () => clearInterval(interval);
-  }, [addNotification]);
+    setupApiErrorHandler();
+  }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ToastProvider>{children}</ToastProvider>
-    </QueryClientProvider>
+    <GlobalErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>{children}</ToastProvider>
+      </QueryClientProvider>
+    </GlobalErrorBoundary>
   );
 }

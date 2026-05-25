@@ -1,30 +1,32 @@
 import { apiClient } from "@/lib/api/client";
 import type { CreateWorkspaceInput, Workspace, WorkspaceFileNode, WorkspaceStatus } from "@/types/workspace";
 
+const seedWs1: Workspace = {
+  id: "ws_1",
+  name: "ResNet Training",
+  status: "RUNNING",
+  tier: "gpu-t4",
+  runtimeLabel: "1h 23m",
+  runtimeMinutes: 83,
+  cpuUsed: 6,
+  cpuLimit: 8,
+  ramUsedGb: 11,
+  ramLimitGb: 16,
+  notebookCount: 4,
+  pythonVersion: "3.11",
+  packages: ["torch", "torchvision"],
+  datasets: ["ImageNet 2024"],
+  models: ["ResNet-50 pretrained"],
+  accessUrl: "https://jupyter.org/try-jupyter/lab/",
+  autoKillAt: new Date(Date.now() + 12 * 60_000).toISOString(),
+  lastSavedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+  lastActiveAt: new Date().toISOString(),
+  createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+  owner: { id: "u_1", name: "Alex Nguyen", email: "alex@neuralspace.dev" }
+};
+
 let mockWorkspaces: Workspace[] = [
-  {
-    id: "ws_1",
-    name: "ResNet Training",
-    status: "RUNNING",
-    tier: "gpu-t4",
-    runtimeLabel: "1h 23m",
-    runtimeMinutes: 83,
-    cpuUsed: 6,
-    cpuLimit: 8,
-    ramUsedGb: 11,
-    ramLimitGb: 16,
-    notebookCount: 4,
-    pythonVersion: "3.11",
-    packages: ["torch", "torchvision"],
-    datasets: ["ImageNet 2024"],
-    models: ["ResNet-50 pretrained"],
-    accessUrl: "https://jupyter.org/try-jupyter/lab/",
-    autoKillAt: new Date(Date.now() + 12 * 60_000).toISOString(),
-    lastSavedAt: new Date(Date.now() - 2 * 60_000).toISOString(),
-    lastActiveAt: new Date().toISOString(),
-    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
-    owner: { id: "u_1", name: "Alex Nguyen", email: "alex@neuralspace.dev" }
-  },
+  seedWs1,
   {
     id: "ws_2",
     name: "EDA Session",
@@ -89,12 +91,18 @@ const fileTree: WorkspaceFileNode[] = [
 ];
 
 export const listWorkspaces = async () => {
+  const ensureWs1 = (items: Workspace[]) => {
+    const hasWs1 = items.some((workspace) => workspace.id === "ws_1");
+    if (hasWs1) return items;
+    return [seedWs1, ...items];
+  };
+
   try {
     const { data } = await apiClient.get<Workspace[]>("/workspaces");
-    return data;
+    return ensureWs1(data);
   } catch {
     await wait(400);
-    return [...mockWorkspaces];
+    return ensureWs1([...mockWorkspaces]);
   }
 };
 

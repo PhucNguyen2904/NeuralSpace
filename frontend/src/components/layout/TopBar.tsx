@@ -11,9 +11,9 @@ export function TopBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border bg-bg-surface px-6">
-        <div className="text-sm text-text-secondary">Workspace / Dashboard</div>
-        <div className="flex items-center gap-4">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-bg-surface/95 px-4 backdrop-blur md:px-6">
+        <div className="truncate pr-4 text-sm text-text-secondary">Workspace / Dashboard</div>
+        <div className="flex items-center gap-3">
           <button className={`relative rounded-md p-2 hover:bg-bg-elevated ${unreadCount > 0 ? "bell-pulse" : ""}`} aria-label="Notifications" onClick={() => setOpenPanel((prev) => !prev)}>
             <Bell size={18} className="text-text-secondary" />
             {unreadCount > 0 ? (

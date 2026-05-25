@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/utils/cn";
-import { BookOpen, Brain, Database, LayoutDashboard, Settings, Terminal } from "lucide-react";
+import { BookOpen, Brain, ChevronLeft, ChevronRight, Database, LayoutDashboard, Settings, Terminal } from "lucide-react";
 
 const sections = [
   {
@@ -41,19 +41,25 @@ function NeuralIcon() {
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 flex h-screen w-60 flex-col border-r border-border bg-bg-surface p-4">
-      <div className="mb-8 flex items-center gap-2 text-brand-600">
-        <NeuralIcon />
-        <span className="text-lg font-semibold text-text-primary">NeuralSpace</span>
+    <>
+      <aside className={cn("fixed left-0 top-0 z-40 hidden h-screen flex-col border-r border-border bg-bg-surface p-3 transition-[width] duration-200 md:flex", collapsed ? "w-14" : "w-60 p-4")}>
+      <div className="mb-8 flex items-center justify-between gap-2 text-brand-600">
+        <div className="flex items-center gap-2">
+          <NeuralIcon />
+          <span className={cn("text-lg font-semibold text-text-primary", collapsed && "hidden")}>NeuralSpace</span>
+        </div>
+        <button className="rounded-md p-1 text-text-secondary hover:bg-bg-elevated hover:text-text-primary" onClick={onToggle} aria-label={collapsed ? "Open sidebar" : "Collapse sidebar"}>
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
       <div className="space-y-6">
         {sections.map((section) => (
           <div key={section.label}>
-            <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary">{section.label}</p>
+            <p className={cn("mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary", collapsed && "hidden")}>{section.label}</p>
             <div className="space-y-1">
               {section.items.map((item) => {
                 const isActive = pathname === item.href;
@@ -69,9 +75,10 @@ export function Sidebar() {
                         ? "border-brand-500 bg-brand-50 text-brand-600"
                         : "border-transparent hover:bg-bg-elevated hover:text-text-primary"
                     )}
+                    aria-label={item.label}
                   >
                     <Icon size={16} />
-                    {item.label}
+                    <span className={cn(collapsed && "hidden")}>{item.label}</span>
                   </Link>
                 );
               })}
@@ -81,11 +88,25 @@ export function Sidebar() {
       </div>
       <div className="mt-auto flex items-center gap-2 rounded-lg bg-bg-elevated p-2">
         <Avatar name="Alex Nguyen" />
-        <div className="min-w-0">
+        <div className={cn("min-w-0", collapsed && "hidden")}>
           <p className="truncate text-sm font-medium text-text-primary">Alex Nguyen</p>
           <p className="truncate text-xs text-text-tertiary">alex@neuralspace.dev</p>
         </div>
       </div>
-    </aside>
+      </aside>
+
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-bg-surface px-2 py-1 md:hidden" aria-label="Bottom navigation">
+        {sections.flatMap((s) => s.items).slice(0, 5).map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          return (
+            <Link key={item.href} href={item.href} className={cn("flex flex-1 flex-col items-center justify-center rounded-md py-2 text-[11px]", isActive ? "text-brand-600" : "text-text-secondary")} aria-label={item.label}>
+              <Icon size={16} />
+              <span className="mt-1">{item.label.split(" ")[0]}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }

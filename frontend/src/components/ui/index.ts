@@ -7,6 +7,7 @@ export * from "./Modal";
 export * from "./Select";
 export * from "./Separator";
 export * from "./Spinner";
+export * from "./SkeletonLoader";
 export * from "./Toast";
 export * from "./ToastProvider";
 export * from "./Tooltip";

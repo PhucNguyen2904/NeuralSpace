@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useMemo, useRef, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
-import { BookOpen, Download, Grid2x2, List, Search, Trash2, Upload, X } from "lucide-react";
+import { BookOpen, Download, Grid2x2, List, Search, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Button } from "@/components/ui";
-import { getDownloadPresignedUrl, useDeleteNotebook, useNotebookPreview, useRestoreNotebook, useStoredNotebooks, useUploadNotebook } from "@/lib/hooks/useNotebooks";
+import { getDownloadPresignedUrl, useDeleteNotebook, useRestoreNotebook, useStoredNotebooks, useUploadNotebook } from "@/lib/hooks/useNotebooks";
 import { useWorkspaces } from "@/lib/hooks/useWorkspace";
 import { cn } from "@/lib/utils/cn";
 
@@ -17,6 +18,10 @@ type SortMode = "newest" | "name" | "size";
 type UploadProgress = { id: string; name: string; progress: number; status: "uploading" | "done" | "error" };
 
 const ACCEPTED = ".ipynb,.py";
+const NotebookPreviewPanel = dynamic(
+  () => import("@/components/notebooks/NotebookPreviewPanel").then((m) => m.NotebookPreviewPanel),
+  { ssr: false }
+);
 
 const inWindow = (date: Date, window: TimeFilter) => {
   const now = Date.now();
@@ -51,7 +56,6 @@ export default function NotebooksPage() {
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
 
-  const previewQuery = useNotebookPreview(previewPath);
 
   const workspaceCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -109,16 +113,6 @@ export default function NotebooksPage() {
     }
     await refetch();
   };
-
-  const notebookCells = useMemo(() => {
-    if (!previewQuery.data?.content || !previewPath?.endsWith(".ipynb")) return [];
-    try {
-      const parsed = JSON.parse(previewQuery.data.content) as { content?: { cells?: Array<{ cell_type?: string; source?: string[] }> } };
-      return parsed.content?.cells?.slice(0, 8) || [];
-    } catch {
-      return [];
-    }
-  }, [previewQuery.data?.content, previewPath]);
 
   return (
     <div
@@ -276,34 +270,12 @@ export default function NotebooksPage() {
         </div>
       ) : null}
 
-      <div className={cn("fixed right-0 top-0 z-50 h-full w-full max-w-[480px] transform border-l border-border bg-bg-surface shadow-xl transition-transform", previewPath ? "translate-x-0" : "translate-x-full")}>
-        <div className="flex items-start justify-between border-b border-border p-4">
-          <div>
-            <p className="font-semibold text-text-primary">{previewPath?.split("/").pop()}</p>
-            <p className="text-xs text-text-secondary">{previewPath}</p>
-          </div>
-          <button onClick={() => setPreviewPath(null)} className="rounded p-1 hover:bg-bg-elevated"><X size={16} /></button>
-        </div>
-        <div className="h-[calc(100%-140px)] overflow-auto p-4">
-          {previewQuery.isLoading ? <p className="text-sm text-text-secondary">Đang tải preview...</p> : null}
-          {previewPath?.endsWith(".ipynb") ? (
-            <div className="space-y-3">
-              {notebookCells.map((cell, idx) => (
-                <div key={idx} className="rounded-md border border-border bg-bg-sunken p-3">
-                  <p className="mb-2 text-xs uppercase tracking-wide text-text-tertiary">{cell.cell_type || "cell"}</p>
-                  <pre className="whitespace-pre-wrap text-xs text-text-primary">{(cell.source || []).join("")}</pre>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <pre className="whitespace-pre-wrap rounded-md border border-border bg-bg-sunken p-3 text-xs">{previewQuery.data?.content || ""}</pre>
-          )}
-        </div>
-        <div className="flex gap-2 border-t border-border p-4">
-          <Button size="sm" variant="outline" iconLeft={<Download size={14} />} onClick={() => previewPath && void handleDownload(previewPath, previewPath.split("/").pop() || "notebook")}>Tải xuống</Button>
-          <Button size="sm" onClick={() => previewPath && restoreMutation.mutate({ path: previewPath })}>Mở trong workspace</Button>
-        </div>
-      </div>
+      <NotebookPreviewPanel
+        previewPath={previewPath}
+        onClose={() => setPreviewPath(null)}
+        onDownload={(path) => void handleDownload(path, path.split("/").pop() || "notebook")}
+        onOpenWorkspace={(path) => restoreMutation.mutate({ path })}
+      />
     </div>
   );
 }

@@ -155,8 +155,8 @@ export default function NewWorkspacePage() {
   const summaryTier = useMemo(() => tierOptions.find((item) => item.value === values.tier)?.title ?? values.tier, [values.tier]);
 
   return (
-    <div className="mx-auto w-full max-w-[680px] py-8">
-      <Card variant="elevated" padding="lg" className="border border-border">
+    <div className="mx-auto w-full max-w-4xl px-1 py-6 sm:px-2 md:py-8">
+      <Card variant="elevated" className="border border-border p-4 sm:p-6 lg:p-7">
         <StepIndicator currentStep={currentStep} />
 
         <motion.div key={currentStep} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
@@ -274,7 +274,14 @@ export default function NewWorkspacePage() {
         <div className="mt-8 flex items-center justify-between">
           <Button type="button" variant="ghost" onClick={prevStep} disabled={currentStep === 1} iconLeft={<ChevronLeft size={16} />}>Quay lại</Button>
           {currentStep < 3 ? (
-            <Button type="button" onClick={nextStep} iconRight={<ChevronRight size={16} />}>Tiếp theo</Button>
+            <Button
+              type="button"
+              onClick={nextStep}
+              iconRight={<ChevronRight size={16} />}
+              className="bg-brand-600 text-white hover:bg-brand-700"
+            >
+              Tiếp theo
+            </Button>
           ) : null}
         </div>
       </Card>

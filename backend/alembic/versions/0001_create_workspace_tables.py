@@ -29,8 +29,6 @@ workspace_status_enum = sa.Enum(
 
 
 def upgrade() -> None:
-    workspace_status_enum.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         "workspaces",
         sa.Column("id", sa.String(length=20), nullable=False),

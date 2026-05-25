@@ -25,6 +25,16 @@ type FormValues = {
 
 type Toast = { type: "error" | "success"; message: string } | null;
 
+type LoginResponse = {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user: {
+    user_id: string;
+    email: string;
+  };
+};
+
 export default function LoginPage() {
   useRedirectIfAuthed();
 
@@ -71,20 +81,20 @@ export default function LoginPage() {
         throw new Error("Request failed");
       }
 
-      const data = (await response.json()) as { token: string; user: { id: string; name: string; email: string } };
-      login(data.token, data.user);
+      const data = (await response.json()) as LoginResponse;
+      const user = {
+        id: data.user.user_id,
+        name: data.user.email.split("@")[0],
+        email: data.user.email
+      };
+      login(data.access_token, user);
+      document.cookie = `auth_token=${encodeURIComponent(data.access_token)}; Path=/; Max-Age=${data.expires_in}; SameSite=Lax`;
       setSuccess(true);
-      setTimeout(() => router.push("/dashboard"), 700);
+      setTimeout(() => router.replace("/dashboard"), 300);
     } catch {
-      if (values.email === "demo@neuralspace.dev" && values.password.length >= 8) {
-        login("mock-jwt-token", { id: "demo_1", name: "Demo User", email: values.email });
-        setSuccess(true);
-        setTimeout(() => router.push("/dashboard"), 700);
-      } else {
-        setToast({ type: "error", message: "Email hoặc mật khẩu không đúng" });
-        setShake(true);
-        setTimeout(() => setShake(false), 350);
-      }
+      setToast({ type: "error", message: "Email hoặc mật khẩu không đúng" });
+      setShake(true);
+      setTimeout(() => setShake(false), 350);
     }
   };
 

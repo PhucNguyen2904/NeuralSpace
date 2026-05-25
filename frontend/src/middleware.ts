@@ -10,9 +10,9 @@ export function middleware(request: NextRequest) {
 
   if (!token && !isPublicRoute) {
     // Tạm thời tắt chuyển hướng để test các giao diện khác
-    // const url = new URL("/login", request.url);
-    // url.searchParams.set("next", pathname);
-    // return NextResponse.redirect(url);
+    const url = new URL("/login", request.url);
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
 
   if (token && pathname === "/login") {

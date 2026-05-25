@@ -1,5 +1,7 @@
 """Security utilities for JWT and one-time workspace tokens."""
 
+import base64
+import hmac
 import hashlib
 import secrets
 from dataclasses import dataclass
@@ -10,6 +12,9 @@ from jose import JWTError, jwt
 from redis.asyncio import Redis
 
 from app.config import get_settings
+
+PASSWORD_SCHEME = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 260000
 
 
 @dataclass
@@ -149,3 +154,34 @@ def hash_token(token: str) -> str:
         Hex-encoded SHA-256 hash
     """
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def hash_password(password: str) -> str:
+    """Hash password using PBKDF2-HMAC-SHA256."""
+    if not password:
+        raise ValueError("Password must not be empty")
+    salt = secrets.token_bytes(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    return (
+        f"{PASSWORD_SCHEME}"
+        f"${PASSWORD_ITERATIONS}"
+        f"${base64.b64encode(salt).decode('utf-8')}"
+        f"${base64.b64encode(dk).decode('utf-8')}"
+    )
+
+
+def verify_password(password: str, password_hash: str | None) -> bool:
+    """Verify plaintext password against encoded PBKDF2 hash."""
+    if not password_hash or not password:
+        return False
+    try:
+        scheme, iterations_s, salt_b64, digest_b64 = password_hash.split("$", 3)
+        if scheme != PASSWORD_SCHEME:
+            return False
+        iterations = int(iterations_s)
+        salt = base64.b64decode(salt_b64.encode("utf-8"))
+        expected_digest = base64.b64decode(digest_b64.encode("utf-8"))
+        actual_digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+        return hmac.compare_digest(actual_digest, expected_digest)
+    except Exception:
+        return False

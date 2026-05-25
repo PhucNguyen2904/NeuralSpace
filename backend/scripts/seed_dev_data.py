@@ -9,6 +9,7 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.models.dataset import Dataset
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 
@@ -23,6 +24,75 @@ async def seed() -> None:
     now = datetime.now(timezone.utc)
 
     async with session_maker() as session:
+        existing_datasets = {
+            row[0]
+            for row in (
+                await session.execute(
+                    Dataset.__table__.select().with_only_columns(Dataset.id)
+                )
+            ).all()
+        }
+        dataset_samples = [
+            Dataset(
+                id="dataset_sales_2026",
+                name="Sales Forecast 2026",
+                description="Daily sales records across 12 regions for forecasting experiments.",
+                dataset_type="tabular",
+                status="ready",
+                size_bytes=148_000_000,
+                item_count=1_250_000,
+                label_status="labeled",
+                tags=["finance", "forecasting", "time-series"],
+                storage_path="/datasets/sales_2026",
+                created_by="seed-script",
+                source_payload={"class_count": None},
+            ),
+            Dataset(
+                id="imagenet_subset",
+                name="ImageNet Subset",
+                description="Curated subset of ImageNet for transfer learning demos.",
+                dataset_type="image",
+                status="ready",
+                size_bytes=3_221_225_472,
+                item_count=120_000,
+                label_status="labeled",
+                tags=["vision", "classification"],
+                storage_path="/datasets/imagenet_subset",
+                created_by="seed-script",
+                source_payload={"class_count": 1000},
+            ),
+            Dataset(
+                id="dataset_customer_churn",
+                name="Customer Churn Analytics",
+                description="Structured customer behavior logs with churn outcome labels.",
+                dataset_type="tabular",
+                status="ready",
+                size_bytes=84_200_120,
+                item_count=600_000,
+                label_status="labeled",
+                tags=["churn", "classification", "crm"],
+                storage_path="/datasets/customer_churn",
+                created_by="seed-script",
+                source_payload={"class_count": 2},
+            ),
+            Dataset(
+                id="dataset_support_tickets",
+                name="Support Ticket Corpus",
+                description="Vietnamese and English support tickets for text classification.",
+                dataset_type="text",
+                status="ready",
+                size_bytes=22_401_773,
+                item_count=220_000,
+                label_status="processing",
+                tags=["nlp", "multilingual", "ticketing"],
+                storage_path="/datasets/support_tickets",
+                created_by="seed-script",
+                source_payload={"class_count": 12},
+            ),
+        ]
+
+        session.add_all([d for d in dataset_samples if d.id not in existing_datasets])
+
         ws1 = Workspace(
             user_id=user_1,
             name="ML Experiment A",

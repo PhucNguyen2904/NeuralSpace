@@ -108,7 +108,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cloud-ide-beat
-    command: celery -A app.workers.celery_app:celery_app beat -l debug --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A app.workers.celery_app:celery_app beat -l debug
     environment:
       ENVIRONMENT: development
       LOG_LEVEL: DEBUG
@@ -131,6 +131,45 @@ services:
     depends_on:
       - postgres
       - redis
+    networks:
+      - backend-network
+
+  # -----------------------------------------------------------------------
+  # Jupyter Lab — dev-only, token fixed để match với frontend config
+  # Notebooks được mount từ host: ../notebooks → /home/jovyan/work
+  # Khởi động: docker compose up jupyter  (hoặc cùng với toàn bộ stack)
+  # -----------------------------------------------------------------------
+  jupyter:
+    build:
+      context: ../jupyter
+      dockerfile: Dockerfile
+    container_name: cloud-ide-jupyter
+    environment:
+      JUPYTER_TOKEN: collabclone-dev-token
+      NB_UID: "1000"
+      NB_GID: "100"
+      GRANT_SUDO: "no"
+    volumes:
+      # Notebooks lưu trên host, persist qua container restart
+      - ../notebooks:/home/jovyan/work
+    ports:
+      - "8888:8888"
+    command: >
+      jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --ServerApp.token=collabclone-dev-token
+      --IdentityProvider.token=collabclone-dev-token
+      --ServerApp.root_dir=/home/jovyan/work
+      --ServerApp.allow_origin_pat=https?://localhost:[0-9]+
+      --ServerApp.allow_credentials=True
+      --ServerApp.allow_headers=*
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8888/api/status?token=collabclone-dev-token || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     networks:
       - backend-network
 

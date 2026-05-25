@@ -90,11 +90,7 @@ export class JupyterRestClient {
    * Load notebook content by path.
    */
   async getNotebook(path: string): Promise<NotebookContent> {
-    const encodedPath = encodePath(path);
-    const response = await this.request<JupyterContentsResponse>(
-      `/api/contents/${encodedPath}?content=1&type=notebook`,
-      { method: "GET" }
-    );
+    const response = await this.getNotebookRaw(path);
 
     if (typeof response.content === "string") {
       return JSON.parse(response.content) as NotebookContent;
@@ -116,6 +112,30 @@ export class JupyterRestClient {
         content
       })
     });
+  }
+
+  /**
+   * Ensure a directory exists at path.
+   */
+  async ensureDirectory(path: string): Promise<void> {
+    const encodedPath = encodePath(path);
+    if (!encodedPath) {
+      return;
+    }
+
+    try {
+      await this.request<void>(`/api/contents/${encodedPath}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          type: "directory"
+        })
+      });
+    } catch (error) {
+      if (error instanceof JupyterApiError && error.status === 409) {
+        return;
+      }
+      throw error;
+    }
   }
 
   /**
@@ -160,6 +180,30 @@ export class JupyterRestClient {
     }
 
     return (await response.json()) as T;
+  }
+
+  private async getNotebookRaw(path: string): Promise<JupyterContentsResponse> {
+    const encodedPath = encodePath(path);
+    try {
+      return await this.request<JupyterContentsResponse>(
+        `/api/contents/${encodedPath}?content=1&type=notebook`,
+        { method: "GET" }
+      );
+    } catch (error) {
+      if (
+        error instanceof JupyterApiError &&
+        error.status === 404 &&
+        !path.startsWith("notebooks/")
+      ) {
+        const fallbackPath = `notebooks/${path.replace(/^\/+/, "")}`;
+        const fallbackEncoded = encodePath(fallbackPath);
+        return this.request<JupyterContentsResponse>(
+          `/api/contents/${fallbackEncoded}?content=1&type=notebook`,
+          { method: "GET" }
+        );
+      }
+      throw error;
+    }
   }
 }
 

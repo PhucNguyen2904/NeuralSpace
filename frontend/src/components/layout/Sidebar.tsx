@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Avatar } from "@/components/ui";
 import { cn } from "@/lib/utils/cn";
 import { BookOpen, Brain, ChevronLeft, ChevronRight, Database, LayoutDashboard, Settings, Terminal } from "lucide-react";
 
@@ -85,13 +84,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             </div>
           </div>
         ))}
-      </div>
-      <div className="mt-auto flex items-center gap-2 rounded-lg bg-bg-elevated p-2">
-        <Avatar name="Alex Nguyen" />
-        <div className={cn("min-w-0", collapsed && "hidden")}>
-          <p className="truncate text-sm font-medium text-text-primary">Alex Nguyen</p>
-          <p className="truncate text-xs text-text-tertiary">alex@neuralspace.dev</p>
-        </div>
       </div>
       </aside>
 

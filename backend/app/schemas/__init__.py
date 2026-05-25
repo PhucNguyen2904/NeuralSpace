@@ -1,5 +1,11 @@
 """Pydantic schema module exports."""
 
+from app.schemas.auth import (
+    AuthTokenResponse,
+    AuthUserResponse,
+    LoginRequest,
+    RegisterRequest,
+)
 from app.schemas.workspace import (
     HeartbeatResponse,
     WorkspaceCreateRequest,
@@ -15,6 +21,10 @@ from app.schemas.workspace import (
 )
 
 __all__ = [
+    "RegisterRequest",
+    "LoginRequest",
+    "AuthUserResponse",
+    "AuthTokenResponse",
     "WorkspaceEnvironmentConfig",
     "WorkspaceCreateRequest",
     "WorkspaceStopRequest",

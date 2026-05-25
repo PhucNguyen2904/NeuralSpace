@@ -18,6 +18,11 @@ export interface ExecutionCallbacks {
   onReply?: (content: { status: "ok" | "error"; execution_count: number }) => void;
 }
 
+export interface ExecuteCodeOptions {
+  silent?: boolean;
+  storeHistory?: boolean;
+}
+
 export type KernelWebSocketStatus = "disconnected" | "connecting" | "connected" | "error";
 
 export class KernelWebSocket {
@@ -35,6 +40,9 @@ export class KernelWebSocket {
   private reconnectDelay = 1000;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private intentionalClose = false;
+  /** True when the first connection attempt failed (server not running). Stops retry loop. */
+  private serverUnreachable = false;
+  private isInitialConnect = true;
 
   constructor(kernelId: string, sessionId: string, config: JupyterConfig = JUPYTER_CONFIG) {
     this.kernelId = kernelId;
@@ -73,6 +81,8 @@ export class KernelWebSocket {
         clearTimeout(timeoutHandle);
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
+        this.serverUnreachable = false;
+        this.isInitialConnect = false;
         this.setStatus("connected");
         resolve();
       };
@@ -83,17 +93,23 @@ export class KernelWebSocket {
 
       socket.onerror = () => {
         clearTimeout(timeoutHandle);
+        // If this is the very first connection attempt, the server is simply not running.
+        // Mark as unreachable so scheduleReconnect skips all retry attempts.
+        if (this.isInitialConnect) {
+          this.serverUnreachable = true;
+        }
         this.setStatus("error");
       };
 
       socket.onclose = () => {
         clearTimeout(timeoutHandle);
+        this.isInitialConnect = false;
 
         if (this.status !== "error") {
           this.setStatus("disconnected");
         }
 
-        if (!this.intentionalClose) {
+        if (!this.intentionalClose && !this.serverUnreachable) {
           this.scheduleReconnect();
         }
       };
@@ -127,9 +143,9 @@ export class KernelWebSocket {
   /**
    * Send execute_request to the kernel and register callbacks for routed replies.
    */
-  executeCode(code: string, callbacks: ExecutionCallbacks): string {
+  executeCode(code: string, callbacks: ExecutionCallbacks, options?: ExecuteCodeOptions): string {
     const msgId = this.generateMsgId();
-    const message = this.createExecuteRequest(code, msgId);
+    const message = this.createExecuteRequest(code, msgId, options);
 
     this.pendingCallbacks.set(msgId, callbacks);
     this.sendMessage(message);
@@ -204,7 +220,7 @@ export class KernelWebSocket {
     }
   }
 
-  private createExecuteRequest(code: string, msgId: string): JupyterMessage<ExecuteRequestContent> {
+  private createExecuteRequest(code: string, msgId: string, options?: ExecuteCodeOptions): JupyterMessage<ExecuteRequestContent> {
     return {
       channel: "shell",
       header: {
@@ -219,8 +235,8 @@ export class KernelWebSocket {
       metadata: {},
       content: {
         code,
-        silent: false,
-        store_history: true,
+        silent: options?.silent ?? false,
+        store_history: options?.storeHistory ?? true,
         user_expressions: {},
         allow_stdin: false,
         stop_on_error: true
@@ -233,6 +249,12 @@ export class KernelWebSocket {
   }
 
   private scheduleReconnect(): void {
+    // Do not retry if the server was never reachable (avoids ERR_CONNECTION_REFUSED spam)
+    if (this.serverUnreachable) {
+      this.setStatus("error");
+      return;
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       this.setStatus("error");
       return;

@@ -13,7 +13,7 @@ import {
   UserRound
 } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -30,6 +30,7 @@ import {
 import { cn } from "@/lib/utils/cn";
 
 type TabKey = "account" | "appearance" | "defaults" | "notifications" | "api" | "quota";
+type ThemePreference = "system" | "light" | "dark";
 
 const tabs: Array<{ key: TabKey; label: string; icon: ComponentType<{ size?: string | number; className?: string }> }> = [
   { key: "account", label: "Tài khoản", icon: UserRound },
@@ -78,6 +79,8 @@ export default function SettingsPage() {
   const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: settings } = useSettings();
   const updateProfile = useUpdateProfile();
@@ -114,6 +117,30 @@ export default function SettingsPage() {
     return () => clearTimeout(timeout);
   }, [toastMsg]);
 
+  useEffect(() => {
+    const saved = window.localStorage.getItem("ui-theme") as ThemePreference | null;
+    if (saved === "system" || saved === "light" || saved === "dark") {
+      setThemePreference(saved);
+      applyTheme(saved);
+      return;
+    }
+    applyTheme("system");
+  }, []);
+
+  const applyTheme = (value: ThemePreference) => {
+    const root = document.documentElement;
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const useDark = value === "dark" || (value === "system" && systemDark);
+    root.classList.toggle("theme-dark", useDark);
+  };
+
+  const updateTheme = (value: ThemePreference) => {
+    setThemePreference(value);
+    window.localStorage.setItem("ui-theme", value);
+    applyTheme(value);
+    setToastMsg("Đã cập nhật giao diện");
+  };
+
   const planBars = useMemo(() => {
     if (!settings) return [];
     return [
@@ -149,10 +176,50 @@ export default function SettingsPage() {
           {activeTab === "account" ? (
             <div className="space-y-6">
               <div className="flex items-center gap-4">
-                <button className="rounded-full border border-border p-1 hover:border-brand-500">
-                  <Avatar name={settings.profile.fullName} className="h-16 w-16 text-lg" />
+                <button
+                  type="button"
+                  className="rounded-full border border-border p-1 hover:border-brand-500"
+                  onClick={() => avatarInputRef.current?.click()}
+                >
+                  <Avatar
+                    name={settings.profile.fullName}
+                    src={settings.profile.avatarUrl}
+                    className="h-16 w-16 text-lg"
+                  />
                 </button>
                 <p className="text-sm text-text-secondary">Click avatar để đổi ảnh đại diện</p>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  className="hidden"
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file) return;
+
+                    const isImage = file.type.startsWith("image/");
+                    const maxSize = 5 * 1024 * 1024;
+                    if (!isImage) {
+                      setToastMsg("Vui lòng chọn file ảnh.");
+                      return;
+                    }
+                    if (file.size > maxSize) {
+                      setToastMsg("Ảnh phải nhỏ hơn 5MB.");
+                      return;
+                    }
+
+                    const dataUrl = await new Promise<string>((resolve, reject) => {
+                      const reader = new FileReader();
+                      reader.onload = () => resolve(String(reader.result ?? ""));
+                      reader.onerror = () => reject(new Error("read failed"));
+                      reader.readAsDataURL(file);
+                    });
+
+                    updateProfile.mutate({ avatarUrl: dataUrl });
+                    setToastMsg("Đã cập nhật ảnh đại diện");
+                  }}
+                />
               </div>
 
               <form
@@ -200,7 +267,58 @@ export default function SettingsPage() {
           {activeTab === "appearance" ? (
             <div className="max-w-xl space-y-4">
               <h3 className="font-semibold">Giao diện</h3>
-              <p className="text-sm text-text-secondary">Theme settings sẽ được mở rộng ở prompt tiếp theo.</p>
+              <Field label="Theme mode">
+                <Select
+                  value={themePreference}
+                  onChange={(e) => updateTheme(e.target.value as ThemePreference)}
+                >
+                  <option value="system">Theo hệ thống</option>
+                  <option value="light">Sáng</option>
+                  <option value="dark">Tối</option>
+                </Select>
+              </Field>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => updateTheme("light")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left",
+                    themePreference === "light"
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-border hover:bg-bg-elevated"
+                  )}
+                >
+                  <p className="text-sm font-medium text-text-primary">Sáng</p>
+                  <p className="text-xs text-text-secondary">Nền sáng, tương phản cao</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateTheme("dark")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left",
+                    themePreference === "dark"
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-border hover:bg-bg-elevated"
+                  )}
+                >
+                  <p className="text-sm font-medium text-text-primary">Tối</p>
+                  <p className="text-xs text-text-secondary">Giảm chói khi làm việc đêm</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateTheme("system")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left",
+                    themePreference === "system"
+                      ? "border-brand-500 bg-brand-50"
+                      : "border-border hover:bg-bg-elevated"
+                  )}
+                >
+                  <p className="text-sm font-medium text-text-primary">Hệ thống</p>
+                  <p className="text-xs text-text-secondary">Tự động theo OS</p>
+                </button>
+              </div>
             </div>
           ) : null}
 

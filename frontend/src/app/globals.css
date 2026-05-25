@@ -46,6 +46,26 @@
   --shadow-brand: 0 4px 16px rgba(99, 102, 241, 0.25);
 }
 
+.theme-dark {
+  --color-bg-base: #0f1117;
+  --color-bg-surface: #151923;
+  --color-bg-elevated: #1b2130;
+  --color-bg-sunken: #242c3f;
+  --color-border-default: #2b3448;
+  --color-border-strong: #3a4560;
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #b1b8c8;
+  --color-text-tertiary: #7f8aa3;
+  --color-brand-50: #222d55;
+  --color-success-50: #0f2f26;
+  --color-warning-50: #33290f;
+  --color-error-50: #331c1c;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.55);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.65);
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {
@@ -81,3 +101,17 @@ body {
 }
 .bell-pulse { animation: bellPulse 1.8s infinite; }
 .unread-pop { animation: unreadPop 0.2s ease-out; }
+
+.monaco-editor .margin {
+  border-right: 1px solid #E2E8F0 !important;
+}
+
+.monaco-editor .line-numbers {
+  padding-right: 12px !important;
+  text-align: right !important;
+}
+
+.monaco-editor .lines-content {
+  padding-left: 4px !important;
+}
+

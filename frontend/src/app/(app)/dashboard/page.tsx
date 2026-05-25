@@ -71,14 +71,7 @@ export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const { data: workspaces = [] } = useWorkspaces();
 
-  const running = useMemo(() => {
-    const active = workspaces.filter((workspace) => workspace.status === "RUNNING");
-    const ws1 = workspaces.find((workspace) => workspace.id === "ws_1");
-    if (!ws1) return active;
-    const ws1ForDashboard = ws1.status === "RUNNING" ? ws1 : { ...ws1, status: "RUNNING" as const };
-    const others = active.filter((workspace) => workspace.id !== "ws_1");
-    return [ws1ForDashboard, ...others];
-  }, [workspaces]);
+  const running = useMemo(() => workspaces.filter((workspace) => workspace.status === "RUNNING"), [workspaces]);
   const storageUsed = 2.4;
 
   const summaryCards = [

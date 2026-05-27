@@ -14,7 +14,10 @@ function Progress({ value, max }: { value: number; max: number }) {
   const pct = Math.min(100, Math.round((value / max) * 100));
   return (
     <div className="mt-2 h-1.5 w-full rounded-full bg-bg-elevated">
-      <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-brand-500 via-indigo-500 to-cyan-500"
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }
@@ -56,7 +59,9 @@ const RunningWorkspaceCard = memo(function RunningWorkspaceCard({ workspace }: {
       </div>
       <div className="flex flex-wrap items-center gap-2 xl:justify-end">
         <StatusBadge status={workspace.status} />
-        <Button size="sm">Open</Button>
+        <Link href={`/workspaces/${workspace.id}`}>
+          <Button size="sm">Open</Button>
+        </Link>
         <Button size="sm" variant="secondary">Stop</Button>
         <Button size="sm" variant="ghost" aria-label="More actions">
           <MoreHorizontal size={16} />
@@ -105,14 +110,24 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title={`Good day, ${user?.name ?? "there"} `} description={new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} />
+      <div className="relative overflow-hidden rounded-2xl border border-brand-100/70 bg-gradient-to-br from-brand-50 via-white to-sky-50 p-5 sm:p-6">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-brand-200/40 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-12 left-10 h-28 w-28 rounded-full bg-cyan-200/40 blur-2xl" />
+        <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:radial-gradient(#93c5fd_1px,transparent_1px)] [background-size:18px_18px]" />
+        <div className="pointer-events-none absolute right-8 top-5 hidden rounded-full border border-brand-200/80 bg-white/80 px-3 py-1 text-[11px] font-medium text-brand-700 backdrop-blur sm:block">
+          NeuralSpace Control Center
+        </div>
+        <PageHeader title={`Good day, ${user?.name ?? "there"} `} description={new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })} />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {summaryCards.map((item) => (
-          <Card key={item.label} className="min-h-[172px] p-5 transition hover:-translate-y-[1px] hover:shadow-md">
+          <Card key={item.label} className="group relative min-h-[172px] overflow-hidden p-5 transition hover:-translate-y-[1px] hover:shadow-md">
+            <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-brand-100/70 blur-xl transition group-hover:bg-brand-200/70" />
+            <div className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100 [background:linear-gradient(120deg,transparent_0%,rgba(99,102,241,0.07)_45%,transparent_100%)]" />
             <div className="flex h-full flex-col items-start gap-3 text-left">
               <div className="w-full">
-                <span className="inline-flex rounded-full bg-brand-50 p-2 text-brand-600">
+                <span className="inline-flex rounded-full border border-brand-100 bg-brand-50 p-2 text-brand-600">
                   <item.icon size={18} />
                 </span>
               </div>
@@ -129,7 +144,9 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <Card className="rounded-xl border-brand-100/80 p-5 shadow-sm">
+      <Card className="relative overflow-hidden rounded-xl border-brand-100/80 bg-gradient-to-b from-white to-brand-50/30 p-5 shadow-sm">
+        <div className="pointer-events-none absolute -bottom-14 -right-14 h-40 w-40 rounded-full border border-brand-200/70" />
+        <div className="pointer-events-none absolute -bottom-6 -right-6 h-24 w-24 rounded-full border border-brand-200/60" />
         <div className="mb-4 flex items-center gap-2">
           <h2 className="text-lg font-semibold text-text-primary">Workspaces đang chạy</h2>
           <span className="rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-600">{running.length}</span>
@@ -152,31 +169,34 @@ export default function DashboardPage() {
       </Card>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <Link href="/workspaces/new" className="rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:border-brand-300 hover:bg-brand-50/40">
+        <Link href="/workspaces/new" className="group rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:-translate-y-[1px] hover:border-brand-300 hover:bg-brand-50/40 hover:shadow-sm">
           <div className="flex h-8 items-center gap-2 text-sm font-medium text-text-secondary">
-            <SquareTerminal size={16} className="text-brand-500" />
+            <SquareTerminal size={16} className="text-brand-500 transition group-hover:scale-110" />
             New Workspace
           </div>
         </Link>
-        <Link href="/notebooks" className="rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:border-brand-300 hover:bg-brand-50/40">
+        <Link href="/notebooks" className="group rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:-translate-y-[1px] hover:border-brand-300 hover:bg-brand-50/40 hover:shadow-sm">
           <div className="flex h-8 items-center gap-2 text-sm font-medium text-text-secondary">
-            <BookOpen size={16} className="text-brand-500" />
+            <BookOpen size={16} className="text-brand-500 transition group-hover:scale-110" />
             Browse Notebooks
           </div>
         </Link>
-        <Link href="/datasets" className="rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:border-brand-300 hover:bg-brand-50/40">
+        <Link href="/datasets" className="group rounded-xl border border-border/80 bg-bg-primary p-4 transition hover:-translate-y-[1px] hover:border-brand-300 hover:bg-brand-50/40 hover:shadow-sm">
           <div className="flex h-8 items-center gap-2 text-sm font-medium text-text-secondary">
-            <HardDrive size={16} className="text-brand-500" />
+            <HardDrive size={16} className="text-brand-500 transition group-hover:scale-110" />
             Go to Datasets
           </div>
         </Link>
       </div>
 
-      <Card className="rounded-xl border-border/90 p-5">
+      <Card className="relative overflow-hidden rounded-xl border-border/90 bg-gradient-to-b from-white to-slate-50/40 p-5">
+        <div className="pointer-events-none absolute right-3 top-3 rounded-full border border-border bg-white/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-text-tertiary">
+          Live Feed
+        </div>
         <h2 className="mb-4 text-base font-semibold text-text-primary">Recent Activity</h2>
         <ul className="space-y-2.5">
           {activities.map((item) => (
-            <li key={item.text} className="flex items-start justify-between gap-4 rounded-md px-2 py-1.5 text-sm">
+            <li key={item.text} className="flex items-start justify-between gap-4 rounded-md border border-transparent px-2 py-1.5 text-sm transition hover:border-border/80 hover:bg-white">
               <span className="min-w-0 flex items-start gap-2 text-text-secondary">
                 <span className={`pt-0.5 text-base leading-none ${item.color}`}>●</span>
                 <span className="truncate sm:whitespace-normal">{item.text}</span>
@@ -186,6 +206,42 @@ export default function DashboardPage() {
           ))}
         </ul>
       </Card>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="relative overflow-hidden lg:col-span-2 rounded-xl border-border/90 bg-gradient-to-br from-white to-indigo-50/30 p-5">
+          <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,#c7d2fe_1px,transparent_1px),linear-gradient(to_bottom,#c7d2fe_1px,transparent_1px)] [background-size:20px_20px]" />
+          <h2 className="mb-1 text-base font-semibold text-text-primary">Usage Insights</h2>
+          <p className="mb-4 text-sm text-text-secondary">Tổng quan hiệu năng và mức dùng theo phiên gần nhất.</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-border bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-text-tertiary">Avg CPU</p>
+              <p className="mt-1 text-xl font-semibold text-brand-600">63%</p>
+              <Progress value={63} max={100} />
+            </div>
+            <div className="rounded-lg border border-border bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-text-tertiary">Avg RAM</p>
+              <p className="mt-1 text-xl font-semibold text-brand-600">5.1 GB</p>
+              <Progress value={5.1} max={10} />
+            </div>
+            <div className="rounded-lg border border-border bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-text-tertiary">Notebook Saves</p>
+              <p className="mt-1 text-xl font-semibold text-brand-600">28</p>
+              <p className="mt-2 text-xs text-text-tertiary">Trong 24 giờ gần nhất</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="relative overflow-hidden rounded-xl border-border/90 bg-gradient-to-b from-white to-emerald-50/30 p-5">
+          <div className="pointer-events-none absolute -right-8 -top-8 h-20 w-20 rounded-full bg-emerald-100/80 blur-xl" />
+          <h2 className="mb-1 text-base font-semibold text-text-primary">Quick Tips</h2>
+          <p className="mb-4 text-sm text-text-secondary">Mẹo tăng tốc workflow hàng ngày.</p>
+          <ul className="space-y-2 text-sm text-text-secondary">
+            <li className="rounded-md border border-border bg-white px-3 py-2">Dùng `Shift + Enter` để chạy cell nhanh.</li>
+            <li className="rounded-md border border-border bg-white px-3 py-2">Lưu notebook trước khi restart kernel.</li>
+            <li className="rounded-md border border-border bg-white px-3 py-2">Theo dõi CPU/RAM để tránh bị stop do quá tải.</li>
+          </ul>
+        </Card>
+      </div>
     </div>
   );
 }

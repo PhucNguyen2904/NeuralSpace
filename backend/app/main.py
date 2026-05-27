@@ -108,18 +108,58 @@ def create_app() -> FastAPI:
         trace_id = request.headers.get("X-Trace-ID", request_id)
         request.state.trace_id = trace_id
         start = perf_counter()
-        response = await call_next(request)
+        logger.info(
+            "HTTP request started",
+            request_id=request_id,
+            trace_id=trace_id,
+            method=request.method,
+            path=request.url.path,
+            query=str(request.url.query or ""),
+            client_ip=request.client.host if request.client else "unknown",
+        )
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            duration = perf_counter() - start
+            logger.exception(
+                "HTTP request failed",
+                request_id=request_id,
+                trace_id=trace_id,
+                method=request.method,
+                path=request.url.path,
+                duration_ms=round(duration * 1000, 2),
+                error=str(exc),
+            )
+            raise
+
         duration = perf_counter() - start
         endpoint = request.url.path
         api_request_duration_seconds.labels(endpoint=endpoint, method=request.method).observe(duration)
         response.headers["X-Request-ID"] = request_id
         response.headers["X-Trace-ID"] = trace_id
+        logger.info(
+            "HTTP request completed",
+            request_id=request_id,
+            trace_id=trace_id,
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=round(duration * 1000, 2),
+        )
         return response
 
     # Global exception handlers
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         """Handle HTTP exceptions."""
+        logger.warning(
+            "HTTP exception returned",
+            request_id=request.headers.get("X-Request-ID", ""),
+            method=request.method,
+            path=request.url.path,
+            status_code=exc.status_code,
+            detail=str(exc.detail),
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -132,6 +172,14 @@ def create_app() -> FastAPI:
     @app.exception_handler(ValidationError)
     async def validation_exception_handler(request: Request, exc: ValidationError):
         """Handle validation errors."""
+        logger.warning(
+            "Validation exception returned",
+            request_id=request.headers.get("X-Request-ID", ""),
+            method=request.method,
+            path=request.url.path,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            errors=exc.errors(),
+        )
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={

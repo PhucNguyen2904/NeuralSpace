@@ -16,7 +16,7 @@ $notebookRoot = Join-Path $projectRoot 'notebooks'
 $venvPython = Join-Path $projectRoot '.venv\Scripts\python.exe'
 
 # Fixed token — must match NEXT_PUBLIC_JUPYTER_TOKEN in frontend config
-$token = 'collabclone-dev-token'
+$token = 'NeuralSpace-dev-token'
 
 if (-not (Test-Path -LiteralPath $notebookRoot)) {
     New-Item -ItemType Directory -Path $notebookRoot | Out-Null
@@ -58,4 +58,5 @@ Write-Host "Starting     : $($cmd -join ' ')"
 if (-not $WhatIf) {
     & $cmd[0] $cmd[1..($cmd.Length - 1)]
 }
+
 

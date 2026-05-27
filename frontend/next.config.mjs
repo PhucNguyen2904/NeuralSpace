@@ -16,6 +16,19 @@ const nextConfig = {
       },
     ];
   },
+  // FIX [BƯỚC 5]: Explicitly allow auth/content headers + PUT methods on proxied Jupyter path.
+  async headers() {
+    return [
+      {
+        source: "/jupyter/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET,POST,PUT,DELETE,OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "Authorization,Content-Type,X-XSRFToken" }
+        ]
+      }
+    ];
+  }
 };
 
 export default nextConfig;

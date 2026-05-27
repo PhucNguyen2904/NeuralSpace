@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from uuid import uuid4
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.model_registry import ModelRegistry
 from app.models.workspace_assets import WorkspaceModel
@@ -16,6 +20,7 @@ from app.repositories.workspace_repository import WorkspaceRepository
 
 router = APIRouter(tags=["models"])
 workspace_router = APIRouter(prefix="/workspaces", tags=["models"])
+logger = get_logger(__name__)
 
 
 class PaginatedModelResponse(BaseModel):
@@ -28,6 +33,31 @@ class PaginatedModelResponse(BaseModel):
 class WorkspaceModelMountRequest(BaseModel):
     model_id: str = Field(min_length=1)
     mount_path: str | None = None
+
+
+def _guess_framework_from_filename(filename: str) -> str:
+    lower = filename.lower()
+    if lower.endswith(".onnx"):
+        return "onnx"
+    if lower.endswith(".pt") or lower.endswith(".pth"):
+        return "pytorch"
+    if lower.endswith(".h5") or lower.endswith(".keras"):
+        return "tensorflow"
+    if lower.endswith(".safetensors"):
+        return "huggingface"
+    return "pytorch"
+
+
+def _parse_metadata(raw: str | None) -> dict:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc.msg}") from exc
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="metadata must be a JSON object")
+    return parsed
 
 
 @router.get("/models", response_model=PaginatedModelResponse)
@@ -99,6 +129,97 @@ async def list_models(
     ]
 
     return PaginatedModelResponse(items=items, total=total, page=page, pageSize=limit)
+
+
+@router.post("/models/upload", status_code=status.HTTP_201_CREATED)
+async def upload_model(
+    file: UploadFile = File(...),
+    metadata: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    if not file.filename:
+        audit_event(logger, "model.upload_failed", reason="missing_filename", user_id=current_user.user_id)
+        raise HTTPException(status_code=400, detail="Missing filename")
+
+    parsed = _parse_metadata(metadata)
+    model_id = f"model_{uuid4().hex[:12]}"
+    model_name = str(parsed.get("name") or Path(file.filename).stem).strip() or "Uploaded Model"
+    framework = str(parsed.get("framework") or _guess_framework_from_filename(file.filename)).strip().lower()
+    task_type = str(parsed.get("task_type") or "regression").strip().lower()
+    primary_metric_name = str(parsed.get("primary_metric_name") or "accuracy").strip()
+    primary_metric_value = float(parsed.get("primary_metric_value") or 0.0)
+    all_metrics = parsed.get("all_metrics") if isinstance(parsed.get("all_metrics"), dict) else {}
+    if primary_metric_name and primary_metric_name not in all_metrics:
+        all_metrics[primary_metric_name] = primary_metric_value
+    tags = parsed.get("tags") if isinstance(parsed.get("tags"), list) else []
+    tags = [str(tag) for tag in tags]
+
+    storage_dir = Path("/workspace/models")
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    target_name = f"{model_id}_{Path(file.filename).name}"
+    target_path = storage_dir / target_name
+
+    payload = await file.read()
+    target_path.write_bytes(payload)
+    size_bytes = target_path.stat().st_size
+
+    row = ModelRegistry(
+        id=model_id,
+        name=model_name,
+        architecture=str(parsed.get("architecture") or "unknown"),
+        framework=framework,
+        task_type=task_type,
+        status="ready",
+        version=str(parsed.get("version") or "v1.0"),
+        size_bytes=size_bytes,
+        parameter_count=int(parsed.get("parameter_count") or 0),
+        primary_metric_name=primary_metric_name,
+        primary_metric_value=primary_metric_value,
+        all_metrics=all_metrics,
+        tags=tags,
+        storage_path=str(target_path),
+        created_by=current_user.user_id,
+        source_payload={
+            "description": str(parsed.get("description") or ""),
+            "original_filename": file.filename,
+            "content_type": file.content_type or "application/octet-stream",
+        },
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    audit_event(
+        logger,
+        "model.upload",
+        user_id=current_user.user_id,
+        model_id=row.id,
+        model_name=row.name,
+        framework=row.framework,
+        task_type=row.task_type,
+        size_bytes=row.size_bytes,
+    )
+
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": (row.source_payload or {}).get("description", ""),
+        "architecture": row.architecture,
+        "framework": row.framework,
+        "task_type": row.task_type or "unknown",
+        "status": row.status,
+        "size_bytes": row.size_bytes,
+        "parameter_count": row.parameter_count,
+        "primary_metric_name": row.primary_metric_name or "metric",
+        "primary_metric_value": row.primary_metric_value or 0.0,
+        "all_metrics": row.all_metrics or {},
+        "tags": row.tags or [],
+        "created_by": row.created_by or "system",
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+        "version": row.version or "v1.0",
+        "storage_path": row.storage_path or "",
+    }
 
 
 @router.get("/models/{id}")
@@ -185,10 +306,12 @@ async def mount_model_to_workspace(
 ) -> dict:
     workspace = await WorkspaceRepository.get_by_id_and_user(db, id, current_user.user_id)
     if workspace is None:
+        audit_event(logger, "model.mount_failed", user_id=current_user.user_id, workspace_id=id, model_id=payload.model_id, reason="workspace_not_found")
         raise HTTPException(status_code=404, detail="Workspace not found")
 
     model = await db.get(ModelRegistry, payload.model_id)
     if model is None:
+        audit_event(logger, "model.mount_failed", user_id=current_user.user_id, workspace_id=id, model_id=payload.model_id, reason="model_not_found")
         raise HTTPException(status_code=404, detail="Model not found")
 
     mount_path = payload.mount_path or f"/workspace/models/{model.name.lower().replace(' ', '_')}"
@@ -212,10 +335,17 @@ async def mount_model_to_workspace(
         existing.mounted_by = current_user.user_id
 
     await db.commit()
+    audit_event(
+        logger,
+        "model.mount",
+        user_id=current_user.user_id,
+        workspace_id=id,
+        model_id=model.id,
+        mount_path=mount_path,
+    )
     return {
         "workspace_id": id,
         "model_id": model.id,
         "mount_path": mount_path,
         "message": "Model mounted",
     }
-

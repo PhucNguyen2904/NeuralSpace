@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
-import { BookOpen, Download, Grid2x2, List, Search, Trash2, Upload } from "lucide-react";
+import { BookOpen, Download, ExternalLink, Grid2x2, List, Search, Trash2, Upload } from "lucide-react";
 import { PageHeader } from "@/components/shared";
 import { Button } from "@/components/ui";
 import { getDownloadPresignedUrl, useDeleteNotebook, useRestoreNotebook, useStoredNotebooks, useUploadNotebook } from "@/lib/hooks/useNotebooks";
 import { useWorkspaces } from "@/lib/hooks/useWorkspace";
+import { useToast } from "@/lib/hooks/useToast";
 import { cn } from "@/lib/utils/cn";
+import { JupyterRestClient } from "@/lib/jupyter/rest-client";
+import type { StoredNotebook } from "@/lib/api/storage";
 
 type TimeFilter = "today" | "week" | "month" | "all";
 type TypeFilter = ".ipynb" | ".py" | "all";
@@ -39,12 +43,15 @@ const formatSize = (size: number) => {
 };
 
 export default function NotebooksPage() {
-  const { data: notebooks = [], isLoading, refetch } = useStoredNotebooks();
+  const router = useRouter();
+  const { toast } = useToast();
+  const { data: storedNotebooks = [], isLoading: isStoredLoading, refetch } = useStoredNotebooks();
   const { data: workspaces = [] } = useWorkspaces();
   const uploadMutation = useUploadNotebook();
   const deleteMutation = useDeleteNotebook();
   const restoreMutation = useRestoreNotebook();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const jupyterClientRef = useRef(new JupyterRestClient());
 
   const [workspaceFilter, setWorkspaceFilter] = useState("all");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
@@ -55,7 +62,60 @@ export default function NotebooksPage() {
   const [dragActive, setDragActive] = useState(false);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
+  const [jupyterNotebooks, setJupyterNotebooks] = useState<StoredNotebook[]>([]);
+  const [isJupyterLoading, setIsJupyterLoading] = useState(false);
+  const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
 
+  const loadJupyterNotebooks = useCallback(async () => {
+    const toStoredNotebook = (path: string, name: string, lastModified: string | null): StoredNotebook => {
+      const workspaceId = path.split("/")[0] || "unknown";
+      return {
+        name,
+        size: 0,
+        last_modified: lastModified,
+        workspace_id: workspaceId,
+        path
+      };
+    };
+
+    setIsJupyterLoading(true);
+    try {
+      const rootItems = await jupyterClientRef.current.listDirectory("");
+      const filesAtRoot = rootItems
+        .filter((item) => item.type !== "directory" && (item.name.endsWith(".ipynb") || item.name.endsWith(".py")))
+        .map((item) => toStoredNotebook(item.path, item.name, item.last_modified || null));
+
+      const directoryItems = rootItems.filter((item) => item.type === "directory");
+      const nestedLists = await Promise.all(
+        directoryItems.map(async (directory) => {
+          const children = await jupyterClientRef.current.listDirectory(directory.path);
+          return children
+            .filter((item) => item.type !== "directory" && (item.name.endsWith(".ipynb") || item.name.endsWith(".py")))
+            .map((item) => toStoredNotebook(item.path, item.name, item.last_modified || null));
+        })
+      );
+
+      setJupyterNotebooks([...filesAtRoot, ...nestedLists.flat()]);
+    } catch (error) {
+      console.error("Failed to load notebooks from Jupyter contents API", error);
+      setJupyterNotebooks([]);
+    } finally {
+      setIsJupyterLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadJupyterNotebooks();
+  }, [loadJupyterNotebooks]);
+
+  const notebooks = useMemo(() => {
+    const merged = new Map<string, StoredNotebook>();
+    [...storedNotebooks, ...jupyterNotebooks].forEach((item) => merged.set(item.path, item));
+    return Array.from(merged.values());
+  }, [storedNotebooks, jupyterNotebooks]);
+  const storedNotebookPathSet = useMemo(() => new Set(storedNotebooks.map((item) => item.path)), [storedNotebooks]);
+
+  const isLoading = isStoredLoading || isJupyterLoading;
 
   const workspaceCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -112,6 +172,45 @@ export default function NotebooksPage() {
       }
     }
     await refetch();
+  };
+
+  const handleOpenInWorkspace = async (item: StoredNotebook) => {
+    const actionKey = `open:${item.path}`;
+    setActiveActionKey(actionKey);
+    try {
+      const restored = await restoreMutation.mutateAsync({
+        path: item.path,
+        workspaceId: item.workspace_id
+      });
+      toast.success("Đã mở notebook vào workspace", {
+        description: `${item.name} → ${restored.workspace_id}`
+      });
+      router.push(`/workspaces/${restored.workspace_id}?file=${encodeURIComponent(restored.requested_path || item.path)}`);
+    } catch {
+      toast.error("Không thể mở notebook vào workspace");
+    } finally {
+      setActiveActionKey(null);
+    }
+  };
+
+  const handleDeleteNotebook = async (item: StoredNotebook) => {
+    const accepted = window.confirm(`Xóa notebook "${item.name}"?`);
+    if (!accepted) return;
+    const actionKey = `delete:${item.path}`;
+    setActiveActionKey(actionKey);
+    try {
+      if (storedNotebookPathSet.has(item.path)) {
+        await deleteMutation.mutateAsync(item.path);
+      } else {
+        await jupyterClientRef.current.deleteNotebook(item.path);
+      }
+      await Promise.all([refetch(), loadJupyterNotebooks()]);
+      toast.success("Đã xóa notebook", { description: item.name });
+    } catch {
+      toast.error("Xóa notebook thất bại", { description: item.name });
+    } finally {
+      setActiveActionKey(null);
+    }
   };
 
   return (
@@ -225,10 +324,36 @@ export default function NotebooksPage() {
                   <button onClick={() => setPreviewPath(item.path)} className="mt-3 line-clamp-1 text-left font-semibold text-text-primary hover:text-brand-600">{item.name}</button>
                   <p className="text-xs text-text-tertiary">{formatSize(item.size)}</p>
                   <p className="text-xs text-text-tertiary">{item.last_modified ? formatDistanceToNow(new Date(item.last_modified), { addSuffix: true }) : "-"}</p>
-                  <div className="mt-3 hidden gap-1 group-hover:flex">
-                    <Button size="sm" variant="outline" iconLeft={<Download size={13} />} onClick={() => void handleDownload(item.path, item.name)}>Download</Button>
-                    <Button size="sm" variant="secondary" onClick={() => restoreMutation.mutate({ path: item.path, workspaceId: item.workspace_id })}>Open in WS</Button>
-                    <Button size="sm" variant="ghost" iconLeft={<Trash2 size={13} />} onClick={() => deleteMutation.mutate(item.path)} />
+                  <div className="mt-3 flex items-center justify-end gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0 px-0"
+                      title="Download"
+                      aria-label={`Download ${item.name}`}
+                      iconLeft={<Download size={14} />}
+                      onClick={() => void handleDownload(item.path, item.name)}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0 px-0"
+                      title="Open in Workspace"
+                      aria-label={`Open ${item.name} in workspace`}
+                      iconLeft={<ExternalLink size={14} />}
+                      loading={activeActionKey === `open:${item.path}`}
+                      onClick={() => void handleOpenInWorkspace(item)}
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 shrink-0 px-0"
+                      title="Delete"
+                      aria-label={`Delete ${item.name}`}
+                      iconLeft={<Trash2 size={14} />}
+                      loading={activeActionKey === `delete:${item.path}`}
+                      onClick={() => void handleDeleteNotebook(item)}
+                    />
                   </div>
                 </div>
               ))}
@@ -250,9 +375,35 @@ export default function NotebooksPage() {
                       <td className="py-3 text-text-secondary">{item.last_modified ? formatDistanceToNow(new Date(item.last_modified), { addSuffix: true }) : "-"}</td>
                       <td className="py-3">
                         <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" iconLeft={<Download size={13} />} onClick={() => void handleDownload(item.path, item.name)} />
-                          <Button size="sm" variant="ghost" onClick={() => restoreMutation.mutate({ path: item.path, workspaceId: item.workspace_id })}>▶</Button>
-                          <Button size="sm" variant="ghost" iconLeft={<Trash2 size={13} />} onClick={() => deleteMutation.mutate(item.path)} />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 px-0"
+                            title="Download"
+                            aria-label={`Download ${item.name}`}
+                            iconLeft={<Download size={14} />}
+                            onClick={() => void handleDownload(item.path, item.name)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 px-0"
+                            title="Open in Workspace"
+                            aria-label={`Open ${item.name} in workspace`}
+                            iconLeft={<ExternalLink size={14} />}
+                            loading={activeActionKey === `open:${item.path}`}
+                            onClick={() => void handleOpenInWorkspace(item)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 px-0"
+                            title="Delete"
+                            aria-label={`Delete ${item.name}`}
+                            iconLeft={<Trash2 size={14} />}
+                            loading={activeActionKey === `delete:${item.path}`}
+                            onClick={() => void handleDeleteNotebook(item)}
+                          />
                         </div>
                       </td>
                     </tr>

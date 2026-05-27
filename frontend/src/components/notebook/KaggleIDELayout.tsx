@@ -41,7 +41,7 @@ export function KaggleIDELayout({
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F8FAFC]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#F8FAFC]">
       <KaggleTopbar
         notebookName={notebookName}
         onNameChange={onNameChange}

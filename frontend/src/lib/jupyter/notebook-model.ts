@@ -4,7 +4,7 @@ function normalizeSource(source: string): string {
   return source.replace(/\r\n/g, "\n");
 }
 
-export const DEFAULT_NOTEBOOK_STARTER_CODE = `# CollabClone Python environment includes common analytics libraries
+export const DEFAULT_NOTEBOOK_STARTER_CODE = `# NeuralSpace Python environment includes common analytics libraries
 # You can run this cell with Shift+Enter
 
 import numpy as np  # linear algebra
@@ -63,10 +63,6 @@ export function insertCell(notebook: NotebookContent, afterIndex: number, cell: 
 }
 
 export function deleteCell(notebook: NotebookContent, cellId: string): NotebookContent {
-  if (notebook.cells.length <= 1) {
-    return notebook;
-  }
-
   const nextCells = notebook.cells.filter((cell) => cell.id !== cellId);
   if (nextCells.length === notebook.cells.length) {
     return notebook;

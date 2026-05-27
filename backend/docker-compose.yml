@@ -62,6 +62,9 @@ services:
       CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
     volumes:
       - .:/app
+      - ../notebooks:/notebooks
+      - ../datasets:/workspace/datasets
+      - ../models:/workspace/models
     ports:
       - "8000:8000"
     depends_on:
@@ -97,6 +100,9 @@ services:
       IDLE_TIMEOUT_SECONDS: "1800"
     volumes:
       - .:/app
+      - ../notebooks:/notebooks
+      - ../datasets:/workspace/datasets
+      - ../models:/workspace/models
     depends_on:
       - postgres
       - redis
@@ -128,6 +134,9 @@ services:
       IDLE_TIMEOUT_SECONDS: "1800"
     volumes:
       - .:/app
+      - ../notebooks:/notebooks
+      - ../datasets:/workspace/datasets
+      - ../models:/workspace/models
     depends_on:
       - postgres
       - redis
@@ -144,29 +153,33 @@ services:
       context: ../jupyter
       dockerfile: Dockerfile
     container_name: cloud-ide-jupyter
+    user: root
     environment:
-      JUPYTER_TOKEN: collabclone-dev-token
+      JUPYTER_TOKEN: NeuralSpace-dev-token
       NB_UID: "1000"
       NB_GID: "100"
-      GRANT_SUDO: "no"
+      GRANT_SUDO: "yes"
     volumes:
       # Notebooks lưu trên host, persist qua container restart
       - ../notebooks:/home/jovyan/work
+      - ../datasets:/workspace/datasets
+      - ../models:/workspace/models
     ports:
       - "8888:8888"
     command: >
-      jupyter lab
+      bash -c "sudo mkdir -p /workspace/datasets /workspace/models && sudo chown -R jovyan:users /workspace && jupyter lab
+      --allow-root
       --ip=0.0.0.0
       --port=8888
       --no-browser
-      --ServerApp.token=collabclone-dev-token
-      --IdentityProvider.token=collabclone-dev-token
+      --ServerApp.token=NeuralSpace-dev-token
+      --IdentityProvider.token=NeuralSpace-dev-token
       --ServerApp.root_dir=/home/jovyan/work
       --ServerApp.allow_origin_pat=https?://localhost:[0-9]+
       --ServerApp.allow_credentials=True
-      --ServerApp.allow_headers=*
+      --ServerApp.allow_headers=*"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8888/api/status?token=collabclone-dev-token || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8888/api/status?token=NeuralSpace-dev-token || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -180,3 +193,4 @@ volumes:
 networks:
   backend-network:
     driver: bridge
+

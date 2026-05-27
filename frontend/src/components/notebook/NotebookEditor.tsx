@@ -2,6 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useCell } from "../../hooks/useCell";
 import { useKernel, type UseKernelReturn } from "../../hooks/useKernel";
 import { useNotebook, type UseNotebookReturn } from "../../hooks/useNotebook";
@@ -32,6 +33,14 @@ interface NotebookCellWrapperProps {
 
 function getFileName(path: string): string {
   return path.split("/").pop() ?? "Untitled.ipynb";
+}
+
+function normalizeNotebookPath(path: string): string {
+  const normalized = path.replace(/^\/+/, "");
+  if (normalized.startsWith("notebooks/")) {
+    return normalized.slice("notebooks/".length);
+  }
+  return normalized;
 }
 
 function NotebookCellWrapper({ cell, index, isSelected, isExecuting, kernel, notebook, onSelect, onAddCellBelow, onDelete, onMoveUp, onMoveDown, onKeyNav }: NotebookCellWrapperProps): JSX.Element {
@@ -103,7 +112,9 @@ function NotebookError({ error, onRetry }: { error: string; onRetry: () => void 
 }
 
 export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProps): JSX.Element {
-  const resolvedNotebookPath = useMemo(() => notebookPath ?? `${workspaceId}/untitled.ipynb`, [notebookPath, workspaceId]);
+  const router = useRouter();
+  const pathname = usePathname();
+  const resolvedNotebookPath = useMemo(() => normalizeNotebookPath(notebookPath ?? `${workspaceId}/untitled.ipynb`), [notebookPath, workspaceId]);
   const kernel = useKernel("python3");
   const notebook = useNotebook(resolvedNotebookPath);
 
@@ -117,6 +128,7 @@ export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProp
   useEffect(() => {
     setActiveFilePath(resolvedNotebookPath);
     setNotebookName(getFileName(resolvedNotebookPath));
+    setSelectedCellId(null);
   }, [resolvedNotebookPath]);
 
   useEffect(() => {
@@ -231,9 +243,11 @@ export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProp
       onNameChange={setNotebookName}
       activeFile={activeFilePath}
       onFileOpen={(path, name) => {
-        setActiveFilePath(path);
+        const normalizedPath = normalizeNotebookPath(path);
+        setActiveFilePath(normalizedPath);
         setNotebookName(name);
-        void notebook.loadNotebook(path);
+        router.replace(`${pathname}?file=${encodeURIComponent(normalizedPath)}`);
+        void notebook.loadNotebook(normalizedPath);
       }}
       kernel={kernel}
       notebook={notebook}

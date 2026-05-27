@@ -226,7 +226,7 @@ export class KernelWebSocket {
       header: {
         msg_id: msgId,
         msg_type: "execute_request",
-        username: "collabclone",
+        username: "client",
         session: this.sessionId,
         date: new Date().toISOString(),
         version: "5.3"

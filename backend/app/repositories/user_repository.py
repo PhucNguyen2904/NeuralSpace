@@ -20,13 +20,13 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def create(db: AsyncSession, email: str, password_hash: str) -> User:
+    async def create(db: AsyncSession, email: str, password_hash: str, full_name: str | None = None) -> User:
         user = User(
             id=str(uuid4()),
             email=email.lower().strip(),
+            full_name=full_name.strip() if full_name else None,
             password_hash=password_hash,
         )
         db.add(user)
         await db.flush()
         return user
-

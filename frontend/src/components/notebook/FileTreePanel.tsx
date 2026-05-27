@@ -31,6 +31,10 @@ function isHidden(name: string): boolean {
   return HIDDEN_PATTERNS.some((p) => p.test(name));
 }
 
+function isReservedTopLevel(itemPath: string, itemName: string): boolean {
+  return itemPath === itemName && itemName === "notebooks";
+}
+
 function getFileIcon(name: string): { icon: string; color: string } {
   const ext = `.${name.split(".").pop()?.toLowerCase() ?? ""}`;
   return FILE_ICONS[ext] ?? { icon: "📄", color: "text-gray-400" };
@@ -54,6 +58,7 @@ export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanel
   const loadDir = async (path: string): Promise<FileNode[]> => {
     const items = await client.listDirectory(path);
     return items
+      .filter((item) => !isReservedTopLevel(item.path, item.name))
       .filter((item) => !isHidden(item.name))
       .filter((item) => item.type === "directory" || [".ipynb", ".py", ".csv"].some((ext) => item.name.toLowerCase().endsWith(ext)))
       .sort((a, b) => {

@@ -101,3 +101,15 @@ def get_request_id() -> str:
         Current request ID or empty string
     """
     return request_id_ctx.get()
+
+
+def audit_event(logger: structlog.typing.WrappedLogger, action: str, **fields) -> None:
+    """
+    Emit structured audit log for state-changing operations.
+
+    Args:
+        logger: Logger instance
+        action: Stable action key, e.g. "workspace.create"
+        **fields: Extra context fields
+    """
+    logger.info("AUDIT", action=action, request_id=get_request_id(), **fields)

@@ -42,6 +42,7 @@ function NeuralIcon() {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
+  const isRouteActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <>
@@ -61,7 +62,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
             <p className={cn("mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary", collapsed && "hidden")}>{section.label}</p>
             <div className="space-y-1">
               {section.items.map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = isRouteActive(item.href);
                 const Icon = item.icon;
 
                 return (
@@ -90,7 +91,7 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-bg-surface px-2 py-1 md:hidden" aria-label="Bottom navigation">
         {sections.flatMap((s) => s.items).slice(0, 5).map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive = isRouteActive(item.href);
           return (
             <Link key={item.href} href={item.href} className={cn("flex flex-1 flex-col items-center justify-center rounded-md py-2 text-[11px]", isActive ? "text-brand-600" : "text-text-secondary")} aria-label={item.label}>
               <Icon size={16} />

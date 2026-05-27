@@ -80,7 +80,7 @@ export function KaggleTopbar({
       </button>
 
       <div className="flex min-w-0 items-center gap-1.5">
-        <span className="shrink-0 text-[13px] font-semibold text-[#6366F1]">CollabClone</span>
+        <span className="shrink-0 text-[13px] font-semibold text-[#6366F1]">NeuralSpace</span>
         <ChevronRight size={13} className="shrink-0 text-[#CBD5E0]" />
 
         {editingName ? (
@@ -104,7 +104,7 @@ export function KaggleTopbar({
         ) : (
           <button
             onClick={() => setEditingName(true)}
-            title="Click de doi ten"
+            title="Click để đổi tên"
             className="max-w-[200px] truncate text-[13px] font-medium text-[#1A202C] transition-colors hover:text-[#6366F1]"
           >
             {notebookName}
@@ -225,10 +225,10 @@ function RunAllDropdown({ onRunAll, onRestartAndRunAll, onClearOutputs, disabled
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full z-20 mt-1 w-52 rounded-lg border border-[#E2E8F0] bg-white py-1 text-[13px] text-[#1A202C] shadow-lg shadow-black/10">
-            <DropdownItem icon="▶▶" label="Chay tat ca" onClick={() => { onRunAll(); setOpen(false); }} />
-            <DropdownItem icon="⟳" label="Restart & Chay tat ca" onClick={() => { onRestartAndRunAll(); setOpen(false); }} />
+            <DropdownItem icon="▶▶" label="Chạy tất cả" onClick={() => { onRunAll(); setOpen(false); }} />
+            <DropdownItem icon="⟳" label="Restart & Chạy tất cả" onClick={() => { onRestartAndRunAll(); setOpen(false); }} />
             <div className="my-1 h-px bg-[#E2E8F0]" />
-            <DropdownItem icon="✕" label="Xoa tat ca output" className="text-[#EF4444]" onClick={() => { onClearOutputs(); setOpen(false); }} />
+            <DropdownItem icon="✕" label="Xóa tất cả output" className="text-[#EF4444]" onClick={() => { onClearOutputs(); setOpen(false); }} />
           </div>
         </>
       ) : null}

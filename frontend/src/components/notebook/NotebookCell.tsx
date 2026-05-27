@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Play, Plus, Trash2, Copy, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -38,10 +38,17 @@ export function NotebookCell({
   onSave
 }: NotebookCellProps): JSX.Element {
   const [isMarkdownEditing, setIsMarkdownEditing] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     if (!isSelected) setIsMarkdownEditing(false);
   }, [isSelected]);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(cell.source);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
+  };
 
   const executionCount = useMemo(() => (typeof cell.execution_count === "number" ? cell.execution_count : null), [cell.execution_count]);
   const showMarkdownPreview = cell.cell_type === "markdown" && (!isSelected || !isMarkdownEditing);
@@ -136,6 +143,7 @@ export function NotebookCell({
       </div>
 
       <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <CellMenuButton icon={isCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />} title="Sao chép" onClick={handleCopy} />
         <CellMenuButton icon={<ArrowUp size={12} />} title="Di chuyen len" onClick={onMoveUp} />
         <CellMenuButton icon={<ArrowDown size={12} />} title="Di chuyen xuong" onClick={onMoveDown} />
         <CellMenuButton icon={<Trash2 size={12} />} title="Xoa cell" onClick={onDelete} className="hover:bg-red-50 hover:text-red-500" />

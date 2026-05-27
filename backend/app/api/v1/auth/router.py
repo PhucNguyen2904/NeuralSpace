@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.core.security import create_access_token, create_ws_token, hash_password, verify_password
+from app.core.logging import audit_event, get_logger
+from app.core.security import create_access_token, create_ws_token, hash_password, verify_password, verify_token
 from app.dependencies import UserContext, get_current_user, get_db
 from app.repositories.user_repository import UserRepository
 from app.models.workspace import WorkspaceStatus
@@ -18,6 +19,7 @@ from app.schemas.auth import AuthTokenResponse, AuthUserResponse, LoginRequest, 
 from app.schemas.workspace import WorkspaceTokenResponse
 
 router = APIRouter(tags=["auth"])
+logger = get_logger(__name__)
 
 
 class MeResponse(BaseModel):
@@ -27,25 +29,41 @@ class MeResponse(BaseModel):
     token_expires_at: datetime
 
 
-def _auth_response(user_id: str, email: str, created_at: datetime | None = None) -> AuthTokenResponse:
+def _auth_response(user_id: str, email: str, full_name: str | None = None, created_at: datetime | None = None) -> AuthTokenResponse:
     settings = get_settings()
     expires_in = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    refresh_expires_in = 7 * 24 * 60 * 60
     token = create_access_token(
         {
             "sub": user_id,
             "email": email,
             "roles": ["user"],
+            "type": "access",
         }
     )
     return AuthTokenResponse(
         access_token=token,
         expires_in=expires_in,
+        refresh_expires_in=refresh_expires_in,
         user=AuthUserResponse(
             user_id=user_id,
             email=email,
+            full_name=full_name,
             roles=["user"],
             created_at=created_at,
         ),
+    )
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str, max_age_seconds: int) -> None:
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        max_age=max_age_seconds,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/api/v1/auth",
     )
 
 
@@ -57,26 +75,99 @@ def _normalize_email(email: str) -> str:
 
 
 @router.post("/auth/register", response_model=AuthTokenResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> AuthTokenResponse:
+async def register(payload: RegisterRequest, response: Response, db: AsyncSession = Depends(get_db)) -> AuthTokenResponse:
     email = _normalize_email(payload.email)
     existing = await UserRepository.get_by_email(db, email)
     if existing is not None:
+        audit_event(logger, "auth.register_conflict", email=email)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
     password_encoded = hash_password(payload.password)
-    user = await UserRepository.create(db, email=email, password_hash=password_encoded)
+    user = await UserRepository.create(
+        db,
+        email=email,
+        password_hash=password_encoded,
+        full_name=payload.name.strip(),
+    )
     await db.commit()
 
-    return _auth_response(user_id=user.id, email=user.email or email, created_at=user.created_at)
+    auth = _auth_response(
+        user_id=user.id,
+        email=user.email or email,
+        full_name=user.full_name,
+        created_at=user.created_at,
+    )
+    refresh_token = create_access_token(
+        {"sub": user.id, "email": user.email or email, "roles": ["user"], "type": "refresh"},
+        expires_delta=timedelta(seconds=auth.refresh_expires_in),
+    )
+    _set_refresh_cookie(response, refresh_token, auth.refresh_expires_in)
+    audit_event(logger, "auth.register_success", user_id=user.id, email=user.email or email)
+    return auth
+
+
+@router.post("/auth/refresh", response_model=AuthTokenResponse)
+async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> AuthTokenResponse:
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        audit_event(logger, "auth.refresh_missing_cookie")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+    try:
+        claims = verify_token(refresh_token)
+    except Exception as exc:
+        audit_event(logger, "auth.refresh_invalid")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token") from exc
+
+    if claims.get("type") != "refresh":
+        audit_event(logger, "auth.refresh_wrong_type")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token type")
+
+    user_id = claims.get("sub")
+    email = claims.get("email")
+    if not user_id or not email:
+        audit_event(logger, "auth.refresh_malformed")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed refresh token")
+
+    user = await UserRepository.get_by_email(db, str(email))
+    if user is None or user.id != user_id:
+        audit_event(logger, "auth.refresh_user_not_found", user_id=user_id, email=str(email))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token user not found")
+
+    auth = _auth_response(
+        user_id=user.id,
+        email=user.email or str(email),
+        full_name=user.full_name,
+        created_at=user.created_at,
+    )
+    next_refresh_token = create_access_token(
+        {"sub": user.id, "email": user.email or str(email), "roles": ["user"], "type": "refresh"},
+        expires_delta=timedelta(seconds=auth.refresh_expires_in),
+    )
+    _set_refresh_cookie(response, next_refresh_token, auth.refresh_expires_in)
+    audit_event(logger, "auth.refresh_success", user_id=user.id, email=user.email or str(email))
+    return auth
 
 
 @router.post("/auth/login", response_model=AuthTokenResponse)
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> AuthTokenResponse:
+async def login(payload: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)) -> AuthTokenResponse:
     email = _normalize_email(payload.email)
     user = await UserRepository.get_by_email(db, email)
     if user is None or not verify_password(payload.password, user.password_hash):
+        audit_event(logger, "auth.login_failed", email=email)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    return _auth_response(user_id=user.id, email=user.email or email, created_at=user.created_at)
+    auth = _auth_response(
+        user_id=user.id,
+        email=user.email or email,
+        full_name=user.full_name,
+        created_at=user.created_at,
+    )
+    refresh_token = create_access_token(
+        {"sub": user.id, "email": user.email or email, "roles": ["user"], "type": "refresh"},
+        expires_delta=timedelta(seconds=auth.refresh_expires_in),
+    )
+    _set_refresh_cookie(response, refresh_token, auth.refresh_expires_in)
+    audit_event(logger, "auth.login_success", user_id=user.id, email=user.email or email)
+    return auth
 
 
 @router.get("/auth/me", response_model=MeResponse)

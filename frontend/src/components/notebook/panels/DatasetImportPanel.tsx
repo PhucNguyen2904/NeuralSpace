@@ -41,11 +41,12 @@ export function DatasetImportPanel({ onInjectCode, workspaceId }: DatasetImportP
     setAdding(dataset.id);
 
     try {
-      await mountDatasetToWorkspace(dataset.id, workspaceId);
+      const mount = await mountDatasetToWorkspace(dataset.id, workspaceId);
+      onInjectCode(generateDatasetCode(dataset, mount.mounted_path));
     } catch {
       // noop: keep dev flow
-    } finally {
       onInjectCode(generateDatasetCode(dataset));
+    } finally {
       setAdded((prev) => new Set([...prev, dataset.id]));
       setAdding(null);
     }

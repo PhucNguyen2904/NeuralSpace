@@ -88,6 +88,14 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
         k8s_service = KubernetesService(redis_client=_redis_client())
         pvc_service = PVCService(upstream_client=upstream_client)
 
+        if get_settings().ENVIRONMENT == "development":
+            import os
+            try:
+                os.makedirs(f"/notebooks/{workspace_id}", exist_ok=True)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to create local workspace dir: {e}")
+
         namespace = asyncio.run(k8s_service.create_workspace_namespace(workspace_id, user_id))
         namespace_created = True
 

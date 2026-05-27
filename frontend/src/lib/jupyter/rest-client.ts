@@ -10,6 +10,17 @@ interface JupyterContentsResponse {
   content: NotebookContent | string;
 }
 
+interface JupyterSaveResponse {
+  path: string;
+  type: string;
+  last_modified?: string;
+}
+
+interface NotebookLoadResult {
+  content: NotebookContent;
+  resolvedPath: string;
+}
+
 interface JupyterDirectoryResponse {
   content: JupyterContentsItem[];
 }
@@ -89,14 +100,17 @@ export class JupyterRestClient {
   /**
    * Load notebook content by path.
    */
-  async getNotebook(path: string): Promise<NotebookContent> {
+  async getNotebook(path: string): Promise<NotebookLoadResult> {
     const response = await this.getNotebookRaw(path);
+    const content =
+      typeof response.content === "string"
+        ? (JSON.parse(response.content) as NotebookContent)
+        : response.content;
 
-    if (typeof response.content === "string") {
-      return JSON.parse(response.content) as NotebookContent;
-    }
-
-    return response.content;
+    return {
+      content,
+      resolvedPath: response.resolvedPath
+    };
   }
 
   /**
@@ -104,13 +118,39 @@ export class JupyterRestClient {
    */
   async saveNotebook(path: string, content: NotebookContent): Promise<void> {
     const encodedPath = encodePath(path);
-    await this.request<void>(`/api/contents/${encodedPath}`, {
+    const requestBody = JSON.stringify({
+      type: "notebook",
+      format: "json",
+      content
+    });
+    // FIX [BƯỚC 2]: Diagnostic logs for save path/status/body size to catch proxy/header/body issues.
+    console.info("[NotebookSave] PUT request", {
+      requestPath: path,
+      encodedPath,
+      bytes: requestBody.length
+    });
+    const response = await this.request<JupyterSaveResponse>(`/api/contents/${encodedPath}`, {
       method: "PUT",
-      body: JSON.stringify({
-        type: "notebook",
-        format: "json",
-        content
-      })
+      body: requestBody
+    });
+    // FIX [BƯỚC 2]: Validate Jupyter save response to prevent false-success UI state.
+    if (response.type !== "notebook" || typeof response.path !== "string") {
+      throw new JupyterApiError(500, "Unexpected Jupyter save response payload", `${this.config.baseUrl}/api/contents/${encodedPath}`);
+    }
+    console.info("[NotebookSave] PUT success", {
+      responsePath: response.path,
+      responseType: response.type,
+      lastModified: response.last_modified ?? null
+    });
+  }
+
+  /**
+   * Delete notebook/file from Jupyter contents API.
+   */
+  async deleteNotebook(path: string): Promise<void> {
+    const encodedPath = encodePath(path);
+    await this.request<void>(`/api/contents/${encodedPath}`, {
+      method: "DELETE"
     });
   }
 
@@ -161,11 +201,24 @@ export class JupyterRestClient {
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
     const endpoint = `${this.config.baseUrl}${path}`;
+    const method = (init.method ?? "GET").toUpperCase();
+    const xsrfToken = typeof document !== "undefined" ? getCookieValue("_xsrf") : null;
+    const extraHeaders: Record<string, string> = {};
+    // FIX [BƯỚC 5]: Attach XSRF token on mutating requests when Jupyter requires it.
+    if (method !== "GET" && method !== "HEAD" && xsrfToken) {
+      extraHeaders["X-XSRFToken"] = xsrfToken;
+    }
+
     const response = await fetch(endpoint, {
       ...init,
+      cache: "no-store",
+      credentials: "include",
       headers: {
         Authorization: `token ${this.config.token}`,
         "Content-Type": "application/json",
+        Pragma: "no-cache",
+        "Cache-Control": "no-cache, no-store, max-age=0",
+        ...extraHeaders,
         ...(init.headers ?? {})
       }
     });
@@ -182,28 +235,14 @@ export class JupyterRestClient {
     return (await response.json()) as T;
   }
 
-  private async getNotebookRaw(path: string): Promise<JupyterContentsResponse> {
+  private async getNotebookRaw(path: string): Promise<JupyterContentsResponse & { resolvedPath: string }> {
     const encodedPath = encodePath(path);
-    try {
-      return await this.request<JupyterContentsResponse>(
-        `/api/contents/${encodedPath}?content=1&type=notebook`,
-        { method: "GET" }
-      );
-    } catch (error) {
-      if (
-        error instanceof JupyterApiError &&
-        error.status === 404 &&
-        !path.startsWith("notebooks/")
-      ) {
-        const fallbackPath = `notebooks/${path.replace(/^\/+/, "")}`;
-        const fallbackEncoded = encodePath(fallbackPath);
-        return this.request<JupyterContentsResponse>(
-          `/api/contents/${fallbackEncoded}?content=1&type=notebook`,
-          { method: "GET" }
-        );
-      }
-      throw error;
-    }
+    const cacheBuster = Date.now();
+    const data = await this.request<JupyterContentsResponse>(
+      `/api/contents/${encodedPath}?content=1&type=notebook&_=${cacheBuster}`,
+      { method: "GET" }
+    );
+    return { ...data, resolvedPath: path };
   }
 }
 
@@ -221,9 +260,34 @@ function encodePath(path: string): string {
 
 async function readErrorMessage(response: Response): Promise<string> {
   try {
-    const data = (await response.json()) as { message?: string; reason?: string };
-    return data.message ?? data.reason ?? response.statusText;
+    const text = await response.text();
+    if (text.length === 0) {
+      return response.statusText || "Jupyter API request failed";
+    }
+    try {
+      const data = JSON.parse(text) as { message?: string; reason?: string };
+      return data.message ?? data.reason ?? text;
+    } catch {
+      return text;
+    }
   } catch {
     return response.statusText || "Jupyter API request failed";
+  }
+}
+
+function getCookieValue(name: string): string | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const cookies = document.cookie.split(";").map((part) => part.trim());
+  const target = cookies.find((cookie) => cookie.startsWith(`${name}=`));
+  if (!target) {
+    return null;
+  }
+  const [, value] = target.split("=");
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value ?? null;
   }
 }

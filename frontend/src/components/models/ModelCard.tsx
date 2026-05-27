@@ -37,21 +37,23 @@ export function ModelCard({
   onDetail: (model: Model) => void;
 }) {
   const Icon = taskIcon[model.task_type as keyof typeof taskIcon] ?? Layers ?? Package;
+  const metrics = getDisplayMetrics(model);
   return (
     <article className={cn("group rounded-lg border border-border bg-bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md", model.status === "failed" && "border-red-200")}>
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="rounded-md bg-violet-50 p-2 text-violet-600"><Icon size={18} /></div>
-          <div>
-            <p className="text-sm font-semibold text-text-primary">{model.name}</p>
-            <p className="text-xs text-text-secondary">{prettyTask(model.task_type)}</p>
+          <div className="min-w-0">
+            <p className="h-11 overflow-hidden text-sm font-semibold leading-5 text-text-primary">{model.name}</p>
+            <p className="h-8 overflow-hidden text-xs leading-4 text-text-secondary">{prettyTask(model.task_type)}</p>
           </div>
         </div>
         <StatusBadge status={model.status} />
       </div>
       <div className="space-y-2 rounded-md bg-bg-elevated/50 p-2">
-        <MetricRow label={model.primary_metric_name} value={model.primary_metric_value} />
-        {Object.entries(model.all_metrics).slice(1, 2).map(([k, v]) => <MetricRow key={k} label={k} value={v} />)}
+        {metrics.slice(0, 2).map((metric, index) => (
+          <MetricRow key={`${metric.label}-${index}`} label={metric.label} value={metric.value} />
+        ))}
       </div>
       <div className="my-3 h-px bg-border" />
       <p className="mb-3 flex items-center gap-3 text-xs text-text-secondary">
@@ -73,6 +75,31 @@ export function ModelCard({
       </div>
     </article>
   );
+}
+
+function getDisplayMetrics(model: Model): Array<{ label: string; value: number }> {
+  const result: Array<{ label: string; value: number }> = [];
+  const primaryLabel = model.primary_metric_name.trim().toLowerCase();
+  const primaryValue = Number(model.primary_metric_value);
+  const seen = new Set<string>();
+
+  if (Number.isFinite(primaryValue)) {
+    result.push({ label: model.primary_metric_name, value: primaryValue });
+    seen.add(primaryLabel);
+  }
+
+  for (const [label, rawValue] of Object.entries(model.all_metrics)) {
+    const value = Number(rawValue);
+    if (!Number.isFinite(value)) continue;
+    const normalizedLabel = label.trim().toLowerCase();
+    const isPrimaryDuplicate = normalizedLabel === primaryLabel && Math.abs(value - primaryValue) < 1e-9;
+    if (isPrimaryDuplicate) continue;
+    if (seen.has(normalizedLabel)) continue;
+    result.push({ label, value });
+    seen.add(normalizedLabel);
+  }
+
+  return result;
 }
 
 function MetricRow({ label, value }: { label: string; value: number }) {

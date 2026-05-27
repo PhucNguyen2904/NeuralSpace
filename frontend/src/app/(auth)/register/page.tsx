@@ -85,9 +85,8 @@ export default function RegisterPage() {
       setToast({ type: "success", message: "Đăng ký thành công. Mời bạn đăng nhập." });
       setTimeout(() => router.push("/login"), 900);
     } catch {
-      setSuccess(true);
-      setToast({ type: "success", message: "Đăng ký thành công. Mời bạn đăng nhập." });
-      setTimeout(() => router.push("/login"), 900);
+      setSuccess(false);
+      setToast({ type: "error", message: "Đăng ký thất bại. Vui lòng thử lại." });
     }
   };
 

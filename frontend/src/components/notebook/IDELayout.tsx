@@ -60,7 +60,7 @@ export function IDELayout({
   const [activeSidebarTab, setActiveSidebarTab] = useState<"files" | "variables">("files");
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-[#F8F9FC]">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#F8F9FC]">
       <div className="flex flex-1 overflow-hidden">
         <div className="w-10 shrink-0 border-r border-[#E2E5EE] bg-[#F1F3F8] pt-2">
           <div className="flex flex-col items-center gap-1">

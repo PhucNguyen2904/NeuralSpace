@@ -1,0 +1,9 @@
+{
+  "name": "Churn Dataset Smoke Test",
+  "description": "Sample dataset metadata for upload API testing",
+  "type": "tabular",
+  "label_status": "labeled",
+  "item_count": 5,
+  "class_count": 2,
+  "tags": ["smoke-test", "demo", "tabular"]
+}

@@ -26,3 +26,14 @@ export async function getModelVersions(modelId: string): Promise<ModelVersion[]>
   return response.data;
 }
 
+export async function uploadModel(file: File, metadata?: Record<string, unknown>): Promise<Model> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (metadata) {
+    formData.append("metadata", JSON.stringify(metadata));
+  }
+  const response = await apiClient.post<Model>("/models/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data;
+}

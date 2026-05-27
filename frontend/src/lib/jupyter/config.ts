@@ -7,7 +7,7 @@ export interface JupyterConfig {
 // Route browser REST requests through Next.js rewrite to avoid CORS in dev.
 // WebSocket can still target Jupyter directly (or another proxy) via env.
 const baseUrl = process.env.NEXT_PUBLIC_JUPYTER_REST_URL ?? "/jupyter";
-const token = process.env.NEXT_PUBLIC_JUPYTER_TOKEN ?? "collabclone-dev-token";
+const token = process.env.NEXT_PUBLIC_JUPYTER_TOKEN ?? "NeuralSpace-dev-token";
 const wsBase = process.env.NEXT_PUBLIC_JUPYTER_WS_URL ?? process.env.NEXT_PUBLIC_JUPYTER_URL ?? "http://localhost:8888";
 const wsUrl = wsBase
   .replace(/^https:\/\//i, "wss://")
@@ -46,3 +46,4 @@ export function getAuthHeaders(): Record<string, string> {
     "Content-Type": "application/json"
   };
 }
+

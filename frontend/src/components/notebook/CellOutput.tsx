@@ -1,10 +1,32 @@
 "use client";
 
 import AnsiToHtml from "ansi-to-html";
+import { Copy, Check } from "lucide-react";
 import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import type { CellOutput as NotebookOutput, MimeBundle } from "../../lib/jupyter/types";
+
+function OutputCopyButton({ text }: { text: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Sao chép kết quả"
+      className="absolute right-2 top-2 rounded p-1.5 bg-white/80 shadow-sm text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors opacity-0 group-hover:opacity-100"
+    >
+      {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+    </button>
+  );
+}
 
 export interface CellOutputProps {
   outputs: NotebookOutput[];
@@ -95,7 +117,8 @@ export function CellOutput({ outputs, isExecuting }: CellOutputProps): JSX.Eleme
           const visibleText = tooLong && !shouldExpand ? lines.slice(0, 50).join("\n") : output.text;
 
           return (
-            <div key={`${index}-${output.name}`} className="space-y-2">
+            <div key={`${index}-${output.name}`} className="space-y-2 relative group">
+              <OutputCopyButton text={output.text} />
               <pre
                 className={
                   output.name === "stderr"
@@ -123,7 +146,8 @@ export function CellOutput({ outputs, isExecuting }: CellOutputProps): JSX.Eleme
 
         if (output.output_type === "error") {
           return (
-            <div key={`${index}-error`} className="rounded-md border-l-4 border-red-500 bg-red-50 p-3">
+            <div key={`${index}-error`} className="rounded-md border-l-4 border-red-500 bg-red-50 p-3 relative group">
+              <OutputCopyButton text={`${output.ename}: ${output.evalue}\n${output.traceback.join("\n")}`} />
               <p className="font-semibold text-red-700">
                 {output.ename}: {output.evalue}
               </p>
@@ -178,7 +202,8 @@ export function CellOutput({ outputs, isExecuting }: CellOutputProps): JSX.Eleme
 
         if (mimeType === "markdown") {
           return (
-            <div key={`${index}-md`} className="prose prose-sm max-w-none rounded-md border border-border bg-white p-3">
+            <div key={`${index}-md`} className="prose prose-sm max-w-none rounded-md border border-border bg-white p-3 relative group">
+              <OutputCopyButton text={String(data["text/markdown"])} />
               <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{String(data["text/markdown"])}</ReactMarkdown>
             </div>
           );
@@ -186,18 +211,23 @@ export function CellOutput({ outputs, isExecuting }: CellOutputProps): JSX.Eleme
 
         if (mimeType === "json") {
           return (
-            <pre
-              key={`${index}-json`}
-              className="overflow-x-auto rounded-md border border-border bg-bg-elevated p-3 font-mono text-xs"
-              dangerouslySetInnerHTML={{ __html: renderJsonSyntax(data["application/json"]) }}
-            />
+            <div key={`${index}-json`} className="relative group">
+              <OutputCopyButton text={JSON.stringify(data["application/json"], null, 2)} />
+              <pre
+                className="overflow-x-auto rounded-md border border-border bg-bg-elevated p-3 font-mono text-xs"
+                dangerouslySetInnerHTML={{ __html: renderJsonSyntax(data["application/json"]) }}
+              />
+            </div>
           );
         }
 
         return (
-          <pre key={`${index}-text`} className="overflow-x-auto rounded-md border border-border bg-bg-elevated p-3 font-mono text-xs text-text-primary">
-            {String(data["text/plain"] ?? "")}
-          </pre>
+          <div key={`${index}-text`} className="relative group">
+            <OutputCopyButton text={String(data["text/plain"] ?? "")} />
+            <pre className="overflow-x-auto rounded-md border border-border bg-bg-elevated p-3 font-mono text-xs text-text-primary">
+              {String(data["text/plain"] ?? "")}
+            </pre>
+          </div>
         );
       }),
     [expandedStreamIndexes, outputs]

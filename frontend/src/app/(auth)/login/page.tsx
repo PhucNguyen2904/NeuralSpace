@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
@@ -29,16 +28,17 @@ type LoginResponse = {
   access_token: string;
   token_type: string;
   expires_in: number;
+  refresh_expires_in: number;
   user: {
     user_id: string;
     email: string;
+    full_name?: string | null;
   };
 };
 
 export default function LoginPage() {
   useRedirectIfAuthed();
 
-  const router = useRouter();
   const login = useAuthStore((state) => state.login);
   const [showPassword, setShowPassword] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -84,13 +84,15 @@ export default function LoginPage() {
       const data = (await response.json()) as LoginResponse;
       const user = {
         id: data.user.user_id,
-        name: data.user.email.split("@")[0],
+        name: data.user.full_name?.trim() || data.user.email.split("@")[0],
         email: data.user.email
       };
       login(data.access_token, user);
-      document.cookie = `auth_token=${encodeURIComponent(data.access_token)}; Path=/; Max-Age=${data.expires_in}; SameSite=Lax`;
+      document.cookie = `auth_token=${encodeURIComponent(data.access_token)}; Path=/; Max-Age=${Math.max(0, data.expires_in)}; SameSite=Lax`;
       setSuccess(true);
-      setTimeout(() => router.replace("/dashboard"), 300);
+      setTimeout(() => {
+        window.location.assign("/dashboard");
+      }, 300);
     } catch {
       setToast({ type: "error", message: "Email hoặc mật khẩu không đúng" });
       setShake(true);

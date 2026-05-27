@@ -12,6 +12,7 @@ from app.core.exceptions import (
     WorkspaceNotOwnedError,
     WorkspaceNotRunningError,
 )
+from app.core.logging import audit_event, get_logger
 from app.dependencies import (
     UserContext,
     get_current_user,
@@ -33,6 +34,7 @@ from app.services.k8s_service import K8sService
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+logger = get_logger(__name__)
 
 
 def _translate_workspace_error(exc: Exception) -> HTTPException:
@@ -56,6 +58,14 @@ async def create_workspace(
 ):
     try:
         workspace = await WorkspaceService.create_workspace(db, redis, current_user.user_id, payload)
+        audit_event(
+            logger,
+            "workspace.create",
+            user_id=current_user.user_id,
+            workspace_id=workspace.id,
+            workspace_name=workspace.name,
+            tier=workspace.tier,
+        )
         return WorkspaceCreateAcceptedResponse(
             workspace_id=workspace.id,
             status=workspace.status,
@@ -63,6 +73,12 @@ async def create_workspace(
             poll_url=f"/api/v1/workspaces/{workspace.id}/status",
         )
     except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.create_failed",
+            user_id=current_user.user_id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc
 
 
@@ -136,12 +152,27 @@ async def stop_workspace(
             user_id=current_user.user_id,
             save=payload.save_notebooks,
         )
+        audit_event(
+            logger,
+            "workspace.stop",
+            user_id=current_user.user_id,
+            workspace_id=workspace.id,
+            status=workspace.status,
+            save_notebooks=payload.save_notebooks,
+        )
         return WorkspaceOperationResponse(
             workspace_id=workspace.id,
             status=workspace.status,
             message="Stop requested",
         )
     except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.stop_failed",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc
 
 
@@ -161,8 +192,22 @@ async def restart_workspace(
             workspace_id=id,
             user_id=current_user.user_id,
         )
+        audit_event(
+            logger,
+            "workspace.restart",
+            user_id=current_user.user_id,
+            workspace_id=workspace.id,
+            status=workspace.status,
+        )
         return WorkspaceOperationResponse(workspace_id=workspace.id, status=workspace.status, message="Kernel restarted")
     except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.restart_failed",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc
 
 
@@ -175,8 +220,21 @@ async def delete_workspace(
 ):
     try:
         await WorkspaceService.delete_workspace(db, id, current_user.user_id)
+        audit_event(
+            logger,
+            "workspace.delete",
+            user_id=current_user.user_id,
+            workspace_id=id,
+        )
         return {"workspace_id": id, "message": "Workspace deletion scheduled"}
     except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.delete_failed",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc
 
 
@@ -188,6 +246,21 @@ async def heartbeat_workspace(
     current_user: UserContext = Depends(get_current_user),
 ):
     try:
-        return await WorkspaceService.process_heartbeat(db, redis, id, current_user.user_id)
+        result = await WorkspaceService.process_heartbeat(db, redis, id, current_user.user_id)
+        audit_event(
+            logger,
+            "workspace.heartbeat",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            status=result.status,
+        )
+        return result
     except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.heartbeat_failed",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc

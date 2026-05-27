@@ -1,18 +1,18 @@
 import type { Dataset } from "../../../types/dataset";
 import type { Model } from "../../../types/model";
 
-export function generateDatasetCode(dataset: Dataset): string {
-  const mountPath = `/workspace/datasets/${sanitizeName(dataset.name)}`;
+export function generateDatasetCode(dataset: Dataset, mountedPath?: string): string {
+  const mountPath = resolveDatasetMountPath(dataset, mountedPath);
   const loaders: Record<string, string> = {
-    tabular: generateTabularCode(mountPath),
-    image: generateImageCode(mountPath),
-    text: generateTextCode(mountPath),
-    audio: generateAudioCode(mountPath)
+    tabular: generateTabularCode(),
+    image: generateImageCode(),
+    text: generateTextCode(),
+    audio: generateAudioCode()
   };
 
-  const loader = loaders[dataset.type] ?? generateGenericCode(mountPath);
+  const loader = loaders[dataset.type] ?? generateGenericCode();
 
-  return `# Dataset: ${dataset.name}\n# Type: ${dataset.type} | Size: ${formatBytes(dataset.size_bytes)}\n# Mounted at: ${mountPath}\nDATASET_PATH = "${mountPath}"\n\n${loader}`;
+  return `# Dataset: ${dataset.name}\n# Dataset ID: ${dataset.id}\n# Type: ${dataset.type} | Size: ${formatBytes(dataset.size_bytes)}\n# Mounted at (expected): ${mountPath}\nDATASET_PATH = "${mountPath}"\n\n${generateDatasetPathResolver(dataset, mountPath)}\n\n${loader}`;
 }
 
 export function generateModelCode(model: Model): string {
@@ -47,24 +47,24 @@ export function generateUploadCode(fileName: string, uploadPath: string): string
   return `# Uploaded file: ${fileName}\\nFILE_PATH = "${fullPath}"\\n\\n${readers[ext] ?? defaultReader}`;
 }
 
-function generateTabularCode(path: string): string {
-  return `import os\nimport pandas as pd\n\ncsv_files = [f for f in os.listdir(DATASET_PATH) if f.endswith('.csv')]\nprint(f"Found {len(csv_files)} csv files")\n\nif csv_files:\n    df = pd.read_csv(os.path.join(DATASET_PATH, csv_files[0]))\n    print(df.shape)\n    display(df.head())`;
+function generateTabularCode(): string {
+  return `import pandas as pd\n\nif DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping tabular preview.")\nelse:\n    csv_files = sorted(DATASET_DIR.rglob("*.csv"))\n    print(f"Found {len(csv_files)} csv files")\n\n    if csv_files:\n        df = pd.read_csv(csv_files[0])\n        print(f"Preview file: {csv_files[0]}")\n        print(df.shape)\n        display(df.head())\n    else:\n        print("[DEV] No CSV files found in resolved dataset path.")`;
 }
 
-function generateImageCode(path: string): string {
-  return `from pathlib import Path\n\nimage_exts = {'.jpg', '.jpeg', '.png', '.bmp', '.webp'}\nimage_files = [p for p in Path(DATASET_PATH).rglob('*') if p.suffix.lower() in image_exts]\nprint(f"Total images: {len(image_files)}")`;
+function generateImageCode(): string {
+  return `if DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping image scan.")\nelse:\n    image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}\n    image_files = [p for p in DATASET_DIR.rglob("*") if p.suffix.lower() in image_exts]\n    print(f"Total images: {len(image_files)}")\n    if not image_files:\n        print("[DEV] No image files found. Verify dataset mount/extraction.")`;
 }
 
-function generateTextCode(path: string): string {
-  return `from pathlib import Path\n\ntext_files = list(Path(DATASET_PATH).rglob('*.txt')) + list(Path(DATASET_PATH).rglob('*.json'))\nprint(f"Text files: {len(text_files)}")\nif text_files:\n    print(text_files[0])`;
+function generateTextCode(): string {
+  return `if DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping text scan.")\nelse:\n    text_files = list(DATASET_DIR.rglob("*.txt")) + list(DATASET_DIR.rglob("*.json"))\n    print(f"Text files: {len(text_files)}")\n    if text_files:\n        print(f"Preview file: {text_files[0]}")`;
 }
 
-function generateAudioCode(path: string): string {
-  return `from pathlib import Path\n\naudio_exts = {'.wav', '.mp3', '.flac', '.ogg'}\naudio_files = [p for p in Path(DATASET_PATH).rglob('*') if p.suffix.lower() in audio_exts]\nprint(f"Audio files: {len(audio_files)}")`;
+function generateAudioCode(): string {
+  return `if DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping audio scan.")\nelse:\n    audio_exts = {".wav", ".mp3", ".flac", ".ogg"}\n    audio_files = [p for p in DATASET_DIR.rglob("*") if p.suffix.lower() in audio_exts]\n    print(f"Audio files: {len(audio_files)}")`;
 }
 
-function generateGenericCode(path: string): string {
-  return `import os\nfor root, _, files in os.walk(DATASET_PATH):\n    print(root, len(files))`;
+function generateGenericCode(): string {
+  return `import os\nif DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping filesystem walk.")\nelse:\n    for root, _, files in os.walk(DATASET_DIR):\n        print(root, len(files))`;
 }
 
 function generatePyTorchCode(path: string): string {
@@ -102,4 +102,16 @@ export function formatBytes(bytes: number): string {
 
 function sanitizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+}
+
+function resolveDatasetMountPath(dataset: Dataset, mountedPath?: string): string {
+  if (mountedPath && mountedPath.startsWith("/workspace/")) return mountedPath;
+  if (dataset.storage_path && dataset.storage_path.startsWith("/workspace/")) return dataset.storage_path;
+  return `/workspace/datasets/${sanitizeName(dataset.id)}`;
+}
+
+function generateDatasetPathResolver(dataset: Dataset, mountPath: string): string {
+  const safeId = sanitizeName(dataset.id);
+  const safeName = sanitizeName(dataset.name);
+  return `from pathlib import Path\n\n_DATASET_CANDIDATES = [\n    Path(DATASET_PATH),\n    Path("${mountPath}"),\n    Path("/workspace/datasets/${safeId}"),\n    Path("/workspace/datasets/${safeName}"),\n    Path("/workspace/input/${safeId}"),\n]\n\nDATASET_DIR = next((p for p in _DATASET_CANDIDATES if p.exists()), None)\n\nif DATASET_DIR is None:\n    datasets_root = Path("/workspace/datasets")\n    if datasets_root.exists():\n        subdirs = [d.name for d in datasets_root.iterdir() if d.is_dir()]\n        print(f\"[WARN] Dataset '${dataset.id}' is not mounted in this workspace. Available: {subdirs}\")\n    else:\n        print(\"[WARN] /workspace/datasets does not exist in this runtime.\")\nelse:\n    print(f"Resolved dataset path: {DATASET_DIR}")`;
 }

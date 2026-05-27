@@ -39,6 +39,7 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
   const restClientRef = useRef(new JupyterRestClient());
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pathRef = useRef<string>(initialPath ?? "");
+  const notebookRef = useRef<NotebookContent | null>(null);
   // Track whether the backend was reachable; skip auto-save when it wasn't
   const backendAvailableRef = useRef<boolean>(false);
 
@@ -48,6 +49,10 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
   const [isDirty, setIsDirty] = useState<boolean>(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    notebookRef.current = notebook;
+  }, [notebook]);
 
   const sourceToText = useCallback((source: unknown): string => {
     if (typeof source === "string") {
@@ -69,34 +74,8 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
       );
     };
 
-    if (content.cells.length === 0) {
-      return {
-        ...content,
-        cells: [createCell("code", DEFAULT_NOTEBOOK_STARTER_CODE)]
-      };
-    }
-
-    const allCellsEffectivelyEmpty = content.cells.every((cell) => {
-      const text = sourceToText(cell.source).trim();
-      const hasOutputs = Array.isArray(cell.outputs) && cell.outputs.length > 0;
-      return text.length === 0 && !hasOutputs;
-    });
-
-    if (allCellsEffectivelyEmpty) {
-      const first = content.cells[0];
-      return {
-        ...content,
-        cells: [
-          {
-            ...first,
-            cell_type: "code",
-            source: DEFAULT_NOTEBOOK_STARTER_CODE,
-            outputs: [],
-            execution_count: null
-          }
-        ]
-      };
-    }
+    // Do not auto-replace user-edited empty notebooks with starter template.
+    // Only keep legacy one-cell migration below.
 
     if (content.cells.length === 1 && content.cells[0].cell_type === "code") {
       const text = sourceToText(content.cells[0].source);
@@ -123,39 +102,57 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
   }, []);
 
   const saveNotebook = useCallback(async (): Promise<void> => {
-    if (!notebook || !pathRef.current) {
+    const currentNotebook = notebookRef.current;
+    if (!currentNotebook || !pathRef.current) {
       return;
     }
-    // Do not attempt to save if we know the backend is unreachable
-    if (!backendAvailableRef.current) {
-      return;
-    }
-
     setIsSaving(true);
     setError(null);
 
     try {
-      const toSave = serializeToSave(notebook);
+      // FIX [BƯỚC 3]: Save from ref to avoid stale closure snapshot during debounce/manual save races.
+      const toSave = serializeToSave(currentNotebook);
+      // FIX [BƯỚC 1]: Path diagnostics to verify load/save path consistency.
+      console.info("[NotebookSave] resolved pathRef", { path: pathRef.current });
       await restClientRef.current.saveNotebook(pathRef.current, toSave);
+      // FIX [BƯỚC 2]: Verify persisted content by refetching with no-store; never show false success.
+      const reloaded = await restClientRef.current.getNotebook(pathRef.current);
+      const savedSignature = createNotebookSignature(toSave);
+      const reloadedSignature = createNotebookSignature(reloaded.content);
+      console.info("[NotebookSave] verify signatures", { savedSignature, reloadedSignature });
+      if (savedSignature !== reloadedSignature) {
+        throw new Error("Notebook verification failed after save");
+      }
       setNotebook(toSave);
       setIsDirty(false);
       setLastSaved(new Date());
-    } catch {
-      setError("Khong the luu notebook.");
-      // Clear dirty so we don't re-trigger the auto-save loop
-      setIsDirty(false);
+    } catch (err) {
+      const message =
+        err instanceof JupyterApiError
+          ? `Khong the luu notebook (${err.status}) tai ${err.endpoint}.`
+          : "Khong the luu notebook.";
+      setError(message);
+      console.error("Notebook save failed", err);
+      // Keep dirty state so user knows changes are not persisted yet.
+      setIsDirty(true);
     } finally {
       setIsSaving(false);
     }
-  }, [notebook]);
+  }, []);
 
   const loadNotebook = useCallback(async (path: string): Promise<void> => {
+    const normalizedPath = path.replace(/^\/+/, "");
     setIsLoading(true);
     setError(null);
-    pathRef.current = path;
+    pathRef.current = normalizedPath;
+    // FIX [BƯỚC 1]: Log normalized path used by GET/PUT.
+    console.info("[NotebookLoad] request path", { originalPath: path, normalizedPath });
 
     try {
-      const raw = await restClientRef.current.getNotebook(path);
+      const loaded = await restClientRef.current.getNotebook(normalizedPath);
+      const raw = loaded.content;
+      pathRef.current = loaded.resolvedPath.replace(/^\/+/, "");
+      console.info("[NotebookLoad] resolved pathRef", { path: pathRef.current });
       if (raw.nbformat !== 4) {
         throw new Error("Unsupported notebook format");
       }
@@ -179,8 +176,7 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
     } catch (error) {
       if (error instanceof JupyterApiError && error.status === 404) {
         try {
-          const normalizedPath = path.replace(/^\/+/, "");
-          const createPath = normalizedPath.startsWith("notebooks/") ? normalizedPath : `notebooks/${normalizedPath}`;
+          const createPath = normalizedPath;
           const parentDirectory = createPath.split("/").slice(0, -1).join("/");
           if (parentDirectory.length > 0) {
             const segments = parentDirectory.split("/").filter((segment) => segment.length > 0);
@@ -195,20 +191,19 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
           pathRef.current = createPath;
           backendAvailableRef.current = true;
           setNotebook(draft);
-          setIsDirty(false);
+          // FIX [BƯỚC 4]: New file case should be dirty so user can see unsynced draft intent until first explicit save.
+          setIsDirty(true);
           setLastSaved(new Date());
           return;
         } catch {
-          // Fall through to offline fallback.
+          setError("Khong the tao notebook moi tren Jupyter Server.");
+          backendAvailableRef.current = false;
+          return;
         }
       }
-
-      // Backend is offline — create a blank notebook locally without marking dirty.
-      // This prevents the auto-save timer from firing in a loop.
+      // FIX [BƯỚC 4]: Do not replace state on 5xx/network errors to avoid silent data-loss overwrite.
       backendAvailableRef.current = false;
       setError("Khong the tai Notebook tu Jupyter Server.");
-      setNotebook(createNewNotebook());
-      setIsDirty(false);
     } finally {
       setIsLoading(false);
     }
@@ -324,4 +319,17 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
     saveNotebook,
     loadNotebook
   };
+}
+
+function createNotebookSignature(notebook: NotebookContent): string {
+  const normalizedCells = notebook.cells.map((cell) => ({
+    cell_type: cell.cell_type,
+    source: Array.isArray(cell.source) ? cell.source.join("") : String(cell.source ?? ""),
+    outputsCount: Array.isArray(cell.outputs) ? cell.outputs.length : 0
+  }));
+  return JSON.stringify({
+    nbformat: notebook.nbformat,
+    nbformat_minor: notebook.nbformat_minor,
+    cells: normalizedCells
+  });
 }

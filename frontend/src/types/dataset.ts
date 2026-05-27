@@ -36,6 +36,16 @@ export interface DatasetPreview {
   column_info?: ColumnInfo[];
 }
 
+export interface WorkspaceDatasetMountResponse {
+  workspace_id: string;
+  dataset_id: string;
+  dataset_name: string;
+  mount_path?: string;
+  mounted_path: string;
+  mount_status: "mounted";
+  message: string;
+}
+
 export interface DatasetListParams {
   search?: string;
   type?: DatasetType[];

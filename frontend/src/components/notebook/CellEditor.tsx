@@ -100,11 +100,13 @@ export function CellEditor({
 }: CellEditorProps): JSX.Element {
   const [height, setHeight] = useState<number>(MIN_HEIGHT);
   const themeInitializedRef = useRef<boolean>(false);
+  const editorRef = useRef<MonacoEditorType.IStandaloneCodeEditor | null>(null);
 
   const computedLanguage = useMemo(() => (language === "raw" ? "plaintext" : language), [language]);
 
   const handleEditorMount = useCallback(
     (editor: MonacoEditorType.IStandaloneCodeEditor, monaco: typeof import("monaco-editor")) => {
+      editorRef.current = editor;
       if (!themeInitializedRef.current) {
         defineJupyterTheme(monaco);
         themeInitializedRef.current = true;
@@ -123,9 +125,15 @@ export function CellEditor({
       };
 
       editor.onDidContentSizeChange(updateHeight);
+      editor.onDidChangeModelContent(() => {
+        onChange(editor.getValue());
+      });
+      editor.onDidBlurEditorText(() => {
+        onChange(editor.getValue());
+      });
       updateHeight();
     },
-    [onExecute, onExecuteAndInsert, onSave]
+    [onChange, onExecute, onExecuteAndInsert, onSave]
   );
 
   return (

@@ -78,7 +78,7 @@ export function NotebookToolbar({
       <div className="flex min-w-0 items-center gap-3">
         <div className="inline-flex items-center gap-2 font-semibold text-text-primary">
           <span className="h-2.5 w-2.5 rounded-full bg-brand-500" />
-          <span>CollabClone</span>
+          <span>NeuralSpace</span>
         </div>
         <span className="h-5 w-px bg-border" />
 

@@ -57,7 +57,7 @@ export function NotebookToolbar({
     if (isSaving) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-text-secondary">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Dang luu...
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang lưu...
         </span>
       );
     }
@@ -65,12 +65,12 @@ export function NotebookToolbar({
     if (isDirty) {
       return (
         <span className="inline-flex items-center gap-1 text-xs text-amber-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Chua luu
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" /> Chưa lưu
         </span>
       );
     }
 
-    return <span className="text-xs text-success-500">✓ Da luu luc {formatSavedTime(lastSaved)}</span>;
+    return <span className="text-xs text-success-500">✓ Đã lưu lúc {formatSavedTime(lastSaved)}</span>;
   }, [isDirty, isSaving, lastSaved]);
 
   return (
@@ -126,7 +126,7 @@ export function NotebookToolbar({
           {menuOpen ? (
             <div className="absolute right-0 z-40 mt-2 w-52 rounded-md border border-border bg-bg-surface p-1 shadow-md">
               <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-elevated" onClick={() => { setMenuOpen(false); onRunAll(); }}>
-                <Play className="h-3.5 w-3.5" /> Chay tat ca
+                <Play className="h-3.5 w-3.5" /> Chạy tất cả
               </button>
               <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-bg-elevated" onClick={() => { setMenuOpen(false); onRestartAndRunAll(); }}>
                 <RotateCcw className="h-3.5 w-3.5" /> Restart & Run All

@@ -129,8 +129,8 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
     } catch (err) {
       const message =
         err instanceof JupyterApiError
-          ? `Khong the luu notebook (${err.status}) tai ${err.endpoint}.`
-          : "Khong the luu notebook.";
+          ? `Không thể lưu notebook (${err.status}) tại ${err.endpoint}.`
+          : "Không thể lưu notebook.";
       setError(message);
       console.error("Notebook save failed", err);
       // Keep dirty state so user knows changes are not persisted yet.
@@ -196,14 +196,14 @@ export function useNotebook(initialPath?: string): UseNotebookReturn {
           setLastSaved(new Date());
           return;
         } catch {
-          setError("Khong the tao notebook moi tren Jupyter Server.");
+          setError("Không thể tạo notebook mới trên Jupyter Server.");
           backendAvailableRef.current = false;
           return;
         }
       }
       // FIX [BƯỚC 4]: Do not replace state on 5xx/network errors to avoid silent data-loss overwrite.
       backendAvailableRef.current = false;
-      setError("Khong the tai Notebook tu Jupyter Server.");
+      setError("Không thể tải Notebook từ Jupyter Server.");
     } finally {
       setIsLoading(false);
     }

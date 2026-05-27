@@ -26,12 +26,15 @@ if (-not (Test-Path -LiteralPath $notebookRoot)) {
 $commonFlags = @(
     "--ServerApp.root_dir=$notebookRoot",
     "--NotebookApp.notebook_dir=$notebookRoot",
-    "--IdentityProvider.token=$token",
-    "--ServerApp.token=$token",
+    "--IdentityProvider.token=",
+    "--ServerApp.token=",
+    "--ServerApp.password=",
     # CORS: allow the Next.js dev server to call the Jupyter REST API
     "--ServerApp.allow_origin=*",
     "--ServerApp.allow_credentials=True",
-    "--ServerApp.allow_headers=*"
+    "--ServerApp.allow_headers=*",
+    # Dev-only: allow proxied notebook writes without XSRF cookie handoff issues.
+    "--ServerApp.disable_check_xsrf=True"
 )
 
 if ($EnvName) {

@@ -68,7 +68,7 @@ export function ModelImportPanel({ onInjectCode, workspaceId }: ModelImportPanel
 
         {frameworks.length > 0 ? (
           <div className="flex flex-wrap gap-1">
-            <FilterPill label="Tat ca" active={!frameworkFilter} onClick={() => setFrameworkFilter(null)} />
+            <FilterPill label="Tất cả" active={!frameworkFilter} onClick={() => setFrameworkFilter(null)} />
             {frameworks.map((fw) => (
               <FilterPill key={fw} label={fw} active={frameworkFilter === fw} onClick={() => setFrameworkFilter(fw === frameworkFilter ? null : fw)} />
             ))}
@@ -85,7 +85,7 @@ export function ModelImportPanel({ onInjectCode, workspaceId }: ModelImportPanel
         ) : filtered.length === 0 ? (
           <div className="px-4 py-8 text-center">
             <div className="text-2xl">🧠</div>
-            <p className="mt-2 text-sm font-medium text-[#1A202C]">Khong tim thay model</p>
+            <p className="mt-2 text-sm font-medium text-[#1A202C]">Không tìm thấy model</p>
           </div>
         ) : (
           <ul className="py-1">
@@ -111,7 +111,7 @@ export function ModelImportPanel({ onInjectCode, workspaceId }: ModelImportPanel
           className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium text-[#6366F1] transition-colors hover:bg-[#EEF2FF]"
         >
           <ExternalLink size={12} />
-          Xem tat ca models
+          Xem tất cả models
         </a>
       </div>
     </div>

@@ -162,7 +162,7 @@ export function ProjectFileTree({ onFileOpen }: { onFileOpen: (path: string) => 
         />
       </div>
 
-      {tree.length === 0 ? <p className="py-4 text-center text-xs text-[#9299A8]">Khong co file nao</p> : tree.map((node) => renderNode(node))}
+      {tree.length === 0 ? <p className="py-4 text-center text-xs text-[#9299A8]">Không có file nào</p> : tree.map((node) => renderNode(node))}
     </div>
   );
 }

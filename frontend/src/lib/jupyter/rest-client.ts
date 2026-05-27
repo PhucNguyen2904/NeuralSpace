@@ -200,7 +200,7 @@ export class JupyterRestClient {
   }
 
   private async request<T>(path: string, init: RequestInit): Promise<T> {
-    const endpoint = `${this.config.baseUrl}${path}`;
+    const endpoint = withTokenQuery(`${this.config.baseUrl}${path}`, this.config.token);
     const method = (init.method ?? "GET").toUpperCase();
     const xsrfToken = typeof document !== "undefined" ? getCookieValue("_xsrf") : null;
     const extraHeaders: Record<string, string> = {};
@@ -209,12 +209,16 @@ export class JupyterRestClient {
       extraHeaders["X-XSRFToken"] = xsrfToken;
     }
 
+    const authHeaders = this.config.token
+      ? { Authorization: `token ${this.config.token}` }
+      : {};
+
     const response = await fetch(endpoint, {
       ...init,
       cache: "no-store",
       credentials: "include",
       headers: {
-        Authorization: `token ${this.config.token}`,
+        ...authHeaders,
         "Content-Type": "application/json",
         Pragma: "no-cache",
         "Cache-Control": "no-cache, no-store, max-age=0",
@@ -244,6 +248,15 @@ export class JupyterRestClient {
     );
     return { ...data, resolvedPath: path };
   }
+}
+
+function withTokenQuery(endpoint: string, token: string): string {
+  if (!token) {
+    return endpoint;
+  }
+
+  const separator = endpoint.includes("?") ? "&" : "?";
+  return `${endpoint}${separator}token=${encodeURIComponent(token)}`;
 }
 
 function encodePath(path: string): string {

@@ -96,7 +96,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
       dispatch({ type: "SET_KERNEL", payload: kernel });
       await connectToKernel(kernel);
     } catch {
-      dispatch({ type: "SET_ERROR", payload: "Khong the khoi dong kernel. Kiem tra Jupyter Server." });
+      dispatch({ type: "SET_ERROR", payload: "Không thể khởi động kernel. Kiểm tra Jupyter Server." });
       dispatch({ type: "SET_CONNECTION_STATUS", payload: "error" });
     }
   }, [connectToKernel, kernelName]);
@@ -116,7 +116,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
       dispatch({ type: "SET_KERNEL", payload: restartedKernel });
       await connectToKernel(restartedKernel);
     } catch {
-      dispatch({ type: "SET_ERROR", payload: "Khong the restart kernel." });
+      dispatch({ type: "SET_ERROR", payload: "Không thể restart kernel." });
       dispatch({ type: "SET_CONNECTION_STATUS", payload: "error" });
     }
   }, [connectToKernel]);
@@ -132,7 +132,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
     try {
       await restClientRef.current.interruptKernel(currentKernel.id);
     } catch {
-      dispatch({ type: "SET_ERROR", payload: "Khong the interrupt kernel." });
+      dispatch({ type: "SET_ERROR", payload: "Không thể interrupt kernel." });
     }
   }, []);
 
@@ -151,7 +151,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
       dispatch({ type: "SET_KERNEL_STATUS", payload: "dead" });
       dispatch({ type: "SET_CONNECTION_STATUS", payload: "disconnected" });
     } catch {
-      dispatch({ type: "SET_ERROR", payload: "Khong the shutdown kernel." });
+      dispatch({ type: "SET_ERROR", payload: "Không thể shutdown kernel." });
     }
   }, []);
 
@@ -167,7 +167,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
       try {
         return socket.executeCode(code, callbacks, options);
       } catch {
-        dispatch({ type: "SET_ERROR", payload: "Khong the gui execute_request toi kernel." });
+        dispatch({ type: "SET_ERROR", payload: "Không thể gửi execute_request tới kernel." });
         return null;
       }
     },
@@ -200,7 +200,7 @@ export function useKernel(kernelName = "python3"): UseKernelReturn {
         await connectToKernel(activeKernel);
       } catch {
         if (!cancelled) {
-          dispatch({ type: "SET_ERROR", payload: "Khong the ket noi toi Jupyter kernel." });
+          dispatch({ type: "SET_ERROR", payload: "Không thể kết nối tới Jupyter kernel." });
           dispatch({ type: "SET_CONNECTION_STATUS", payload: "error" });
         }
       }

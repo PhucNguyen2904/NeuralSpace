@@ -72,7 +72,7 @@ export function DatasetImportPanel({ onInjectCode, workspaceId }: DatasetImportP
         ) : filtered.length === 0 ? (
           <EmptyState
             icon="🗄️"
-            title={search ? "Khong tim thay dataset" : "Chua co dataset nao"}
+            title={search ? "Không tìm thấy dataset" : "Chưa có dataset nào"}
             sub={search ? "Thu tu khoa khac" : "Upload dataset tren Upstream module"}
             actionLabel="Di den Upstream ->"
             onAction={() => window.open("/datasets", "_blank")}
@@ -101,7 +101,7 @@ export function DatasetImportPanel({ onInjectCode, workspaceId }: DatasetImportP
           className="flex w-full items-center justify-center gap-1.5 rounded-md py-1.5 text-[12px] font-medium text-[#6366F1] transition-colors hover:bg-[#EEF2FF]"
         >
           <ExternalLink size={12} />
-          Xem tat ca datasets
+          Xem tất cả datasets
         </a>
       </div>
     </div>

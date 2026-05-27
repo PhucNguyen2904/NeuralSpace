@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, RefreshCw, X } from "lucide-react";
+import { ChevronRight, FilePlus2, RefreshCw, X } from "lucide-react";
 import { JupyterRestClient } from "../../lib/jupyter/rest-client";
+import { createNewNotebook } from "../../lib/jupyter/notebook-model";
 import { cn } from "../../lib/utils/cn";
 
 interface FileNode {
@@ -14,6 +15,7 @@ interface FileNode {
 }
 
 interface FileTreePanelProps {
+  workspaceId: string;
   onFileOpen: (path: string, name: string) => void;
   activeFile?: string;
   onClose: () => void;
@@ -48,12 +50,13 @@ function updateChildren(nodes: FileNode[], targetPath: string, children: FileNod
   });
 }
 
-export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanelProps): JSX.Element {
+export function FileTreePanel({ workspaceId, onFileOpen, activeFile, onClose }: FileTreePanelProps): JSX.Element {
   const [tree, setTree] = useState<FileNode[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
   const client = useMemo(() => new JupyterRestClient(), []);
+  const workspaceRoot = workspaceId.replace(/^\/+|\/+$/g, "");
 
   const loadDir = async (path: string): Promise<FileNode[]> => {
     const items = await client.listDirectory(path);
@@ -74,11 +77,36 @@ export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanel
   };
 
   useEffect(() => {
-    void loadDir("").then((nodes) => {
+    void loadDir(workspaceRoot).then((nodes) => {
       setTree(nodes);
       setLoading(false);
     });
-  }, []);
+  }, [workspaceRoot]);
+
+  const refreshTree = async (): Promise<void> => {
+    setLoading(true);
+    const nodes = await loadDir(workspaceRoot);
+    setTree(nodes);
+    setExpanded(new Set());
+    setLoading(false);
+  };
+
+  const createNotebookInWorkspace = async (): Promise<void> => {
+    const existing = await loadDir(workspaceRoot);
+    const names = new Set(existing.filter((item) => item.type === "file").map((item) => item.name.toLowerCase()));
+
+    let index = 1;
+    let fileName = "untitled.ipynb";
+    while (names.has(fileName.toLowerCase())) {
+      index += 1;
+      fileName = `untitled-${index}.ipynb`;
+    }
+
+    const notebookPath = `${workspaceRoot}/${fileName}`;
+    await client.saveNotebook(notebookPath, createNewNotebook());
+    await refreshTree();
+    onFileOpen(notebookPath, fileName);
+  };
 
   const toggleDir = async (node: FileNode): Promise<void> => {
     const isOpen = expanded.has(node.path);
@@ -136,7 +164,7 @@ export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanel
           <div>
             {node.children.length === 0 ? (
               <p className="italic text-[11px] text-[#A0AEC0]" style={{ paddingLeft: `${26 + depth * 14}px` }}>
-                (trong)
+                (trống)
               </p>
             ) : (
               node.children.map((child) => renderNode(child, depth + 1))
@@ -153,19 +181,24 @@ export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanel
         <span className="text-[11px] font-semibold uppercase tracking-widest text-[#94A3B8]">Files</span>
         <div className="flex items-center gap-1">
           <button
-            onClick={async () => {
-              setLoading(true);
-              const nodes = await loadDir("");
-              setTree(nodes);
-              setExpanded(new Set());
-              setLoading(false);
+            onClick={() => {
+              void createNotebookInWorkspace();
             }}
-            title="Lam moi"
+            title="Tạo notebook"
+            className="rounded p-1 text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]"
+          >
+            <FilePlus2 size={12} />
+          </button>
+          <button
+            onClick={() => {
+              void refreshTree();
+            }}
+            title="Làm mới"
             className="rounded p-1 text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]"
           >
             <RefreshCw size={12} />
           </button>
-          <button onClick={onClose} title="Dong" className="rounded p-1 text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]">
+          <button onClick={onClose} title="Đóng" className="rounded p-1 text-[#94A3B8] transition-colors hover:bg-[#F1F5F9] hover:text-[#475569]">
             <X size={12} />
           </button>
         </div>
@@ -175,7 +208,7 @@ export function FileTreePanel({ onFileOpen, activeFile, onClose }: FileTreePanel
         {loading ? (
           <FileTreeSkeleton />
         ) : tree.length === 0 ? (
-          <p className="py-6 text-center text-[12px] text-[#A0AEC0]">Khong co file nao</p>
+          <p className="py-6 text-center text-[12px] text-[#A0AEC0]">Không có file nào</p>
         ) : (
           tree.map((node) => renderNode(node, 0))
         )}

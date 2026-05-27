@@ -177,7 +177,7 @@ services:
       --ServerApp.root_dir=/home/jovyan/work
       --ServerApp.allow_origin_pat=https?://localhost:[0-9]+
       --ServerApp.allow_credentials=True
-      --ServerApp.allow_headers=*"
+      --ServerApp.disable_check_xsrf=True"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8888/api/status?token=NeuralSpace-dev-token || exit 1"]
       interval: 15s

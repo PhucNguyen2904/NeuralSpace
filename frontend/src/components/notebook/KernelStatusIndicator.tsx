@@ -25,7 +25,7 @@ export function KernelStatusIndicator({
   const statusView = useMemo(() => {
     if (connectionStatus === "error") {
       return {
-        label: "Loi ket noi",
+        label: "Lỗi kết nối",
         icon: <XCircle className="h-3.5 w-3.5 text-error-500" />,
         detail: "Error"
       };

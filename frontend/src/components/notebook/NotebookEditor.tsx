@@ -43,6 +43,15 @@ function normalizeNotebookPath(path: string): string {
   return normalized;
 }
 
+function ensureWorkspaceNotebookPath(workspaceId: string, path: string): string {
+  const normalized = normalizeNotebookPath(path);
+  if (normalized.startsWith(`${workspaceId}/`)) {
+    return normalized;
+  }
+  const fileName = normalized.split("/").pop() ?? "main.ipynb";
+  return `${workspaceId}/${fileName}`;
+}
+
 function NotebookCellWrapper({ cell, index, isSelected, isExecuting, kernel, notebook, onSelect, onAddCellBelow, onDelete, onMoveUp, onMoveDown, onKeyNav }: NotebookCellWrapperProps): JSX.Element {
   const cellExecution = useCell(cell.id, kernel, notebook);
 
@@ -243,7 +252,7 @@ export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProp
       onNameChange={setNotebookName}
       activeFile={activeFilePath}
       onFileOpen={(path, name) => {
-        const normalizedPath = normalizeNotebookPath(path);
+        const normalizedPath = ensureWorkspaceNotebookPath(workspaceId, path);
         setActiveFilePath(normalizedPath);
         setNotebookName(name);
         router.replace(`${pathname}?file=${encodeURIComponent(normalizedPath)}`);
@@ -260,7 +269,7 @@ export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProp
       {showConnectionError ? (
         <div className="mb-4 rounded-md border border-error-500 bg-error-50 p-3 text-sm text-error-500">
           <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4" /> Khong the ket noi Jupyter Server tai {JUPYTER_CONFIG.baseUrl}
+            <AlertTriangle className="h-4 w-4" /> Không thể kết nối Jupyter Server tại {JUPYTER_CONFIG.baseUrl}
           </p>
           <button
             type="button"
@@ -309,7 +318,7 @@ export function NotebookEditor({ workspaceId, notebookPath }: NotebookEditorProp
               onClick={() => notebook.addCell(0)}
               className="w-full rounded-lg border-2 border-dashed border-[#E2E8F0] py-3 text-sm text-[#94A3B8] transition-all hover:border-[#6366F1] hover:bg-[#EEF2FF] hover:text-[#6366F1]"
             >
-              + Them cell dau tien
+              + Thêm cell đầu tiên
             </button>
           ) : null}
         </>

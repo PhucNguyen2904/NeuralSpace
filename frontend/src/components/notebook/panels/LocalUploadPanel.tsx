@@ -39,7 +39,7 @@ export function LocalUploadPanel({ onInjectCode }: LocalUploadPanelProps): JSX.E
       const ext = `.${f.name.split(".").pop()?.toLowerCase() ?? ""}`;
       const sizeMb = f.size / 1024 / 1024;
       if (!ACCEPTED_TYPES.includes(ext)) {
-        rejected.push({ id: crypto.randomUUID(), file: f, status: "error", progress: 0, error: "Dinh dang file khong duoc ho tro" });
+        rejected.push({ id: crypto.randomUUID(), file: f, status: "error", progress: 0, error: "Định dạng file không được hỗ trợ" });
         continue;
       }
       if (sizeMb > MAX_FILE_SIZE_MB) {
@@ -88,7 +88,7 @@ export function LocalUploadPanel({ onInjectCode }: LocalUploadPanelProps): JSX.E
 
       setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, status: "done", progress: 100, path: uploadPath } : f)));
     } catch {
-      setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, status: "error", progress: 0, error: "Upload that bai. Thu lai." } : f)));
+      setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, status: "error", progress: 0, error: "Upload thất bại. Thử lại." } : f)));
     }
   };
 
@@ -119,7 +119,7 @@ export function LocalUploadPanel({ onInjectCode }: LocalUploadPanelProps): JSX.E
         </div>
 
         <div className="text-center">
-          <p className="text-[13px] font-medium text-[#1A202C]">{isDragging ? "Tha file vao day" : "Keo tha hoac click de chon"}</p>
+          <p className="text-[13px] font-medium text-[#1A202C]">{isDragging ? "Thả file vào đây" : "Kéo thả hoặc click để chọn"}</p>
           <p className="mt-0.5 text-[11px] text-[#A0AEC0]">CSV, PT, PKL, PY, IPYNB... (toi da {MAX_FILE_SIZE_MB}MB)</p>
         </div>
 
@@ -156,7 +156,7 @@ export function LocalUploadPanel({ onInjectCode }: LocalUploadPanelProps): JSX.E
       ) : null}
 
       <p className="shrink-0 text-center text-[11px] text-[#A0AEC0]">
-        File duoc luu vao <code className="font-mono">/workspace/uploads/</code>
+        File được lưu vào <code className="font-mono">/workspace/uploads/</code>
       </p>
     </div>
   );
@@ -192,7 +192,7 @@ function UploadFileItem({ item, onAddToNotebook, onRemove, onRetry }: { item: Up
 
         {item.status === "done" ? (
           <button onClick={onAddToNotebook} className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-[#6366F1] hover:underline">
-            <Plus size={10} /> Them code vao notebook
+            <Plus size={10} /> Thêm code vào notebook
           </button>
         ) : null}
       </div>

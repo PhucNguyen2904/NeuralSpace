@@ -72,6 +72,7 @@ export function KaggleIDELayout({
             >
               <div style={{ width: SIDEBAR_WIDTH }} className="h-full">
                 <FileTreePanel
+                  workspaceId={workspaceId}
                   onFileOpen={(path, name) => {
                     onFileOpen(path, name);
                   }}

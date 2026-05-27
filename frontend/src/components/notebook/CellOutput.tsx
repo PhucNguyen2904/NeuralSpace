@@ -93,7 +93,7 @@ function getMimeType(data: MimeBundle): "image" | "svg" | "html" | "markdown" | 
 function DotsLoader(): JSX.Element {
   return (
     <div className="mt-2 flex items-center gap-2 text-sm text-text-secondary">
-      <span>Dang thuc thi...</span>
+      <span>Đang thực thi...</span>
       <div className="flex items-center gap-1">
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-tertiary [animation-delay:0ms]" />
         <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-tertiary [animation-delay:120ms]" />

@@ -90,7 +90,7 @@ export function NotebookCell({
           <div className="min-w-0 flex-1">
             {showMarkdownPreview ? (
               <div className="prose prose-sm max-w-none rounded-lg border border-[#E2E8F0] bg-white p-3 text-[#1A202C]" onDoubleClick={() => setIsMarkdownEditing(true)}>
-                {cell.source.trim().length > 0 ? <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{cell.source}</ReactMarkdown> : "(Markdown rong)"}
+                {cell.source.trim().length > 0 ? <ReactMarkdown rehypePlugins={[rehypeHighlight]}>{cell.source}</ReactMarkdown> : "(Markdown rỗng)"}
               </div>
             ) : (
               <div
@@ -144,9 +144,9 @@ export function NotebookCell({
 
       <div className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
         <CellMenuButton icon={isCopied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />} title="Sao chép" onClick={handleCopy} />
-        <CellMenuButton icon={<ArrowUp size={12} />} title="Di chuyen len" onClick={onMoveUp} />
-        <CellMenuButton icon={<ArrowDown size={12} />} title="Di chuyen xuong" onClick={onMoveDown} />
-        <CellMenuButton icon={<Trash2 size={12} />} title="Xoa cell" onClick={onDelete} className="hover:bg-red-50 hover:text-red-500" />
+        <CellMenuButton icon={<ArrowUp size={12} />} title="Di chuyển lên" onClick={onMoveUp} />
+        <CellMenuButton icon={<ArrowDown size={12} />} title="Di chuyển xuống" onClick={onMoveDown} />
+        <CellMenuButton icon={<Trash2 size={12} />} title="Xóa cell" onClick={onDelete} className="hover:bg-red-50 hover:text-red-500" />
       </div>
     </div>
   );

@@ -65,7 +65,7 @@ export function KaggleTopbar({
     <header className="flex h-12 shrink-0 select-none items-center gap-2 border-b border-[#E2E8F0] bg-white px-3">
       <button
         onClick={onToggleSidebar}
-        title={isSidebarOpen ? "An file tree" : "Hien file tree"}
+        title={isSidebarOpen ? "Ẩn file tree" : "Hiện file tree"}
         className={cn(
           "rounded-md p-1.5 transition-colors",
           isSidebarOpen ? "bg-[#EEF2FF] text-[#6366F1]" : "text-[#94A3B8] hover:bg-[#F8FAFC] hover:text-[#1A202C]"
@@ -117,7 +117,7 @@ export function KaggleTopbar({
       <div className="flex-1" />
 
       <span className="hidden shrink-0 text-[11px] text-[#A0AEC0] sm:block">
-        {notebook.isSaving ? "Dang luu..." : notebook.lastSaved ? `Da luu ${formatRelative(notebook.lastSaved)}` : ""}
+        {notebook.isSaving ? "Đang lưu..." : notebook.lastSaved ? `Đã lưu ${formatRelative(notebook.lastSaved)}` : ""}
       </span>
 
       <div
@@ -148,7 +148,7 @@ export function KaggleTopbar({
 
       <TopbarButton
         icon={notebook.isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-        label="Luu"
+        label="Lưu"
         shortcut="Ctrl+S"
         onClick={() => {
           void notebook.saveNotebook();
@@ -156,7 +156,7 @@ export function KaggleTopbar({
         disabled={!notebook.isDirty || notebook.isSaving}
       />
 
-      {kernel.kernelStatus === "busy" ? <TopbarButton icon={<Square size={13} fill="currentColor" />} label="Dung" onClick={onInterrupt} variant="danger" /> : null}
+      {kernel.kernelStatus === "busy" ? <TopbarButton icon={<Square size={13} fill="currentColor" />} label="Dừng" onClick={onInterrupt} variant="danger" /> : null}
 
       <TopbarButton
         icon={kernel.kernelStatus === "busy" ? <Loader2 size={14} className="animate-spin" /> : <Play size={13} fill="currentColor" />}

@@ -85,7 +85,7 @@ export function KaggleIDELayout({
         </AnimatePresence>
 
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-[860px] px-4 py-5">{children}</div>
+          <div className="mx-auto max-w-[860px] px-4 pb-24 pt-5 md:pb-10">{children}</div>
         </main>
 
         <RightSidebar

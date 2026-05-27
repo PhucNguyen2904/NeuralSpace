@@ -15,7 +15,7 @@ export default function WorkspaceIdePage({ params }: WorkspaceIdePageProps): JSX
   const notebookPath = normalizeWorkspaceNotebookPath(params.id, requestedFile);
 
   return (
-    <div className="h-[calc(100dvh-10.5rem)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-10.5rem)] min-h-0 flex-col pb-10 md:pb-0">
       <div className="mb-2 flex items-center justify-between px-2">
         <Link
           href="/workspaces"

@@ -5,7 +5,7 @@ import { Check, ExternalLink, Loader2, Plus, Search } from "lucide-react";
 import { getModels, loadModelToWorkspace } from "../../../lib/api/models";
 import type { Model } from "../../../types/model";
 import { cn } from "../../../lib/utils/cn";
-import { formatBytes, generateModelCode } from "../shared/ImportCodeGenerator";
+import { formatBytes, generateModelCode, resolveModelMountPath } from "../shared/ImportCodeGenerator";
 
 interface ModelImportPanelProps {
   onInjectCode: (code: string) => void;
@@ -42,8 +42,9 @@ export function ModelImportPanel({ onInjectCode, workspaceId }: ModelImportPanel
   const handleImport = async (model: Model): Promise<void> => {
     if (added.has(model.id)) return;
     setAdding(model.id);
+    const mountPath = resolveModelMountPath(model);
     try {
-      await loadModelToWorkspace(model.id, workspaceId, `/workspace/models/${model.name.toLowerCase().replaceAll(" ", "_")}`);
+      await loadModelToWorkspace(model.id, workspaceId, mountPath);
     } catch {
       // noop
     } finally {

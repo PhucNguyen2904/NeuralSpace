@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir \
     matplotlib \
     seaborn \
     scikit-learn \
+    onnx \
+    onnxruntime \
     ipywidgets \
     jupyterlab-git
 

@@ -16,18 +16,18 @@ export function generateDatasetCode(dataset: Dataset, mountedPath?: string): str
 }
 
 export function generateModelCode(model: Model): string {
-  const mountPath = `/workspace/models/${sanitizeName(model.name)}`;
+  const mountPath = resolveModelMountPath(model);
   const loaders: Record<string, string> = {
-    pytorch: generatePyTorchCode(mountPath),
-    tensorflow: generateTensorFlowCode(mountPath),
-    onnx: generateONNXCode(mountPath),
-    huggingface: generateHuggingFaceCode(model, mountPath),
-    sklearn: generateSklearnCode(mountPath)
+    pytorch: generatePyTorchCode(),
+    tensorflow: generateTensorFlowCode(),
+    onnx: generateONNXCode(),
+    huggingface: generateHuggingFaceCode(model),
+    sklearn: generateSklearnCode()
   };
 
-  const loader = loaders[model.framework] ?? generateGenericModelCode(mountPath);
+  const loader = loaders[model.framework] ?? generateGenericModelCode();
 
-  return `# Model: ${model.name}\n# Architecture: ${model.architecture} | Framework: ${model.framework}\n# Task: ${model.task_type} | Size: ${formatBytes(model.size_bytes)}\n# Mounted at: ${mountPath}\nMODEL_PATH = "${mountPath}"\n\n${loader}`;
+  return `# Model: ${model.name}\n# Architecture: ${model.architecture} | Framework: ${model.framework}\n# Task: ${model.task_type} | Size: ${formatBytes(model.size_bytes)}\n# Mounted at (expected): ${mountPath}\nMODEL_PATH = "${mountPath}"\n\n${generateModelPathResolver(model, mountPath)}\n\n${loader}`;
 }
 
 export function generateUploadCode(fileName: string, uploadPath: string): string {
@@ -67,29 +67,29 @@ function generateGenericCode(): string {
   return `import os\nif DATASET_DIR is None:\n    print("[WARN] Dataset is not mounted in this workspace. Skipping filesystem walk.")\nelse:\n    for root, _, files in os.walk(DATASET_DIR):\n        print(root, len(files))`;
 }
 
-function generatePyTorchCode(path: string): string {
-  return `import os\nimport torch\n\nweight_files = [f for f in os.listdir(MODEL_PATH) if f.endswith(('.pt', '.pth', '.bin'))]\nif weight_files:\n    model = torch.load(os.path.join(MODEL_PATH, weight_files[0]), map_location='cpu')\n    print(type(model))`;
+function generatePyTorchCode(): string {
+  return `import torch\n\nif MODEL_DIR is None:\n    print("[WARN] Model path not found. Skipping PyTorch load test.")\nelse:\n    weight_files = sorted([p for p in MODEL_DIR.rglob("*") if p.suffix.lower() in {".pt", ".pth", ".bin"}])\n    if weight_files:\n        model = torch.load(str(weight_files[0]), map_location='cpu')\n        print(f"Loaded: {weight_files[0]}")\n        print(type(model))\n    else:\n        print("[WARN] No PyTorch weights found under resolved model path.")`;
 }
 
-function generateTensorFlowCode(path: string): string {
-  return `import os\nimport tensorflow as tf\n\nif os.path.exists(os.path.join(MODEL_PATH, 'saved_model.pb')):\n    model = tf.saved_model.load(MODEL_PATH)\n    print('Loaded SavedModel')`;
+function generateTensorFlowCode(): string {
+  return `import tensorflow as tf\n\nif MODEL_DIR is None:\n    print("[WARN] Model path not found. Skipping TensorFlow load test.")\nelse:\n    saved_model = MODEL_DIR / "saved_model.pb"\n    if saved_model.exists():\n        model = tf.saved_model.load(str(MODEL_DIR))\n        print(f"Loaded SavedModel from: {MODEL_DIR}")\n    else:\n        print("[WARN] saved_model.pb not found in resolved model path.")`;
 }
 
-function generateONNXCode(path: string): string {
-  return `import os\nimport onnxruntime as ort\n\nonnx_files = [f for f in os.listdir(MODEL_PATH) if f.endswith('.onnx')]\nif onnx_files:\n    session = ort.InferenceSession(os.path.join(MODEL_PATH, onnx_files[0]))\n    print(session.get_providers())`;
+function generateONNXCode(): string {
+  return `import onnxruntime as ort\n\nif MODEL_DIR is None:\n    print("[WARN] Model path not found. Skipping ONNX load test.")\nelse:\n    onnx_files = sorted(MODEL_DIR.rglob("*.onnx"))\n\n    if not onnx_files:\n        print("[WARN] No .onnx file found under resolved model path.")\n    else:\n        selected_model = None\n\n        # Validate candidates first to avoid noisy stack traces from corrupted files.\n        for candidate in onnx_files:\n            try:\n                session = ort.InferenceSession(str(candidate))\n                selected_model = str(candidate)\n                print(f"[OK] Loaded ONNX: {selected_model}")\n                print("Providers:", session.get_providers())\n                break\n            except Exception as e:\n                print(f"[WARN] Skip invalid ONNX: {candidate.name} -> {type(e).__name__}")\n\n        if selected_model is None:\n            print("[WARN] All discovered .onnx files are invalid/corrupted.")\n            print("[INFO] Creating a minimal smoke-test ONNX model so you can continue system testing.")\n\n            try:\n                import onnx\n                from onnx import helper, TensorProto\n                import numpy as np\n\n                smoke_path = MODEL_DIR / "smoke_test.onnx"\n\n                x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 3])\n                y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [1, 3])\n                one = helper.make_tensor("one", TensorProto.FLOAT, [1, 3], [1.0, 1.0, 1.0])\n                add = helper.make_node("Add", inputs=["x", "one"], outputs=["y"])\n\n                graph = helper.make_graph([add], "smoke_graph", [x], [y], [one])\n                model = helper.make_model(graph, producer_name="workspace_smoke_test")\n                onnx.save(model, str(smoke_path))\n\n                session = ort.InferenceSession(str(smoke_path))\n                output = session.run(None, {"x": np.array([[2.0, 3.0, 4.0]], dtype=np.float32)})\n\n                print(f"[OK] Smoke model created: {smoke_path}")\n                print("[OK] Smoke inference output:", output[0])\n            except Exception as e:\n                print("[ERROR] Could not create fallback smoke ONNX model.")\n                print(f"[ERROR] {type(e).__name__}: {e}")`;
 }
 
-function generateHuggingFaceCode(model: Model, path: string): string {
+function generateHuggingFaceCode(model: Model): string {
   const modelClass = model.task_type === "text_generation" ? "AutoModelForCausalLM" : "AutoModelForSequenceClassification";
-  return `from transformers import AutoTokenizer, ${modelClass}\n\ntokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)\nmodel = ${modelClass}.from_pretrained(MODEL_PATH)\nprint(model.__class__.__name__)`;
+  return `from transformers import AutoTokenizer, ${modelClass}\n\nif MODEL_DIR is None:\n    print("[WARN] Model path not found. Skipping HuggingFace load test.")\nelse:\n    tokenizer = AutoTokenizer.from_pretrained(str(MODEL_DIR))\n    model = ${modelClass}.from_pretrained(str(MODEL_DIR))\n    print(model.__class__.__name__)`;
 }
 
-function generateSklearnCode(path: string): string {
-  return `import os\nimport joblib\n\nfiles = [f for f in os.listdir(MODEL_PATH) if f.endswith(('.joblib', '.pkl'))]\nif files:\n    model = joblib.load(os.path.join(MODEL_PATH, files[0]))\n    print(type(model))`;
+function generateSklearnCode(): string {
+  return `import joblib\n\nif MODEL_DIR is None:\n    print("[WARN] Model path not found. Skipping sklearn load test.")\nelse:\n    files = sorted([p for p in MODEL_DIR.rglob("*") if p.suffix.lower() in {".joblib", ".pkl"}])\n    if files:\n        model = joblib.load(str(files[0]))\n        print(f"Loaded: {files[0]}")\n        print(type(model))\n    else:\n        print("[WARN] No sklearn artifact found under resolved model path.")`;
 }
 
-function generateGenericModelCode(path: string): string {
-  return "import os\\nprint(os.listdir(MODEL_PATH))";
+function generateGenericModelCode(): string {
+  return `if MODEL_DIR is None:\n    print("[WARN] Model path not found.")\nelse:\n    print("Resolved model path:", MODEL_DIR)\n    print("Top-level entries:", sorted([p.name for p in MODEL_DIR.iterdir()]))`;
 }
 
 export function formatBytes(bytes: number): string {
@@ -108,6 +108,15 @@ function resolveDatasetMountPath(dataset: Dataset, mountedPath?: string): string
   if (mountedPath && mountedPath.startsWith("/workspace/")) return mountedPath;
   if (dataset.storage_path && dataset.storage_path.startsWith("/workspace/")) return dataset.storage_path;
   return `/workspace/datasets/${sanitizeName(dataset.id)}`;
+}
+
+export function resolveModelMountPath(model: Model): string {
+  return `/workspace/models/${sanitizeName(model.name)}`;
+}
+
+function generateModelPathResolver(model: Model, mountPath: string): string {
+  const safeName = sanitizeName(model.name);
+  return `from pathlib import Path\n\n_MODEL_CANDIDATES = [\n    Path(MODEL_PATH),\n    Path("${mountPath}"),\n    Path("/workspace/models/${safeName}"),\n    Path("/workspace/models"),\n]\n\nMODEL_DIR = next((p for p in _MODEL_CANDIDATES if p.exists() and p.is_dir() and any(p.rglob("*"))), None)\n\nif MODEL_DIR is None:\n    models_root = Path("/workspace/models")\n    if models_root.exists():\n        subdirs = [d.name for d in models_root.iterdir() if d.is_dir()]\n        print(f"[WARN] Model '${model.name}' is not mounted in this workspace. Available dirs: {subdirs}")\n    else:\n        print("[WARN] /workspace/models does not exist in this runtime.")\nelse:\n    print(f"Resolved model path: {MODEL_DIR}")`;
 }
 
 function generateDatasetPathResolver(dataset: Dataset, mountPath: string): string {

@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import io
 from pathlib import Path
 from uuid import uuid4
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from minio import Minio
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.model_registry import ModelRegistry
@@ -33,6 +36,11 @@ class PaginatedModelResponse(BaseModel):
 class WorkspaceModelMountRequest(BaseModel):
     model_id: str = Field(min_length=1)
     mount_path: str | None = None
+
+
+class ValidateModelsRequest(BaseModel):
+    model_ids: list[str] = Field(default_factory=list)
+    user_id: str = Field(min_length=1)
 
 
 def _guess_framework_from_filename(filename: str) -> str:
@@ -58,6 +66,23 @@ def _parse_metadata(raw: str | None) -> dict:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="metadata must be a JSON object")
     return parsed
+
+
+def _minio_client() -> Minio:
+    settings = get_settings()
+    return Minio(
+        endpoint=settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=False,
+    )
+
+
+def _ensure_bucket(client: Minio) -> str:
+    bucket = get_settings().MINIO_BUCKET
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+    return bucket
 
 
 @router.get("/models", response_model=PaginatedModelResponse)
@@ -155,14 +180,13 @@ async def upload_model(
     tags = parsed.get("tags") if isinstance(parsed.get("tags"), list) else []
     tags = [str(tag) for tag in tags]
 
-    storage_dir = Path("/workspace/models")
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    target_name = f"{model_id}_{Path(file.filename).name}"
-    target_path = storage_dir / target_name
-
     payload = await file.read()
-    target_path.write_bytes(payload)
-    size_bytes = target_path.stat().st_size
+    size_bytes = len(payload)
+    target_name = f"{model_id}_{Path(file.filename).name}"
+    object_key = f"users/{current_user.user_id}/models/{model_id}/{target_name}"
+    minio = _minio_client()
+    bucket = _ensure_bucket(minio)
+    minio.put_object(bucket, object_key, data=io.BytesIO(payload), length=size_bytes)
 
     row = ModelRegistry(
         id=model_id,
@@ -178,7 +202,7 @@ async def upload_model(
         primary_metric_value=primary_metric_value,
         all_metrics=all_metrics,
         tags=tags,
-        storage_path=str(target_path),
+        storage_path=object_key,
         created_by=current_user.user_id,
         source_payload={
             "description": str(parsed.get("description") or ""),
@@ -220,6 +244,36 @@ async def upload_model(
         "version": row.version or "v1.0",
         "storage_path": row.storage_path or "",
     }
+
+
+@router.get("/models/{id}/storage-path")
+async def get_model_storage_path(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    model = await db.get(ModelRegistry, id)
+    if model is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+    if model.created_by != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return {"storage_path": model.storage_path or ""}
+
+
+@router.post("/models/validate")
+async def validate_models(
+    payload: ValidateModelsRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    if not payload.model_ids:
+        return {"valid": True}
+    stmt = select(func.count(ModelRegistry.id)).where(
+        ModelRegistry.id.in_(payload.model_ids),
+        ModelRegistry.created_by == payload.user_id,
+    )
+    total = int((await db.execute(stmt)).scalar_one())
+    return {"valid": total == len(set(payload.model_ids))}
 
 
 @router.get("/models/{id}")

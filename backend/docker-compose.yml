@@ -1,6 +1,42 @@
 version: "3.9"
 
 services:
+  minio:
+    image: minio/minio:latest
+    container_name: cloud-ide-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: cloud-ide-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb -p local/workspace-data || true &&
+      mc mb -p local/mlflow-artifacts || true
+      "
+    restart: "no"
+    networks:
+      - backend-network
+
   postgres:
     image: postgres:16-alpine
     container_name: cloud-ide-postgres
@@ -36,6 +72,32 @@ services:
     networks:
       - backend-network
 
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.14.3
+    container_name: cloud-ide-mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+    command: >
+      sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 &&
+      mlflow server
+      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow
+      --default-artifact-root s3://mlflow-artifacts
+      --host 0.0.0.0
+      --port 5000"
+    ports:
+      - "5000:5000"
+    networks:
+      - backend-network
+
   api:
     build:
       context: .
@@ -57,14 +119,19 @@ services:
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "workspace-data"
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
       MAX_WORKSPACES_PER_USER: "2"
       IDLE_TIMEOUT_SECONDS: "1800"
       CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
+      COLAB_NOTEBOOK_GITHUB_URL: ""
+      COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: "10"
+      COLAB_DATA_URL_EXPIRE_SECONDS: "900"
     volumes:
       - .:/app
       - ../notebooks:/notebooks
-      - ../datasets:/workspace/datasets
-      - ../models:/workspace/models
     ports:
       - "8000:8000"
     depends_on:
@@ -72,6 +139,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
     networks:
       - backend-network
 
@@ -96,16 +167,20 @@ services:
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "workspace-data"
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
       MAX_WORKSPACES_PER_USER: "2"
       IDLE_TIMEOUT_SECONDS: "1800"
     volumes:
       - .:/app
       - ../notebooks:/notebooks
-      - ../datasets:/workspace/datasets
-      - ../models:/workspace/models
     depends_on:
       - postgres
       - redis
+      - minio
+      - mlflow
     networks:
       - backend-network
 
@@ -130,16 +205,20 @@ services:
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "workspace-data"
+      MLFLOW_TRACKING_URI: "http://mlflow:5000"
+      MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
       MAX_WORKSPACES_PER_USER: "2"
       IDLE_TIMEOUT_SECONDS: "1800"
     volumes:
       - .:/app
       - ../notebooks:/notebooks
-      - ../datasets:/workspace/datasets
-      - ../models:/workspace/models
     depends_on:
       - postgres
       - redis
+      - minio
+      - mlflow
     networks:
       - backend-network
 
@@ -162,12 +241,10 @@ services:
     volumes:
       # Notebooks lưu trên host, persist qua container restart
       - ../notebooks:/home/jovyan/work
-      - ../datasets:/workspace/datasets
-      - ../models:/workspace/models
     ports:
       - "8888:8888"
     command: >
-      bash -c "sudo mkdir -p /workspace/datasets /workspace/models && sudo chown -R jovyan:users /workspace && jupyter lab
+      bash -c "jupyter lab
       --allow-root
       --ip=0.0.0.0
       --port=8888
@@ -187,6 +264,7 @@ services:
       - backend-network
 
 volumes:
+  minio_data:
   postgres_data:
   redis_data:
 

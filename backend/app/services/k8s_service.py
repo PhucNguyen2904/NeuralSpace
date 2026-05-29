@@ -80,8 +80,8 @@ class KubernetesService:
         workspace_id: str,
         user_id: str,
         tier: str,
-        dataset_path: str | None,
-        model_path: str | None,
+        dataset_object_key: str | None,
+        model_object_key: str | None,
         notebook_pvc: str,
     ) -> str:
         pod = build_pod_spec(
@@ -90,10 +90,14 @@ class KubernetesService:
             tier=tier,
             config={
                 "namespace": namespace,
-                "dataset_pvc": dataset_path,
-                "model_pvc": model_path,
+                "dataset_object_key": dataset_object_key,
+                "model_object_key": model_object_key,
                 "notebook_pvc": notebook_pvc,
                 "jupyter_base_image": self.settings.JUPYTER_BASE_IMAGE,
+                "minio_endpoint": self.settings.MINIO_ENDPOINT,
+                "minio_access_key": self.settings.MINIO_ACCESS_KEY,
+                "minio_secret_key": self.settings.MINIO_SECRET_KEY,
+                "minio_bucket": self.settings.MINIO_BUCKET,
             },
         )
         created = await asyncio.to_thread(self.core_api.create_namespaced_pod, namespace, pod)

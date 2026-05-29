@@ -130,6 +130,32 @@ Key settings:
 - `MINIO_*`: MinIO S3 configuration
 - `MAX_WORKSPACES_PER_USER`: Workspace quota per user
 - `IDLE_TIMEOUT_SECONDS`: Workspace idle timeout
+- `COLAB_NOTEBOOK_GITHUB_URL`: GitHub notebook template path for Colab launch
+- `COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES`: Launch token TTL in minutes
+- `COLAB_DATA_URL_EXPIRE_SECONDS`: Signed dataset URL TTL in seconds
+
+## Google Colab Integration
+
+### Endpoints
+
+- `POST /api/v1/colab/workspaces/{workspace_id}/launch`
+  - Requires bearer auth
+  - Validates workspace ownership
+  - Returns Colab launch URL with one-time short-lived `launch_token`
+- `POST /api/v1/colab/bootstrap`
+  - Validates `launch_token`
+  - Validates workspace ownership again
+  - Returns signed dataset URLs for datasets attached to that workspace and owned by the same user
+
+### Quick setup
+
+1. Push template notebook to GitHub:
+   - `notebooks/templates/colab_workspace_bootstrap.ipynb`
+2. Set env:
+   - `COLAB_NOTEBOOK_GITHUB_URL=your-org/your-repo/blob/main/notebooks/templates/colab_workspace_bootstrap.ipynb`
+3. Restart API service.
+4. In Colab notebook, set:
+   - `API_BASE=https://<your-api-domain>/api/v1`
 
 ## Architecture
 

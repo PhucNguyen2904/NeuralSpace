@@ -80,10 +80,10 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
             model_ids = workspace.model_ids or []
 
         upstream_client = UpstreamClient()
-        dataset_path = (
+        dataset_object_key = (
             asyncio.run(upstream_client.get_dataset_storage_path(dataset_ids[0])) if dataset_ids else None
         )
-        model_path = asyncio.run(upstream_client.get_model_storage_path(model_ids[0])) if model_ids else None
+        model_object_key = asyncio.run(upstream_client.get_model_storage_path(model_ids[0])) if model_ids else None
 
         k8s_service = KubernetesService(redis_client=_redis_client())
         pvc_service = PVCService(upstream_client=upstream_client)
@@ -108,8 +108,8 @@ def spawn_workspace(self: Task, workspace_id: str) -> None:
                 workspace_id=workspace_id,
                 user_id=user_id,
                 tier=tier,
-                dataset_path=dataset_path,
-                model_path=model_path,
+                dataset_object_key=dataset_object_key,
+                model_object_key=model_object_key,
                 notebook_pvc=notebook_pvc,
             )
         )

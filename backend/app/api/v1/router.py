@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.api.v1.datasets.router import router as datasets_router
 from app.api.v1.datasets.router import workspace_router as workspace_datasets_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.colab.router import router as colab_router
 from app.api.v1.events.router import router as events_router
 from app.api.v1.models.router import router as models_router
 from app.api.v1.models.router import workspace_router as workspace_models_router
@@ -17,6 +18,7 @@ router = APIRouter()
 # Include all sub-routers
 router.include_router(monitoring_router)
 router.include_router(auth_router)
+router.include_router(colab_router)
 router.include_router(workspaces_router)
 router.include_router(datasets_router)
 router.include_router(workspace_datasets_router)

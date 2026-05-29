@@ -51,6 +51,12 @@ class Settings(BaseSettings):
 
     # CORS Origins (comma-separated)
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
+    COLAB_NOTEBOOK_GITHUB_URL: str = ""
+    COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: int = 10
+    COLAB_DATA_URL_EXPIRE_SECONDS: int = 900
+    MLFLOW_TRACKING_URI: str = "http://localhost:5000"
+    MLFLOW_ARTIFACT_BUCKET: str = "mlflow-artifacts"
+    MLFLOW_WEBHOOK_SECRET: str = ""
 
     class Config:
         """Pydantic config."""

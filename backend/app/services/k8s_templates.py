@@ -19,7 +19,6 @@ from kubernetes.client import (
     V1NetworkPolicyPort,
     V1NetworkPolicySpec,
     V1ObjectMeta,
-    V1PersistentVolumeClaimVolumeSource,
     V1Pod,
     V1PodSecurityContext,
     V1PodSpec,
@@ -55,8 +54,12 @@ def build_pod_spec(workspace_id: str, user_id: str, tier: str, config: dict) -> 
 
     pod_name = f"ws-pod-{workspace_id}"
     notebook_pvc = str(config["notebook_pvc"])
-    dataset_pvc = config.get("dataset_pvc")
-    model_pvc = config.get("model_pvc")
+    dataset_object_key = config.get("dataset_object_key")
+    model_object_key = config.get("model_object_key")
+    minio_endpoint = str(config.get("minio_endpoint") or "")
+    minio_access_key = str(config.get("minio_access_key") or "")
+    minio_secret_key = str(config.get("minio_secret_key") or "")
+    minio_bucket = str(config.get("minio_bucket") or "")
 
     volumes = [
         V1Volume(
@@ -65,37 +68,67 @@ def build_pod_spec(workspace_id: str, user_id: str, tier: str, config: dict) -> 
         ),
         V1Volume(name="tmp", empty_dir=V1EmptyDirVolumeSource(size_limit="2Gi")),
         V1Volume(name="jupyter-config", empty_dir=V1EmptyDirVolumeSource()),
+        V1Volume(name="datasets", empty_dir=V1EmptyDirVolumeSource()),
+        V1Volume(name="models", empty_dir=V1EmptyDirVolumeSource()),
     ]
 
     mounts = [
         V1VolumeMount(name="notebooks", mount_path="/workspace/notebooks", read_only=False),
         V1VolumeMount(name="tmp", mount_path="/tmp", read_only=False),
         V1VolumeMount(name="jupyter-config", mount_path="/workspace/.jupyter", read_only=False),
+        V1VolumeMount(name="datasets", mount_path="/workspace/datasets", read_only=False),
+        V1VolumeMount(name="models", mount_path="/workspace/models", read_only=False),
     ]
 
-    if dataset_pvc:
-        volumes.append(
-            V1Volume(
-                name="datasets",
-                persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(
-                    claim_name=str(dataset_pvc),
-                    read_only=True,
-                ),
+    init_containers: list[V1Container] = []
+    minio_ready = bool(minio_endpoint and minio_access_key and minio_secret_key and minio_bucket)
+    if dataset_object_key and minio_ready:
+        init_containers.append(
+            V1Container(
+                name="init-dataset",
+                image="minio/mc:latest",
+                command=["/bin/sh", "-c"],
+                args=[
+                    (
+                        "set -euo pipefail; "
+                        "mc alias set local http://${MINIO_ENDPOINT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}; "
+                        "mc cp \"local/${MINIO_BUCKET}/${DATASET_OBJECT_KEY}\" \"/workspace/datasets/\""
+                    )
+                ],
+                env=[
+                    V1EnvVar(name="MINIO_ENDPOINT", value=minio_endpoint),
+                    V1EnvVar(name="MINIO_ACCESS_KEY", value=minio_access_key),
+                    V1EnvVar(name="MINIO_SECRET_KEY", value=minio_secret_key),
+                    V1EnvVar(name="MINIO_BUCKET", value=minio_bucket),
+                    V1EnvVar(name="DATASET_OBJECT_KEY", value=str(dataset_object_key)),
+                ],
+                volume_mounts=[V1VolumeMount(name="datasets", mount_path="/workspace/datasets", read_only=False)],
             )
         )
-        mounts.append(V1VolumeMount(name="datasets", mount_path="/workspace/datasets", read_only=True))
 
-    if model_pvc:
-        volumes.append(
-            V1Volume(
-                name="models",
-                persistent_volume_claim=V1PersistentVolumeClaimVolumeSource(
-                    claim_name=str(model_pvc),
-                    read_only=True,
-                ),
+    if model_object_key and minio_ready:
+        init_containers.append(
+            V1Container(
+                name="init-model",
+                image="minio/mc:latest",
+                command=["/bin/sh", "-c"],
+                args=[
+                    (
+                        "set -euo pipefail; "
+                        "mc alias set local http://${MINIO_ENDPOINT} ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY}; "
+                        "mc cp \"local/${MINIO_BUCKET}/${MODEL_OBJECT_KEY}\" \"/workspace/models/\""
+                    )
+                ],
+                env=[
+                    V1EnvVar(name="MINIO_ENDPOINT", value=minio_endpoint),
+                    V1EnvVar(name="MINIO_ACCESS_KEY", value=minio_access_key),
+                    V1EnvVar(name="MINIO_SECRET_KEY", value=minio_secret_key),
+                    V1EnvVar(name="MINIO_BUCKET", value=minio_bucket),
+                    V1EnvVar(name="MODEL_OBJECT_KEY", value=str(model_object_key)),
+                ],
+                volume_mounts=[V1VolumeMount(name="models", mount_path="/workspace/models", read_only=False)],
             )
         )
-        mounts.append(V1VolumeMount(name="models", mount_path="/workspace/models", read_only=True))
 
     container = V1Container(
         name="jupyter",
@@ -150,6 +183,7 @@ def build_pod_spec(workspace_id: str, user_id: str, tier: str, config: dict) -> 
         spec=V1PodSpec(
             restart_policy="OnFailure",
             security_context=V1PodSecurityContext(run_as_non_root=True, run_as_user=1000),
+            init_containers=init_containers,
             containers=[container],
             volumes=volumes,
         ),

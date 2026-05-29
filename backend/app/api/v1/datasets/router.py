@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+import io
 from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from minio import Minio
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.dataset import Dataset
@@ -34,9 +37,15 @@ class WorkspaceDatasetMountRequest(BaseModel):
     mount_path: str | None = None
 
 
+class ValidateDatasetsRequest(BaseModel):
+    dataset_ids: list[str] = Field(default_factory=list)
+    user_id: str = Field(min_length=1)
+
+
 def _normalize_mount_key(raw: str) -> str:
     key = "".join(ch.lower() if ch.isalnum() else "_" for ch in raw).strip("_")
     return key or "dataset"
+
 
 def _resolve_default_mount_path(dataset: Dataset) -> str:
     storage_path = (dataset.storage_path or "").strip()
@@ -55,6 +64,23 @@ def _parse_metadata(raw: str | None) -> dict:
     if not isinstance(parsed, dict):
         raise HTTPException(status_code=400, detail="metadata must be a JSON object")
     return parsed
+
+
+def _minio_client() -> Minio:
+    settings = get_settings()
+    return Minio(
+        endpoint=settings.MINIO_ENDPOINT,
+        access_key=settings.MINIO_ACCESS_KEY,
+        secret_key=settings.MINIO_SECRET_KEY,
+        secure=False,
+    )
+
+
+def _ensure_bucket(client: Minio) -> str:
+    bucket = get_settings().MINIO_BUCKET
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+    return bucket
 
 
 @router.get("/datasets", response_model=PaginatedDatasetResponse)
@@ -142,14 +168,13 @@ async def upload_dataset(
     tags = parsed.get("tags") if isinstance(parsed.get("tags"), list) else []
     tags = [str(tag) for tag in tags]
 
-    storage_dir = Path("/workspace/datasets")
-    storage_dir.mkdir(parents=True, exist_ok=True)
-    target_name = f"{dataset_id}_{Path(file.filename).name}"
-    target_path = storage_dir / target_name
-
     payload = await file.read()
-    target_path.write_bytes(payload)
-    size_bytes = target_path.stat().st_size
+    size_bytes = len(payload)
+    target_name = f"{dataset_id}_{Path(file.filename).name}"
+    object_key = f"users/{current_user.user_id}/datasets/{dataset_id}/{target_name}"
+    minio = _minio_client()
+    bucket = _ensure_bucket(minio)
+    minio.put_object(bucket, object_key, data=io.BytesIO(payload), length=size_bytes)
 
     row = Dataset(
         id=dataset_id,
@@ -161,7 +186,7 @@ async def upload_dataset(
         item_count=int(parsed.get("item_count") or 0),
         label_status=label_status,
         tags=tags,
-        storage_path=str(target_path),
+        storage_path=object_key,
         created_by=current_user.user_id,
         source_payload={
             "class_count": parsed.get("class_count"),
@@ -200,6 +225,36 @@ async def upload_dataset(
         "thumbnail_url": (row.source_payload or {}).get("thumbnail_url"),
         "storage_path": row.storage_path or "",
     }
+
+
+@router.get("/datasets/{id}/storage-path")
+async def get_dataset_storage_path(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    dataset = await db.get(Dataset, id)
+    if dataset is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    if dataset.created_by != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return {"storage_path": dataset.storage_path or ""}
+
+
+@router.post("/datasets/validate")
+async def validate_datasets(
+    payload: ValidateDatasetsRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    if not payload.dataset_ids:
+        return {"valid": True}
+    stmt = select(func.count(Dataset.id)).where(
+        Dataset.id.in_(payload.dataset_ids),
+        Dataset.created_by == payload.user_id,
+    )
+    total = int((await db.execute(stmt)).scalar_one())
+    return {"valid": total == len(set(payload.dataset_ids))}
 
 
 @workspace_router.post("/{id}/datasets", status_code=status.HTTP_201_CREATED)

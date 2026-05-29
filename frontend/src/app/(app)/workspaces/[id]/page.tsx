@@ -1,22 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
-import { NotebookEditor } from "@/components/notebook/NotebookEditor";
+import { ChevronLeft, ExternalLink, Monitor } from "lucide-react";
+import { Button } from "@/components/ui";
 
 interface WorkspaceIdePageProps {
   params: { id: string };
 }
 
 export default function WorkspaceIdePage({ params }: WorkspaceIdePageProps): JSX.Element {
-  const searchParams = useSearchParams();
-  const requestedFile = searchParams.get("file");
-  const notebookPath = normalizeWorkspaceNotebookPath(params.id, requestedFile);
+  const colabUrl = "https://colab.research.google.com/";
 
   return (
-    <div className="flex h-[calc(100dvh-10.5rem)] min-h-0 flex-col pb-10 md:pb-0">
-      <div className="mb-2 flex items-center justify-between px-2">
+    <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6">
+      <div className="flex items-center justify-between">
         <Link
           href="/workspaces"
           className="inline-flex items-center gap-1 rounded-md border border-border bg-bg-surface px-2 py-1 text-xs text-text-secondary hover:bg-bg-elevated hover:text-text-primary"
@@ -24,33 +21,29 @@ export default function WorkspaceIdePage({ params }: WorkspaceIdePageProps): JSX
           <ChevronLeft size={14} />
           Quay lại Workspaces
         </Link>
-        <span className="rounded border border-border bg-bg-surface px-2 py-1 text-[11px] text-text-tertiary">
-          File: {notebookPath}
-        </span>
       </div>
-      <NotebookEditor
-        workspaceId={params.id}
-        notebookPath={notebookPath}
-      />
+      <div className="rounded-xl border border-border bg-bg-surface p-6">
+        <h1 className="text-xl font-semibold text-text-primary">Chọn môi trường làm việc</h1>
+        <p className="mt-1 text-sm text-text-secondary">
+          Workspace <span className="font-medium text-text-primary">{params.id}</span>
+        </p>
+
+        <div className="mt-6 grid gap-3 md:grid-cols-2">
+          <Link href={`/workspaces/${params.id}/neuralspace`} className="block">
+            <Button className="h-14 w-full justify-start gap-2 text-left">
+              <Monitor size={18} />
+              Work in Neural Space
+            </Button>
+          </Link>
+
+          <a href={colabUrl} target="_blank" rel="noreferrer noopener" className="block">
+            <Button variant="ghost" className="h-14 w-full justify-start gap-2 border border-border text-left">
+              <ExternalLink size={18} />
+              Work in Google Colab
+            </Button>
+          </a>
+        </div>
+      </div>
     </div>
   );
-}
-
-function normalizeWorkspaceNotebookPath(workspaceId: string, requestedFile: string | null): string {
-  const fallback = `${workspaceId}/main.ipynb`;
-  if (!requestedFile || requestedFile.trim().length === 0) {
-    return fallback;
-  }
-
-  const raw = requestedFile.replace(/^\/+/, "");
-  const withoutNotebooksPrefix = raw.startsWith("notebooks/") ? raw.slice("notebooks/".length) : raw;
-  if (withoutNotebooksPrefix.startsWith(`${workspaceId}/`)) {
-    return withoutNotebooksPrefix;
-  }
-
-  const fileName = withoutNotebooksPrefix.split("/").pop();
-  if (!fileName) {
-    return fallback;
-  }
-  return `${workspaceId}/${fileName}`;
 }

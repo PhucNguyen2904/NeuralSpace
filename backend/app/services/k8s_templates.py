@@ -204,7 +204,7 @@ def build_network_policy(workspace_id: str) -> V1NetworkPolicy:
                     _from=[
                         V1NetworkPolicyPeer(
                             namespace_selector=V1LabelSelector(
-                                match_labels={"kubernetes.io/metadata.name": "workspace-proxy"}
+                                match_labels={"kubernetes.io/metadata.name": "ingress-nginx"}
                             )
                         )
                     ],

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
-import { MoreHorizontal, Play, Search, Square, Trash2 } from "lucide-react";
+import { MoreHorizontal, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { DeleteConfirmModal, PageHeader, StatusBadge } from "@/components/shared";
 import { Button } from "@/components/ui";

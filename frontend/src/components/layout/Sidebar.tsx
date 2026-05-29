@@ -10,7 +10,7 @@ const sections = [
     label: "WORKSPACE",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/workspaces", label: "My Workspaces", icon: Terminal },
+      { href: "/workspace", label: "My Workspaces", icon: Terminal },
       { href: "/notebooks", label: "Notebooks", icon: BookOpen }
     ]
   },

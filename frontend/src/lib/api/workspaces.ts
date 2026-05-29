@@ -141,4 +141,3 @@ export const deleteWorkspace = async (id: string) => {
   await apiClient.delete(`/workspaces/${id}`);
   return true;
 };
-

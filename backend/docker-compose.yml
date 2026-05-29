@@ -1,6 +1,20 @@
 version: "3.9"
 
 services:
+  reverse-proxy:
+    image: nginx:1.27-alpine
+    container_name: cloud-ide-nginx
+    depends_on:
+      - api
+      - mlflow
+      - minio
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - backend-network
+
   minio:
     image: minio/minio:latest
     container_name: cloud-ide-minio
@@ -10,9 +24,6 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
     volumes:
       - minio_data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
       interval: 10s
@@ -93,8 +104,6 @@ services:
       --default-artifact-root s3://mlflow-artifacts
       --host 0.0.0.0
       --port 5000"
-    ports:
-      - "5000:5000"
     networks:
       - backend-network
 
@@ -125,15 +134,13 @@ services:
       AWS_SECRET_ACCESS_KEY: "minioadmin"
       MAX_WORKSPACES_PER_USER: "2"
       IDLE_TIMEOUT_SECONDS: "1800"
-      CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
+      CORS_ORIGINS: "http://localhost,http://localhost:80,http://localhost:3000"
       COLAB_NOTEBOOK_GITHUB_URL: ""
       COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: "10"
       COLAB_DATA_URL_EXPIRE_SECONDS: "900"
     volumes:
       - .:/app
       - ../notebooks:/notebooks
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy

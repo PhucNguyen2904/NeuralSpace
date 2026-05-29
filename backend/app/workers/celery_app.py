@@ -20,6 +20,7 @@ celery_app = Celery(
         "app.workers.provisioning_tasks",
         "app.workers.gc_tasks",
         "app.workers.monitoring_tasks",
+        "app.workers.mlops_tasks",
     ],
 )
 celery_app.conf.update(

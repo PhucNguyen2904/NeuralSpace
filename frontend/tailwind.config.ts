@@ -40,6 +40,23 @@ const config: Config = {
         },
         info: {
           500: "var(--color-info-500)"
+        },
+        stage: {
+          none: "var(--color-stage-none)",
+          staging: "var(--color-stage-staging)",
+          production: "var(--color-stage-production)",
+          archived: "var(--color-stage-none)"
+        },
+        run: {
+          running: "var(--color-run-running)",
+          finished: "var(--color-run-finished)",
+          failed: "var(--color-run-failed)",
+          killed: "var(--color-run-killed)"
+        },
+        node: {
+          dataset: "var(--color-node-dataset)",
+          run: "var(--color-node-run)",
+          model: "var(--color-node-model)"
         }
       },
       fontSize: {

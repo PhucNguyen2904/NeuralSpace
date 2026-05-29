@@ -1,355 +1,223 @@
-"""Dataset registry API endpoints."""
+"""MLOps Datasets API router."""
 
 from __future__ import annotations
 
-import json
-import io
 from pathlib import Path
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from minio import Minio
-from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
-from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db
-from app.models.dataset import Dataset
-from app.models.workspace_assets import WorkspaceDataset
-from app.repositories.workspace_repository import WorkspaceRepository
+from app.schemas.mlops_dataset import (
+    AsyncAcceptedResponse,
+    DatasetCreateRequest,
+    DatasetListResponse,
+    DatasetPullRequest,
+    DatasetPullResponse,
+    DatasetResponse,
+    DatasetUpdateRequest,
+    DatasetVersionListResponse,
+    DatasetVersionPatchRequest,
+    DatasetVersionResponse,
+    DatasetVersionTrackRequest,
+    IntegrityValidationResponse,
+    LineageResponse,
+)
+from app.services.mlops_dataset_service import DatasetService, ensure_staging_file_exists
+from app.workers.mlops_tasks import track_dataset_version_task
+from src.integrations.dvc.client import DVCClient
 
-router = APIRouter(tags=["datasets"])
-workspace_router = APIRouter(prefix="/workspaces", tags=["datasets"])
-logger = get_logger(__name__)
-
-
-class PaginatedDatasetResponse(BaseModel):
-    items: list[dict]
-    total: int
-    page: int
-    pageSize: int
-
-
-class WorkspaceDatasetMountRequest(BaseModel):
-    dataset_id: str = Field(min_length=1)
-    mount_path: str | None = None
-
-
-class ValidateDatasetsRequest(BaseModel):
-    dataset_ids: list[str] = Field(default_factory=list)
-    user_id: str = Field(min_length=1)
+router = APIRouter(prefix="/datasets", tags=["datasets"])
 
 
-def _normalize_mount_key(raw: str) -> str:
-    key = "".join(ch.lower() if ch.isalnum() else "_" for ch in raw).strip("_")
-    return key or "dataset"
-
-
-def _resolve_default_mount_path(dataset: Dataset) -> str:
-    storage_path = (dataset.storage_path or "").strip()
-    if storage_path.startswith("/workspace/datasets/"):
-        return storage_path
-    return f"/workspace/datasets/{_normalize_mount_key(dataset.id)}"
-
-
-def _parse_metadata(raw: str | None) -> dict:
-    if not raw:
-        return {}
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid metadata JSON: {exc.msg}") from exc
-    if not isinstance(parsed, dict):
-        raise HTTPException(status_code=400, detail="metadata must be a JSON object")
-    return parsed
-
-
-def _minio_client() -> Minio:
-    settings = get_settings()
-    return Minio(
-        endpoint=settings.MINIO_ENDPOINT,
-        access_key=settings.MINIO_ACCESS_KEY,
-        secret_key=settings.MINIO_SECRET_KEY,
-        secure=False,
+def _to_dataset_response(row) -> DatasetResponse:
+    return DatasetResponse(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        type=row.type,
+        owner_id=row.owner_id,
+        team_id=row.team_id,
+        dvc_repo_url=row.dvc_repo_url,
+        storage_path=row.storage_path,
+        tags=row.tags or [],
+        status=row.status,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
-def _ensure_bucket(client: Minio) -> str:
-    bucket = get_settings().MINIO_BUCKET
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
-    return bucket
-
-
-@router.get("/datasets", response_model=PaginatedDatasetResponse)
-async def list_datasets(
-    search: str | None = Query(default=None),
-    dataset_type: list[str] | None = Query(default=None, alias="type"),
-    status_filter: str | None = Query(default=None, alias="status"),
-    sort: str | None = Query(default="newest"),
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=18, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
-    _current_user: UserContext = Depends(get_current_user),
-) -> PaginatedDatasetResponse:
-    filters = []
-    if search:
-        like = f"%{search.lower()}%"
-        filters.append(func.lower(Dataset.name).like(like))
-    if dataset_type:
-        filters.append(Dataset.dataset_type.in_(dataset_type))
-    if status_filter:
-        filters.append(Dataset.status == status_filter)
-
-    where_clause = and_(*filters) if filters else None
-
-    base_stmt = select(Dataset)
-    count_stmt = select(func.count(Dataset.id))
-    if where_clause is not None:
-        base_stmt = base_stmt.where(where_clause)
-        count_stmt = count_stmt.where(where_clause)
-
-    if sort == "name":
-        base_stmt = base_stmt.order_by(Dataset.name.asc())
-    elif sort == "oldest":
-        base_stmt = base_stmt.order_by(Dataset.created_at.asc())
-    elif sort == "size":
-        base_stmt = base_stmt.order_by(Dataset.size_bytes.desc())
-    else:
-        base_stmt = base_stmt.order_by(Dataset.updated_at.desc())
-
-    offset = (page - 1) * limit
-    base_stmt = base_stmt.offset(offset).limit(limit)
-
-    rows = (await db.execute(base_stmt)).scalars().all()
-    total = int((await db.execute(count_stmt)).scalar_one())
-
-    items = [
-        {
-            "id": d.id,
-            "name": d.name,
-            "description": d.description or "",
-            "type": d.dataset_type,
-            "label_status": d.label_status or "unlabeled",
-            "size_bytes": d.size_bytes,
-            "item_count": d.item_count,
-            "class_count": (d.source_payload or {}).get("class_count"),
-            "tags": d.tags or [],
-            "created_by": d.created_by or "system",
-            "created_at": d.created_at,
-            "updated_at": d.updated_at,
-            "thumbnail_url": (d.source_payload or {}).get("thumbnail_url"),
-            "storage_path": d.storage_path or "",
-        }
-        for d in rows
-    ]
-
-    return PaginatedDatasetResponse(items=items, total=total, page=page, pageSize=limit)
-
-
-@router.post("/datasets/upload", status_code=status.HTTP_201_CREATED)
-async def upload_dataset(
-    file: UploadFile = File(...),
-    metadata: str | None = Form(default=None),
-    db: AsyncSession = Depends(get_db),
-    current_user: UserContext = Depends(get_current_user),
-) -> dict:
-    if not file.filename:
-        audit_event(logger, "dataset.upload_failed", reason="missing_filename", user_id=current_user.user_id)
-        raise HTTPException(status_code=400, detail="Missing filename")
-
-    parsed = _parse_metadata(metadata)
-    dataset_id = f"ds_{uuid4().hex[:12]}"
-    dataset_name = str(parsed.get("name") or Path(file.filename).stem).strip() or "Uploaded Dataset"
-    dataset_type = str(parsed.get("type") or "tabular").strip().lower()
-    label_status = str(parsed.get("label_status") or "unlabeled").strip().lower()
-    tags = parsed.get("tags") if isinstance(parsed.get("tags"), list) else []
-    tags = [str(tag) for tag in tags]
-
-    payload = await file.read()
-    size_bytes = len(payload)
-    target_name = f"{dataset_id}_{Path(file.filename).name}"
-    object_key = f"users/{current_user.user_id}/datasets/{dataset_id}/{target_name}"
-    minio = _minio_client()
-    bucket = _ensure_bucket(minio)
-    minio.put_object(bucket, object_key, data=io.BytesIO(payload), length=size_bytes)
-
-    row = Dataset(
-        id=dataset_id,
-        name=dataset_name,
-        description=str(parsed.get("description") or ""),
-        dataset_type=dataset_type,
-        status="ready",
-        size_bytes=size_bytes,
-        item_count=int(parsed.get("item_count") or 0),
-        label_status=label_status,
-        tags=tags,
-        storage_path=object_key,
-        created_by=current_user.user_id,
-        source_payload={
-            "class_count": parsed.get("class_count"),
-            "thumbnail_url": parsed.get("thumbnail_url"),
-            "original_filename": file.filename,
-            "content_type": file.content_type or "application/octet-stream",
-        },
-    )
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    audit_event(
-        logger,
-        "dataset.upload",
-        user_id=current_user.user_id,
-        dataset_id=row.id,
-        dataset_name=row.name,
-        dataset_type=row.dataset_type,
+def _to_version_response(row) -> DatasetVersionResponse:
+    return DatasetVersionResponse(
+        id=row.id,
+        dataset_id=row.dataset_id,
+        version=row.version,
+        dvc_md5=row.dvc_md5,
+        dvc_commit=row.dvc_commit,
+        storage_path=row.storage_path,
         size_bytes=row.size_bytes,
-        item_count=row.item_count,
+        changelog=row.changelog,
+        is_latest=bool(row.is_latest),
+        status=row.status,
+        created_by=row.created_by,
+        created_at=row.created_at,
     )
 
-    return {
-        "id": row.id,
-        "name": row.name,
-        "description": row.description or "",
-        "type": row.dataset_type,
-        "label_status": row.label_status or "unlabeled",
-        "size_bytes": row.size_bytes,
-        "item_count": row.item_count,
-        "class_count": (row.source_payload or {}).get("class_count"),
-        "tags": row.tags or [],
-        "created_by": row.created_by or "system",
-        "created_at": row.created_at,
-        "updated_at": row.updated_at,
-        "thumbnail_url": (row.source_payload or {}).get("thumbnail_url"),
-        "storage_path": row.storage_path or "",
-    }
 
-
-@router.get("/datasets/{id}/storage-path")
-async def get_dataset_storage_path(
-    id: str,
+@router.post("/", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
+async def create_dataset(
+    payload: DatasetCreateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: UserContext = Depends(get_current_user),
-) -> dict:
-    dataset = await db.get(Dataset, id)
-    if dataset is None:
-        raise HTTPException(status_code=404, detail="Dataset not found")
-    if dataset.created_by != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return {"storage_path": dataset.storage_path or ""}
+    user: UserContext = Depends(get_current_user),
+) -> DatasetResponse:
+    service = DatasetService(db)
+    row = await service.create_dataset(payload, user)
+    return _to_dataset_response(row)
 
 
-@router.post("/datasets/validate")
-async def validate_datasets(
-    payload: ValidateDatasetsRequest,
+@router.get("/", response_model=DatasetListResponse)
+async def list_datasets(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status_filter: str | None = Query(default=None, alias="status"),
+    q: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
-    _current_user: UserContext = Depends(get_current_user),
-) -> dict:
-    if not payload.dataset_ids:
-        return {"valid": True}
-    stmt = select(func.count(Dataset.id)).where(
-        Dataset.id.in_(payload.dataset_ids),
-        Dataset.created_by == payload.user_id,
-    )
-    total = int((await db.execute(stmt)).scalar_one())
-    return {"valid": total == len(set(payload.dataset_ids))}
+    _user: UserContext = Depends(get_current_user),
+) -> DatasetListResponse:
+    service = DatasetService(db)
+    rows, total = await service.list_datasets(page=page, page_size=page_size, status_filter=status_filter, q=q)
+    return DatasetListResponse(items=[_to_dataset_response(item) for item in rows], total=total, page=page, page_size=page_size)
 
 
-@workspace_router.post("/{id}/datasets", status_code=status.HTTP_201_CREATED)
-async def mount_dataset_to_workspace(
-    id: str,
-    payload: WorkspaceDatasetMountRequest,
+@router.get("/{dataset_id}", response_model=DatasetResponse)
+async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user: UserContext = Depends(get_current_user)) -> DatasetResponse:
+    row = await DatasetService(db).get_dataset(dataset_id)
+    return _to_dataset_response(row)
+
+
+@router.patch("/{dataset_id}", response_model=DatasetResponse)
+async def patch_dataset(
+    dataset_id: str,
+    payload: DatasetUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(get_current_user),
+) -> DatasetResponse:
+    row = await DatasetService(db).update_dataset(dataset_id, payload, user)
+    return _to_dataset_response(row)
+
+
+@router.delete("/{dataset_id}", response_model=DatasetResponse)
+async def delete_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), user: UserContext = Depends(get_current_user)) -> DatasetResponse:
+    row = await DatasetService(db).archive_dataset(dataset_id, user)
+    return _to_dataset_response(row)
+
+
+@router.post("/{dataset_id}/versions", response_model=AsyncAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
+async def track_dataset_version(
+    dataset_id: str,
+    payload: DatasetVersionTrackRequest,
+    db: AsyncSession = Depends(get_db),
+    user: UserContext = Depends(get_current_user),
+) -> AsyncAcceptedResponse:
+    service = DatasetService(db)
+    dataset = await service.get_dataset(dataset_id)
+    if dataset.owner_id != user.user_id and "admin" not in user.roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+
+    ensure_staging_file_exists(payload.local_path)
+
+    task = track_dataset_version_task.delay(
+        dataset_id=dataset_id,
+        created_by=user.user_id,
+        local_path=payload.local_path,
+        dataset_name=payload.dataset_name,
+        commit_message=payload.commit_message,
+        changelog=payload.changelog,
+        repo_path=str(Path.cwd()),
+        remote_name="minio",
+    )
+    return AsyncAcceptedResponse(task_id=task.id, status="queued")
+
+
+@router.get("/{dataset_id}/versions", response_model=DatasetVersionListResponse)
+async def list_dataset_versions(dataset_id: str, db: AsyncSession = Depends(get_db), _user: UserContext = Depends(get_current_user)) -> DatasetVersionListResponse:
+    rows = await DatasetService(db).list_versions(dataset_id)
+    return DatasetVersionListResponse(items=[_to_version_response(row) for row in rows])
+
+
+@router.get("/{dataset_id}/versions/{version_id}", response_model=DatasetVersionResponse)
+async def get_dataset_version(
+    dataset_id: str,
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> DatasetVersionResponse:
+    row = await DatasetService(db).get_version(dataset_id, version_id)
+    return _to_version_response(row)
+
+
+@router.patch("/{dataset_id}/versions/{version_id}", response_model=DatasetVersionResponse)
+async def patch_dataset_version(
+    dataset_id: str,
+    version_id: str,
+    payload: DatasetVersionPatchRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> DatasetVersionResponse:
+    row = await DatasetService(db).patch_version(dataset_id, version_id, payload)
+    return _to_version_response(row)
+
+
+@router.post("/{dataset_id}/versions/{version_id}/validate", response_model=IntegrityValidationResponse)
+async def validate_dataset_version(
+    dataset_id: str,
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> IntegrityValidationResponse:
+    service = DatasetService(db)
+    version = await service.get_version(dataset_id, version_id)
+    dvc = DVCClient(repo_path=str(Path.cwd()), remote_name="minio")
+    result = await service.validate_integrity(version, dvc)
+    return IntegrityValidationResponse(**result)
+
+
+@router.get("/{dataset_id}/versions/{version_id}/lineage", response_model=LineageResponse)
+async def dataset_version_lineage(
+    dataset_id: str,
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> LineageResponse:
+    service = DatasetService(db)
+    version = await service.get_version(dataset_id, version_id)
+    runs, models = await service.lineage(version)
+    return LineageResponse(dataset_version=_to_version_response(version), runs=runs, model_versions=models)
+
+
+@router.post("/{dataset_id}/versions/{version_id}/pull", response_model=DatasetPullResponse)
+async def pull_dataset_version(
+    dataset_id: str,
+    version_id: str,
+    payload: DatasetPullRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> DatasetPullResponse:
+    service = DatasetService(db)
+    version = await service.get_version(dataset_id, version_id)
+    dvc = DVCClient(repo_path=str(Path.cwd()), remote_name="minio")
+    result = await service.pull_version(version, dvc, payload.workspace_path)
+    return DatasetPullResponse(**result)
+
+
+@router.get("/{dataset_id}/diff")
+async def diff_dataset_versions(
+    dataset_id: str,
+    version_a: str = Query(...),
+    version_b: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
 ) -> dict:
-    logger.info(
-        "Mount dataset requested",
-        workspace_id=id,
-        dataset_id=payload.dataset_id,
-        user_id=current_user.user_id,
-    )
-
-    workspace = await WorkspaceRepository.get_by_id_and_user(db, id, current_user.user_id)
-    if workspace is None:
-        logger.warning(
-            "Mount dataset failed: workspace not found",
-            workspace_id=id,
-            dataset_id=payload.dataset_id,
-            user_id=current_user.user_id,
-        )
-        audit_event(
-            logger,
-            "dataset.mount_failed",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            dataset_id=payload.dataset_id,
-            reason="workspace_not_found",
-        )
-        raise HTTPException(status_code=404, detail="Workspace not found")
-
-    dataset = await db.get(Dataset, payload.dataset_id)
-    if dataset is None:
-        logger.warning(
-            "Mount dataset failed: dataset not found",
-            workspace_id=id,
-            dataset_id=payload.dataset_id,
-            user_id=current_user.user_id,
-        )
-        audit_event(
-            logger,
-            "dataset.mount_failed",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            dataset_id=payload.dataset_id,
-            reason="dataset_not_found",
-        )
-        raise HTTPException(status_code=404, detail="Dataset not found")
-
-    mount_path = payload.mount_path or _resolve_default_mount_path(dataset)
-
-    existing_stmt = select(WorkspaceDataset).where(
-        WorkspaceDataset.workspace_id == id,
-        WorkspaceDataset.dataset_id == dataset.id,
-    )
-    existing = (await db.execute(existing_stmt)).scalar_one_or_none()
-    if existing is None:
-        db.add(
-            WorkspaceDataset(
-                workspace_id=id,
-                dataset_id=dataset.id,
-                mount_path=mount_path,
-                mounted_by=current_user.user_id,
-            )
-        )
-    else:
-        existing.mount_path = mount_path
-        existing.mounted_by = current_user.user_id
-
-    await db.commit()
-    audit_event(
-        logger,
-        "dataset.mount",
-        user_id=current_user.user_id,
-        workspace_id=id,
-        dataset_id=dataset.id,
-        mount_path=mount_path,
-    )
-    logger.info(
-        "Mount dataset succeeded",
-        workspace_id=id,
-        dataset_id=dataset.id,
-        dataset_name=dataset.name,
-        user_id=current_user.user_id,
-        mounted_path=mount_path,
-    )
-    return {
-        "workspace_id": id,
-        "dataset_id": dataset.id,
-        "dataset_name": dataset.name,
-        "mount_path": mount_path,
-        "mounted_path": mount_path,
-        "mount_status": "mounted",
-        "message": "Dataset mounted",
-    }
+    service = DatasetService(db)
+    dvc = DVCClient(repo_path=str(Path.cwd()), remote_name="minio")
+    return await service.diff_versions(dataset_id, version_a, version_b, dvc)

@@ -1,0 +1,99 @@
+name: data-pipeline
+
+on:
+  push:
+    paths:
+      - "**/*.dvc"
+      - "dvc.lock"
+      - "backend/scripts/data_validation.py"
+  workflow_dispatch:
+
+jobs:
+  data-validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    outputs:
+      quality_score: ${{ steps.validate.outputs.quality_score }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install dvc[s3]==3.59.2 pandas numpy pyyaml
+
+      - name: Configure DVC remote (MinIO)
+        env:
+          MINIO_ENDPOINT_URL: ${{ secrets.MINIO_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          dvc remote modify minio endpointurl "$MINIO_ENDPOINT_URL"
+          dvc remote modify minio access_key_id "$AWS_ACCESS_KEY_ID"
+          dvc remote modify minio secret_access_key "$AWS_SECRET_ACCESS_KEY"
+
+      - name: dvc pull
+        run: dvc pull -r minio
+
+      - name: Run data validation
+        id: validate
+        env:
+          QUALITY_THRESHOLD: "0.80"
+          PREVIOUS_SIZE_BYTES: ${{ vars.PREVIOUS_DATASET_SIZE_BYTES }}
+        run: |
+          python scripts/data_validation.py \
+            --input data/dataset.csv \
+            --schema-config scripts/schema_config.json \
+            --output validation_report.json
+          SCORE=$(python - <<'PY'
+import json
+with open('validation_report.json','r',encoding='utf-8') as f:
+    print(json.load(f).get('quality_score', 0.0))
+PY
+)
+          echo "quality_score=$SCORE" >> "$GITHUB_OUTPUT"
+
+      - name: Upload validation report
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-report
+          path: backend/validation_report.json
+
+  data-sync:
+    runs-on: ubuntu-latest
+    needs: data-validate
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build payload and sync dataset version
+        env:
+          PLATFORM_API_BASE_URL: ${{ secrets.PLATFORM_API_BASE_URL }}
+          PLATFORM_API_TOKEN: ${{ secrets.PLATFORM_API_TOKEN }}
+          DATASET_ID: ${{ vars.PLATFORM_DATASET_ID }}
+        run: |
+          GIT_COMMIT=$(git rev-parse HEAD)
+          DVC_MD5=$(grep -m1 'md5:' data/dataset.csv.dvc | awk '{print $2}')
+          python - <<'PY'
+import json, os
+payload = {
+  "dvc_md5": os.environ["DVC_MD5"],
+  "git_commit": os.environ["GIT_COMMIT"],
+  "validation_report": json.load(open("validation_report.json", "r", encoding="utf-8"))
+}
+open("sync_payload.json","w",encoding="utf-8").write(json.dumps(payload))
+PY
+          curl -sS -X POST \
+            -H "Authorization: Bearer $PLATFORM_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$PLATFORM_API_BASE_URL/api/v1/datasets/$DATASET_ID/versions" \
+            --data-binary @sync_payload.json

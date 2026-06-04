@@ -73,8 +73,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="Cloud IDE Platform API",
-        description="Backend API for Cloud IDE Platform (like Google Colab)",
+        title="NeuralSpace Control Plane API",
+        description="MLOps control plane for registries, tracking, lineage, and external runtimes",
         version=__version__,
         docs_url=settings.DOCS_URL,
         redoc_url=settings.REDOC_URL,

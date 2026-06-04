@@ -72,6 +72,25 @@ class WorkspaceNotRunningError(AppException):
         )
 
 
+class InvalidWorkspaceAssetsError(AppException):
+    """Raised when workspace creation references unknown assets."""
+
+    status_code = 422
+    error_code = "invalid_workspace_assets"
+
+    def __init__(self, dataset_ids: list[str], model_ids: list[str]) -> None:
+        parts = []
+        if dataset_ids:
+            parts.append(f"datasets: {', '.join(dataset_ids)}")
+        if model_ids:
+            parts.append(f"models: {', '.join(model_ids)}")
+        super().__init__(
+            f"Unknown workspace assets ({'; '.join(parts)})",
+            dataset_ids=dataset_ids,
+            model_ids=model_ids,
+        )
+
+
 class ProvisioningError(AppException):
     """Raised when workspace provisioning fails."""
 

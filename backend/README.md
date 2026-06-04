@@ -1,6 +1,12 @@
-# Cloud IDE Platform - Backend
+# NeuralSpace Control Plane - Backend
 
-FastAPI-based backend for Cloud IDE Platform, similar to Google Colab.
+FastAPI-based MLOps and data control plane. Google Colab is the target external
+compute runtime; the existing Kubernetes/Jupyter workspace runtime is a legacy
+migration path.
+
+Target architecture and migration boundaries:
+
+- [Google Colab External Runtime Architecture](docs/COLAB_EXTERNAL_RUNTIME_ARCHITECTURE.md)
 
 ## Project Structure
 
@@ -135,6 +141,10 @@ Key settings:
 - `COLAB_DATA_URL_EXPIRE_SECONDS`: Signed dataset URL TTL in seconds
 
 ## Google Colab Integration
+
+The current endpoints below are an initial launch/bootstrap prototype. New
+runtime behavior should follow the scoped external runtime session model
+described in the target architecture document.
 
 ### Endpoints
 

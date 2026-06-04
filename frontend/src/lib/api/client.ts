@@ -1,9 +1,14 @@
 import axios from "axios";
+import type { AxiosResponse } from "axios";
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
   timeout: 10000
 });
+
+export async function unwrapResponse<T>(request: Promise<AxiosResponse<T>>): Promise<T> {
+  return (await request).data;
+}
 
 type AuthStoreSnapshot = {
   state?: {

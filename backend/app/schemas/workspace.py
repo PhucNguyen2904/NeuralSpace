@@ -29,10 +29,10 @@ class WorkspaceEnvironmentConfig(BaseModel):
 
 
 class WorkspaceCreateRequest(BaseModel):
-    """Create workspace request payload."""
+    """Create a reusable project context for external runtimes."""
 
-    name: str | None = Field(default=None, max_length=255)
-    tier: Literal["cpu-standard", "cpu-large", "gpu-t4"] = "cpu-standard"
+    name: str = Field(min_length=3, max_length=255)
+    tier: Literal["external-colab"] = "external-colab"
     dataset_ids: list[str] = Field(default_factory=list, max_length=10)
     model_ids: list[str] = Field(default_factory=list, max_length=10)
     environment: WorkspaceEnvironmentConfig = Field(default_factory=WorkspaceEnvironmentConfig)
@@ -113,11 +113,11 @@ class HeartbeatResponse(BaseModel):
 
 
 class WorkspaceCreateAcceptedResponse(BaseModel):
-    """Accepted response for async workspace creation."""
+    """Created project context response."""
 
     workspace_id: str
     status: WorkspaceStatus
-    estimated_ready_in_seconds: int = 30
+    estimated_ready_in_seconds: int = 0
     poll_url: str
 
 

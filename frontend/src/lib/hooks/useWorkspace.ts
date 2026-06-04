@@ -4,17 +4,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createWorkspace,
   deleteWorkspace,
-  getKernelStatus,
-  getWorkspaceAccessToken,
   getWorkspaceById,
-  getWorkspaceResources,
-  getWorkspaceStatus,
-  heartbeatWorkspace,
-  listWorkspaceFiles,
+  getWorkspaceRunData,
+  launchWorkspaceInColab,
   listWorkspaces,
-  stopWorkspace
 } from "@/lib/api/workspaces";
-import type { CreateWorkspaceInput, Workspace, WorkspaceFileNode } from "@/types/workspace";
+import type { ColabLaunchResult, CreateWorkspaceInput, Workspace } from "@/types/workspace";
 
 const WORKSPACES_QUERY_KEY = ["workspaces"];
 
@@ -35,55 +30,6 @@ export const useWorkspaceDetail = (id: string) =>
     queryFn: () => getWorkspaceById(id),
     enabled: Boolean(id)
   });
-
-export const useWorkspaceStatus = (id: string) =>
-  useQuery({
-    queryKey: ["workspace-status", id],
-    queryFn: () => getWorkspaceStatus(id),
-    enabled: Boolean(id)
-  });
-
-export const useWorkspaceFiles = (id: string) =>
-  useQuery<WorkspaceFileNode[]>({
-    queryKey: ["workspace-files", id],
-    queryFn: () => listWorkspaceFiles(id),
-    enabled: Boolean(id),
-    staleTime: 30_000
-  });
-
-export const useWorkspaceResources = (id: string) =>
-  useQuery({
-    queryKey: ["workspace-resources", id],
-    queryFn: () => getWorkspaceResources(id),
-    enabled: Boolean(id),
-    refetchInterval: 10_000
-  });
-
-export const useWorkspaceToken = (id: string) =>
-  useQuery({
-    queryKey: ["workspace-token", id],
-    queryFn: () => getWorkspaceAccessToken(id),
-    enabled: Boolean(id),
-    staleTime: 0
-  });
-
-export const useKernelStatusQuery = (id: string, enabled = true) =>
-  useQuery({
-    queryKey: ["workspace-kernel", id],
-    queryFn: () => getKernelStatus(id),
-    enabled: Boolean(id) && enabled,
-    refetchInterval: 5_000
-  });
-
-export const useHeartbeatMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => heartbeatWorkspace(id),
-    onSuccess: (_data, id) => {
-      queryClient.invalidateQueries({ queryKey: ["workspace", id] });
-    }
-  });
-};
 
 export const useCreateWorkspaceMutation = () => {
   const queryClient = useQueryClient();
@@ -115,12 +61,19 @@ export const useDeleteWorkspace = () => {
   });
 };
 
-export const useStopWorkspace = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => stopWorkspace(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY });
-    }
+export const useLaunchWorkspaceInColab = () => {
+  return useMutation<ColabLaunchResult, Error, string>({
+    mutationFn: (id: string) => launchWorkspaceInColab(id)
   });
 };
+
+/** Polls session + run data every 7 seconds for the Data Dashboard. */
+export const useWorkspaceRunData = (id: string) =>
+  useQuery({
+    queryKey: ["workspace-run-data", id],
+    queryFn: () => getWorkspaceRunData(id),
+    enabled: Boolean(id),
+    refetchInterval: 7_000,
+    staleTime: 5_000,
+  });
+

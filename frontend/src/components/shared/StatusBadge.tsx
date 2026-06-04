@@ -9,6 +9,11 @@ const mapping: Record<
     pulse: boolean;
   }
 > = {
+  READY: {
+    label: "Sẵn sàng",
+    className: "bg-success-50 text-success-500",
+    pulse: false
+  },
   PROVISIONING: {
     label: "Đang khởi động",
     className: "bg-warning-50 text-warning-500",
@@ -41,7 +46,7 @@ export function StatusBadge({ status }: { status: WorkspaceStatus }) {
 
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", item.className)}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", status === "ERROR" ? "bg-error-500" : status === "RUNNING" ? "bg-success-500" : status === "STOPPED" ? "bg-text-tertiary" : "bg-warning-500", item.pulse && "status-pulse")} />
+      <span className={cn("h-1.5 w-1.5 rounded-full", status === "ERROR" ? "bg-error-500" : status === "RUNNING" || status === "READY" ? "bg-success-500" : status === "STOPPED" ? "bg-text-tertiary" : "bg-warning-500", item.pulse && "status-pulse")} />
       {item.label}
     </span>
   );

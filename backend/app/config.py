@@ -3,11 +3,13 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
     # Basic
     ENVIRONMENT: Literal["development", "staging", "production"] = "development"
@@ -24,25 +26,16 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # Kubernetes
-    KUBERNETES_IN_CLUSTER: bool = False
-    KUBERNETES_NAMESPACE_PREFIX: str = "ws-"
-
-    # Jupyter
-    JUPYTER_BASE_IMAGE: str = "registry.platform.com/jupyter-base:latest"
-
     # MinIO
     MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
+    MINIO_PUBLIC_SECURE: bool = False
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "workspace-data"
 
     # Upstream module
     UPSTREAM_BASE_URL: str = "http://localhost:9000"
-
-    # Workspace Configuration
-    MAX_WORKSPACES_PER_USER: int = 2
-    IDLE_TIMEOUT_SECONDS: int = 1800
 
     # API Docs
     DOCS_URL: str | None = "/docs"
@@ -51,18 +44,16 @@ class Settings(BaseSettings):
 
     # CORS Origins (comma-separated)
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
-    COLAB_NOTEBOOK_GITHUB_URL: str = ""
+    PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
+    COLAB_NOTEBOOK_GITHUB_URL: str = (
+        "PhucNguyen2904/CollabClone/blob/master/notebooks/templates/colab_workspace_bootstrap.ipynb"
+    )
     COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: int = 10
+    COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: int = 480
     COLAB_DATA_URL_EXPIRE_SECONDS: int = 900
     MLFLOW_TRACKING_URI: str = "http://localhost:5000"
     MLFLOW_ARTIFACT_BUCKET: str = "mlflow-artifacts"
     MLFLOW_WEBHOOK_SECRET: str = ""
-
-    class Config:
-        """Pydantic config."""
-
-        env_file = ".env"
-        case_sensitive = True
 
     def __init__(self, **data):
         """Initialize settings with environment-based docs visibility."""

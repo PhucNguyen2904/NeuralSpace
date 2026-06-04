@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workspace import Workspace, WorkspaceStatus
+from app.models.workspace_assets import WorkspaceDataset, WorkspaceModel
 from app.models.workspace_event import WorkspaceEvent
 from app.schemas.workspace import WorkspaceCreateRequest
 
@@ -21,15 +23,37 @@ class WorkspaceRepository:
         workspace = Workspace(
             user_id=user_id,
             name=data.name,
-            tier=data.tier,
+            tier="external-colab",
             dataset_ids=data.dataset_ids,
             model_ids=data.model_ids,
             environment_config=data.environment.model_dump(),
         )
         db.add(workspace)
         await db.flush()
+        for dataset_id in data.dataset_ids:
+            db.add(
+                WorkspaceDataset(
+                    workspace_id=workspace.id,
+                    dataset_id=dataset_id,
+                    mount_path=f"/workspace/datasets/{WorkspaceRepository._mount_name(dataset_id)}",
+                    mounted_by=user_id,
+                )
+            )
+        for model_id in data.model_ids:
+            db.add(
+                WorkspaceModel(
+                    workspace_id=workspace.id,
+                    model_id=model_id,
+                    mount_path=f"/workspace/models/{WorkspaceRepository._mount_name(model_id)}",
+                    mounted_by=user_id,
+                )
+            )
         await db.refresh(workspace)
         return workspace
+
+    @staticmethod
+    def _mount_name(asset_id: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9_-]+", "_", asset_id).strip("_").lower()
 
     @staticmethod
     async def get_by_id(db: AsyncSession, workspace_id: str) -> Workspace | None:

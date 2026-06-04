@@ -7,30 +7,19 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
-    QuotaExceededError,
+    InvalidWorkspaceAssetsError,
     WorkspaceNotFoundError,
     WorkspaceNotOwnedError,
-    WorkspaceNotRunningError,
 )
 from app.core.logging import audit_event, get_logger
-from app.dependencies import (
-    UserContext,
-    get_current_user,
-    get_db,
-    get_k8s_service,
-    get_redis,
-)
+from app.dependencies import UserContext, get_current_user, get_db, get_redis
 from app.schemas.workspace import (
-    HeartbeatResponse,
     WorkspaceCreateAcceptedResponse,
     WorkspaceCreateRequest,
     WorkspaceDetailResponse,
     WorkspaceListResponse,
-    WorkspaceOperationResponse,
     WorkspaceStatusPollResponse,
-    WorkspaceStopRequest,
 )
-from app.services.k8s_service import K8sService
 from app.services.workspace_service import WorkspaceService
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -42,14 +31,12 @@ def _translate_workspace_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=404, detail=exc.message)
     if isinstance(exc, WorkspaceNotOwnedError):
         return HTTPException(status_code=403, detail=exc.message)
-    if isinstance(exc, QuotaExceededError):
-        return HTTPException(status_code=429, detail=exc.message)
-    if isinstance(exc, WorkspaceNotRunningError):
-        return HTTPException(status_code=409, detail=exc.message)
+    if isinstance(exc, InvalidWorkspaceAssetsError):
+        return HTTPException(status_code=422, detail=exc.message)
     return HTTPException(status_code=500, detail="Internal workspace error")
 
 
-@router.post("", response_model=WorkspaceCreateAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post("", response_model=WorkspaceCreateAcceptedResponse, status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     payload: WorkspaceCreateRequest,
     db: AsyncSession = Depends(get_db),
@@ -69,7 +56,7 @@ async def create_workspace(
         return WorkspaceCreateAcceptedResponse(
             workspace_id=workspace.id,
             status=workspace.status,
-            estimated_ready_in_seconds=30,
+            estimated_ready_in_seconds=0,
             poll_url=f"/api/v1/workspaces/{workspace.id}/status",
         )
     except Exception as exc:
@@ -134,83 +121,6 @@ async def get_workspace_status(
         raise _translate_workspace_error(exc) from exc
 
 
-@router.post("/{id}/stop", response_model=WorkspaceOperationResponse, status_code=status.HTTP_202_ACCEPTED)
-async def stop_workspace(
-    id: str,
-    payload: WorkspaceStopRequest,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-    k8s_service: K8sService = Depends(get_k8s_service),
-    current_user: UserContext = Depends(get_current_user),
-):
-    try:
-        workspace = await WorkspaceService.stop_workspace(
-            db=db,
-            redis=redis,
-            k8s_service=k8s_service,
-            workspace_id=id,
-            user_id=current_user.user_id,
-            save=payload.save_notebooks,
-        )
-        audit_event(
-            logger,
-            "workspace.stop",
-            user_id=current_user.user_id,
-            workspace_id=workspace.id,
-            status=workspace.status,
-            save_notebooks=payload.save_notebooks,
-        )
-        return WorkspaceOperationResponse(
-            workspace_id=workspace.id,
-            status=workspace.status,
-            message="Stop requested",
-        )
-    except Exception as exc:
-        audit_event(
-            logger,
-            "workspace.stop_failed",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            error=str(exc),
-        )
-        raise _translate_workspace_error(exc) from exc
-
-
-@router.post("/{id}/restart", response_model=WorkspaceOperationResponse)
-async def restart_workspace(
-    id: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-    k8s_service: K8sService = Depends(get_k8s_service),
-    current_user: UserContext = Depends(get_current_user),
-):
-    try:
-        workspace = await WorkspaceService.restart_workspace(
-            db=db,
-            redis=redis,
-            k8s_service=k8s_service,
-            workspace_id=id,
-            user_id=current_user.user_id,
-        )
-        audit_event(
-            logger,
-            "workspace.restart",
-            user_id=current_user.user_id,
-            workspace_id=workspace.id,
-            status=workspace.status,
-        )
-        return WorkspaceOperationResponse(workspace_id=workspace.id, status=workspace.status, message="Kernel restarted")
-    except Exception as exc:
-        audit_event(
-            logger,
-            "workspace.restart_failed",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            error=str(exc),
-        )
-        raise _translate_workspace_error(exc) from exc
-
-
 @router.delete("/{id}", status_code=status.HTTP_202_ACCEPTED)
 async def delete_workspace(
     id: str,
@@ -231,34 +141,6 @@ async def delete_workspace(
         audit_event(
             logger,
             "workspace.delete_failed",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            error=str(exc),
-        )
-        raise _translate_workspace_error(exc) from exc
-
-
-@router.post("/{id}/heartbeat", response_model=HeartbeatResponse)
-async def heartbeat_workspace(
-    id: str,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis),
-    current_user: UserContext = Depends(get_current_user),
-):
-    try:
-        result = await WorkspaceService.process_heartbeat(db, redis, id, current_user.user_id)
-        audit_event(
-            logger,
-            "workspace.heartbeat",
-            user_id=current_user.user_id,
-            workspace_id=id,
-            status=result.status,
-        )
-        return result
-    except Exception as exc:
-        audit_event(
-            logger,
-            "workspace.heartbeat_failed",
             user_id=current_user.user_id,
             workspace_id=id,
             error=str(exc),

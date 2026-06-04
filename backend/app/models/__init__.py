@@ -14,6 +14,7 @@ from app.models.mlops_tracking import (
     Run,
 )
 from app.models.user import User
+from app.models.runtime_session import ExternalRuntimeSession, RuntimeSessionStatus
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_assets import WorkspaceDataset, WorkspaceModel
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
@@ -34,6 +35,8 @@ __all__ = [
     "AuditLog",
     "ApprovalRequest",
     "User",
+    "ExternalRuntimeSession",
+    "RuntimeSessionStatus",
     "Workspace",
     "WorkspaceDataset",
     "WorkspaceModel",

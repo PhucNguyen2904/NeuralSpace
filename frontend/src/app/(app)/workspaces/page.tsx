@@ -11,7 +11,7 @@ import { Button } from "@/components/ui";
 import { useDeleteWorkspace, useWorkspaces } from "@/lib/hooks/useWorkspace";
 import type { Workspace, WorkspaceStatus } from "@/types/workspace";
 
-type StatusFilter = "All" | "RUNNING" | "STOPPED" | "ERROR";
+type StatusFilter = "All" | "READY" | "ERROR";
 type SortMode = "Newest" | "Oldest" | "Name A-Z";
 
 function SkeletonRows() {
@@ -32,11 +32,7 @@ function SkeletonRows() {
 }
 
 function rowActions(workspace: Workspace) {
-  const common = ["Download notebooks", "Delete"];
-  if (workspace.status === "RUNNING") {
-    return ["Open", "Restart", ...common];
-  }
-  return ["Open", ...common];
+  return ["Open", "Delete"];
 }
 
 export default function WorkspacesPage() {
@@ -73,11 +69,6 @@ export default function WorkspacesPage() {
   const start = (page - 1) * pageSize;
   const paginated = filtered.slice(start, start + pageSize);
 
-  const handleRestart = (id: string) => {
-    // Implement restart logic if needed, or simply leave empty if restarting is handled elsewhere
-    setMenuOpenId(null);
-  };
-
   const handleDelete = () => {
     if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id, {
@@ -90,7 +81,7 @@ export default function WorkspacesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="My Workspaces" description="Manage cloud IDE environments." action={<Link href="/workspaces/new"><Button size="sm">+ New Workspace</Button></Link>} />
+      <PageHeader title="Projects" description="Manage Colab launch contexts and attached MLOps assets." action={<Link href="/workspaces/new"><Button size="sm">+ New Project</Button></Link>} />
 
       <div className="rounded-lg border border-border bg-bg-surface p-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -100,7 +91,7 @@ export default function WorkspacesPage() {
           </label>
 
           <div className="flex rounded-md bg-bg-elevated p-1">
-            {(["All", "RUNNING", "STOPPED", "ERROR"] as StatusFilter[]).map((status) => (
+            {(["All", "READY", "ERROR"] as StatusFilter[]).map((status) => (
               <button key={status} onClick={() => setStatusFilter(status)} className={`rounded px-3 py-1.5 text-xs ${statusFilter === status ? "bg-bg-surface text-brand-600 shadow-xs" : "text-text-secondary"}`}>
                 {status}
               </button>
@@ -127,7 +118,7 @@ export default function WorkspacesPage() {
                     <p className="font-medium text-text-primary">{workspace.name}</p>
                     <StatusBadge status={workspace.status as WorkspaceStatus} />
                   </div>
-                  <p className="text-xs text-text-secondary">{workspace.tier.replace("-", " ")} · {workspace.status === "RUNNING" ? workspace.runtimeLabel : "-"}</p>
+                  <p className="text-xs text-text-secondary">Google Colab · {(workspace.datasets?.length ?? 0) + (workspace.models?.length ?? 0)} assets</p>
                   <p className="mt-1 text-xs text-text-secondary">{formatDistanceToNow(new Date(workspace.lastActiveAt), { addSuffix: true })}</p>
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" onClick={() => router.push(`/workspaces/${workspace.id}`)}>Open</Button>
@@ -145,8 +136,8 @@ export default function WorkspacesPage() {
                   <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-tertiary">
                     <th className="w-[31%] py-2 pr-4">Name</th>
                     <th className="w-[20%] py-2 pr-4">Status</th>
-                    <th className="w-[18%] py-2 pr-4">Tier</th>
-                    <th className="w-[10%] py-2 pr-4">Runtime</th>
+                    <th className="w-[18%] py-2 pr-4">Runtime</th>
+                    <th className="w-[10%] py-2 pr-4">Assets</th>
                     <th className="w-[13%] py-2 pr-4">Last Active</th>
                     <th className="w-[8%] py-2">Actions</th>
                   </tr>
@@ -165,8 +156,8 @@ export default function WorkspacesPage() {
                           </div>
                         </td>
                         <td className="py-3 pr-4"><StatusBadge status={workspace.status as WorkspaceStatus} /></td>
-                        <td className="py-3 pr-4 uppercase text-text-secondary">{workspace.tier.replace("-", " ")}</td>
-                        <td className="py-3 pr-4 text-text-secondary">{workspace.status === "RUNNING" ? workspace.runtimeLabel : "-"}</td>
+                        <td className="py-3 pr-4 text-text-secondary">Google Colab</td>
+                        <td className="py-3 pr-4 text-text-secondary">{(workspace.datasets?.length ?? 0) + (workspace.models?.length ?? 0)}</td>
                         <td className="py-3 pr-4 text-text-secondary">{formatDistanceToNow(new Date(workspace.lastActiveAt), { addSuffix: true })}</td>
                         <td className={`relative py-3 ${menuOpenId === workspace.id ? "z-[120]" : ""}`}>
                           <div className="flex items-center justify-start gap-2">
@@ -207,7 +198,6 @@ export default function WorkspacesPage() {
                                         setMenuOpenId(null);
                                         router.push(`/workspaces/${workspace.id}`);
                                       }
-                                      if (action === "Restart") handleRestart(workspace.id);
                                       if (action === "Delete") {
                                         setDeleteTarget(workspace);
                                         setMenuOpenId(null);

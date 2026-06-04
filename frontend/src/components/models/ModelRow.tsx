@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "@/components/ui";
 import type { Model } from "@/types/model";
 
@@ -29,7 +30,13 @@ export function ModelRow({
       <span className="text-xs text-text-secondary">{model.primary_metric_value.toFixed(1)}%</span>
       <span className="text-xs text-text-secondary">{model.status}</span>
       <Button size="sm" className="bg-violet-50 text-violet-700 hover:bg-violet-100" onClick={(e) => { e.stopPropagation(); onLoad(model); }}>Load</Button>
-      <span className="text-xs text-violet-700">...</span>
+      <Link
+        href={`/models/${encodeURIComponent(model.name)}`}
+        onClick={(e) => e.stopPropagation()}
+        className="text-xs text-violet-700 hover:underline"
+      >
+        Registry
+      </Link>
     </button>
   );
 }

@@ -15,8 +15,9 @@ from app.models.base import Base, TimestampMixin
 
 
 class WorkspaceStatus(str, Enum):
-    """Workspace lifecycle state."""
+    """Logical project context state."""
 
+    READY = "READY"
     PROVISIONING = "PROVISIONING"
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
@@ -25,7 +26,7 @@ class WorkspaceStatus(str, Enum):
 
 
 class Workspace(TimestampMixin, Base):
-    """Workspace model for allocated Jupyter environments."""
+    """Project context used to launch external compute runtimes."""
 
     __tablename__ = "workspaces"
     __table_args__ = (
@@ -50,8 +51,8 @@ class Workspace(TimestampMixin, Base):
     status: Mapped[WorkspaceStatus] = mapped_column(
         SQLEnum(WorkspaceStatus, name="workspace_status", create_constraint=False),
         nullable=False,
-        default=WorkspaceStatus.PROVISIONING,
-        server_default=WorkspaceStatus.PROVISIONING.value,
+        default=WorkspaceStatus.READY,
+        server_default=WorkspaceStatus.READY.value,
     )
     tier: Mapped[str] = mapped_column(String(30), nullable=False)
     k8s_namespace: Mapped[str | None] = mapped_column(String(63), nullable=True)

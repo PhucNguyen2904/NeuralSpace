@@ -3,22 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
-import { BookOpen, Brain, ChevronLeft, ChevronRight, Database, LayoutDashboard, Settings, Terminal } from "lucide-react";
+import { Brain, ChevronLeft, ChevronRight, Database, FlaskConical, GitBranch, LayoutDashboard, Settings, Terminal } from "lucide-react";
 
 const sections = [
   {
     label: "WORKSPACE",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/workspace", label: "My Workspaces", icon: Terminal },
-      { href: "/notebooks", label: "Notebooks", icon: BookOpen }
+      { href: "/workspaces", label: "Colab Projects", icon: Terminal }
     ]
   },
   {
     label: "RESOURCES",
     items: [
       { href: "/datasets", label: "Datasets", icon: Database },
-      { href: "/models", label: "Models", icon: Brain }
+      { href: "/models", label: "Models", icon: Brain },
+      { href: "/experiments", label: "Experiments", icon: FlaskConical },
+      { href: "/lineage", label: "Lineage", icon: GitBranch }
     ]
   },
   {

@@ -12,7 +12,6 @@ export interface CreateWorkspaceFormValues {
   name: string;
   pythonVersion: "3.10" | "3.11" | "3.12";
   packages: string[];
-  tier: "cpu-standard" | "cpu-large" | "gpu-t4";
   datasets: string[];
   models: string[];
 }
@@ -21,7 +20,7 @@ const SESSION_KEY = "neuralspace-create-workspace";
 
 const stepFields: Record<WizardStep, FieldPath<CreateWorkspaceFormValues>[]> = {
   1: ["name", "pythonVersion", "packages"],
-  2: ["tier", "datasets", "models"],
+  2: ["datasets", "models"],
   3: []
 };
 
@@ -64,7 +63,6 @@ export function useCreateWorkspace(form: UseFormReturn<CreateWorkspaceFormValues
       name: values.name,
       pythonVersion: values.pythonVersion,
       packages: values.packages,
-      tier: values.tier,
       datasets: values.datasets,
       models: values.models
     };
@@ -80,8 +78,9 @@ export function useCreateWorkspace(form: UseFormReturn<CreateWorkspaceFormValues
       nextStep,
       prevStep,
       submit,
-      isSubmitting: mutation.isPending
+      isSubmitting: mutation.isPending,
+      error: mutation.error?.message ?? null,
     }),
-    [currentStep, mutation.isPending]
+    [currentStep, mutation.error?.message, mutation.isPending]
   );
 }

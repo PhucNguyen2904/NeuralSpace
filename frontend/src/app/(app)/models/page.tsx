@@ -283,7 +283,24 @@ export default function ModelsPage() {
           </div>
           <div>
             <p className="mb-2 text-sm font-semibold">Trạng thái</p>
-            {(["All", "Ready", "Training", "Trained", "Failed"] as const).map((s) => <label key={s} className="mb-1 block text-sm text-text-secondary"><input className="mr-2" type="radio" name="status-model" checked={filters.status === s} onChange={() => setFilters({ status: s })} />{s === "all" ? "Tất cả" : s}</label>)}
+            {([
+              { value: "all", label: "Tất cả" },
+              { value: "ready", label: "Ready" },
+              { value: "training", label: "Training" },
+              { value: "trained", label: "Trained" },
+              { value: "failed", label: "Failed" }
+            ] as const).map((s) => (
+              <label key={s.value} className="mb-1 block text-sm text-text-secondary">
+                <input
+                  className="mr-2"
+                  type="radio"
+                  name="status-model"
+                  checked={filters.status === s.value}
+                  onChange={() => setFilters({ status: s.value })}
+                />
+                {s.label}
+              </label>
+            ))}
           </div>
           <div>
             <p className="mb-1 text-sm font-semibold">{metricLabel}</p>

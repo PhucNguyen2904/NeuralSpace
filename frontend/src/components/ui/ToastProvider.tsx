@@ -2,7 +2,7 @@
 
 import { AnimatePresence } from "framer-motion";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Toast, type ToastAction, type ToastItem, type ToastVariant } from "@/components/ui/Toast";
+import { Toast, type ToastAction, type ToastItem, type ToastVariant } from "@/components/ui/toast";
 
 type CreateToastInput = {
   id?: string;

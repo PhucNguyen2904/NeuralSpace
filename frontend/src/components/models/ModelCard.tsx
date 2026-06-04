@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, FileText, Layers, LoaderCircle, Package, PenTool, ScanSearch, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui";
@@ -71,6 +72,9 @@ export function ModelCard({
         <Button size="sm" className="flex-1 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canLoad} title={!canLoad ? "Cần có workspace đang chạy để load model" : undefined} onClick={() => onLoad(model)}>
           Load vào Workspace
         </Button>
+        <Link href={`/models/${encodeURIComponent(model.name)}`} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated">
+          Registry
+        </Link>
         <Button size="sm" variant="ghost" onClick={() => onDetail(model)}>Chi tiết →</Button>
       </div>
     </article>

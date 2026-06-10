@@ -92,6 +92,29 @@ html.theme-dark {
   color-scheme: dark;
 }
 
+.auth-light {
+  color-scheme: light;
+  --color-bg-base: #f8f8fc;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #f0f0f8;
+  --color-bg-sunken: #ebebf4;
+  --color-border-subtle: #e8e8f0;
+  --color-border-default: #d0d0e0;
+  --color-border-strong: #b9b9ce;
+  --color-text-primary: #0a0a1a;
+  --color-text-secondary: #555570;
+  --color-text-tertiary: #9999aa;
+  --color-brand-50: rgba(99, 102, 241, 0.1);
+  --color-accent-glow: rgba(99, 102, 241, 0.12);
+  --color-success-50: rgba(16, 185, 129, 0.1);
+  --color-warning-50: rgba(245, 158, 11, 0.12);
+  --color-error-50: rgba(239, 68, 68, 0.1);
+  --shadow-xs: 0 1px 2px rgba(10, 10, 26, 0.06);
+  --shadow-sm: 0 1px 3px rgba(10, 10, 26, 0.08), 0 0 0 1px rgba(10, 10, 26, 0.03);
+  --shadow-md: 0 4px 16px rgba(10, 10, 26, 0.1), 0 0 0 1px rgba(10, 10, 26, 0.04);
+  --shadow-lg: 0 14px 42px rgba(10, 10, 26, 0.14), 0 0 0 1px rgba(10, 10, 26, 0.05);
+}
+
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body {

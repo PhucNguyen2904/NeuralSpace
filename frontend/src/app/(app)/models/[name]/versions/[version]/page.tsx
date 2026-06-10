@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
 import { ApprovalStatusBanner, MetricDelta, StageBadge } from "@/components/shared";
 import { PromoteModal } from "@/components/models/registry/PromoteModal";
 import { useModelVersions } from "@/lib/hooks/useModelRegistry";
@@ -10,8 +11,9 @@ type Tab = "overview" | "lineage" | "audit";
 
 export default function ModelVersionDetailPage() {
   const params = useParams<{ name: string; version: string }>();
-  const modelName = params?.name ?? "";
-  const versionParam = params?.version ?? "";
+  const router = useRouter();
+  const modelName = safeDecode(params?.name ?? "");
+  const versionParam = safeDecode(params?.version ?? "");
   const normalized = versionParam.startsWith("v") ? versionParam : `v${versionParam}`;
   const [tab, setTab] = useState<Tab>("overview");
   const [promoteOpen, setPromoteOpen] = useState(false);
@@ -25,10 +27,15 @@ export default function ModelVersionDetailPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold">{modelName}</h1>
-        <span className="text-lg font-medium">{current.version}</span>
-        <StageBadge stage={current.stage} />
+      <header className="flex flex-wrap items-center gap-3">
+        <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-bg-elevated" onClick={() => router.push(`/models/${encodeURIComponent(modelName)}`)}>
+          <ArrowLeft size={15} /> Back
+        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-semibold">{modelName}</h1>
+          <span className="text-lg font-medium">{current.version}</span>
+          <StageBadge stage={current.stage} />
+        </div>
         <button className="ml-auto rounded-md border border-border px-3 py-1.5 text-sm hover:bg-bg-elevated" onClick={() => setPromoteOpen(true)}>
           Rollback/Promote
         </button>
@@ -119,4 +126,12 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function Placeholder({ text }: { text: string }) {
   return <div className="rounded-md border border-border bg-bg-surface p-4 text-sm text-text-secondary">{text}</div>;
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

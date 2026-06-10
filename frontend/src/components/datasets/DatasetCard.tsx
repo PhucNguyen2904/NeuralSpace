@@ -1,7 +1,7 @@
 "use client";
 
 import { formatDistanceToNow } from "date-fns";
-import { Calendar, CheckCircle2, ExternalLink, FileText, Film, Images, LoaderCircle, Mic, Package, Table } from "lucide-react";
+import { Calendar, CheckCircle2, Eye, FileText, Film, GitBranch, Images, LoaderCircle, Mic, Package, Table } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils/cn";
 import type { Dataset } from "@/types/dataset";
@@ -18,12 +18,14 @@ export function DatasetCard({
   dataset,
   active = false,
   onUse,
-  onViewDetails
+  onViewDetails,
+  onViewVersions
 }: {
   dataset: Dataset;
   active?: boolean;
   onUse: (dataset: Dataset) => void;
   onViewDetails: (dataset: Dataset) => void;
+  onViewVersions: (dataset: Dataset) => void;
 }) {
   const TypeIcon = typeIconMap[dataset.type];
   return (
@@ -37,11 +39,11 @@ export function DatasetCard({
             "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium",
             dataset.label_status === "labeled" && "bg-[#ECFDF5] text-emerald-700",
             dataset.label_status === "unlabeled" && "bg-gray-100 text-gray-600",
-            dataset.label_status === "processing" && "bg-amber-50 text-amber-700 status-pulse"
+            dataset.label_status === "processing" && "bg-amber-50 text-amber-700"
           )}
         >
           {dataset.label_status === "labeled" ? <CheckCircle2 size={12} /> : null}
-          {dataset.label_status === "processing" ? <LoaderCircle size={12} className="animate-spin" /> : null}
+          {dataset.label_status === "processing" ? <LoaderCircle size={12} /> : null}
           {dataset.label_status === "labeled" ? "Labeled" : dataset.label_status === "processing" ? "Processing" : "Unlabeled"}
         </span>
       </div>
@@ -54,9 +56,12 @@ export function DatasetCard({
         <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><CheckCircle2 size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={dataset.label_status}>{dataset.label_status}</span></div>
         <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><Calendar size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}>{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</span></div>
       </div>
-      <div className="mt-4 flex">
-        <Button size="sm" variant="outline" className="w-full text-text-secondary" onClick={() => onViewDetails(dataset)}>
-          Chi tiết
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <Button size="sm" variant="outline" className="text-text-secondary" onClick={() => onViewDetails(dataset)}>
+          <Eye size={14} /> Chi tiết
+        </Button>
+        <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={() => onViewVersions(dataset)}>
+          <GitBranch size={14} /> Versions
         </Button>
       </div>
     </article>

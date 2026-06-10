@@ -2,15 +2,17 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { ExternalLink, X, Download } from "lucide-react";
+import { Download, GitBranch, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import * as React from "react";
-import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { ClassDistributionChart } from "@/components/datasets/ClassDistributionChart";
 import { Button } from "@/components/ui";
 import { useDatasetDetail } from "@/lib/hooks/useDatasets";
+import { useVersionList } from "@/lib/hooks/useDatasetVersions";
+import { formatBytes } from "@/lib/utils/format";
+import type { DatasetVersion } from "@/lib/hooks/useDatasetVersions";
 import type { Dataset } from "@/types/dataset";
 
-type TabValue = "overview" | "preview" | "distribution" | "history";
+type TabValue = "overview" | "preview" | "versions" | "history";
 
 export function DatasetDetailDrawer({
   datasetId,
@@ -21,7 +23,9 @@ export function DatasetDetailDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const { detail, preview } = useDatasetDetail(datasetId ?? "");
+  const versionsQuery = useVersionList(datasetId ?? "");
   const dataset = detail.data;
   const [tab, setTab] = React.useState<TabValue>("overview");
 
@@ -41,6 +45,9 @@ export function DatasetDetailDrawer({
             <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
           </div>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)}>
+              <GitBranch size={14} className="mr-1" /> Versions
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => {
               const a = document.createElement("a");
               a.href = "data:text/plain;charset=utf-8,Mock%20Dataset%20Content";
@@ -54,7 +61,7 @@ export function DatasetDetailDrawer({
         </div>
         <div className="border-b border-border px-5 py-2">
           <div className="flex gap-2 text-sm">
-            {(["overview", "preview", "distribution", "history"] as TabValue[]).map((item) => (
+            {(["overview", "preview", "versions", "history"] as TabValue[]).map((item) => (
               <button key={item} onClick={() => setTab(item)} className={tab === item ? "rounded-md bg-[#ECFDF5] px-2 py-1 font-medium text-emerald-700" : "rounded-md px-2 py-1 text-text-secondary"}>
                 {item.toUpperCase()}
               </button>
@@ -91,20 +98,13 @@ export function DatasetDetailDrawer({
               )}
             </div>
           ) : null}
-          {tab === "distribution" ? (
-            <div className="space-y-4">
-              {preview.data?.class_distribution ? <ClassDistributionChart distribution={preview.data.class_distribution} /> : <p className="text-sm text-text-secondary">Không có dữ liệu phân phối.</p>}
-              {preview.data?.split_info ? (
-                <div className="h-56 rounded-lg border border-border p-3">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={[{ name: "Train", value: preview.data.split_info.train }, { name: "Val", value: preview.data.split_info.val }, { name: "Test", value: preview.data.split_info.test }]} dataKey="value" nameKey="name" outerRadius={80} label />
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : null}
-            </div>
+          {tab === "versions" ? (
+            <DatasetVersionTimeline
+              dataset={dataset}
+              versions={versionsQuery.data ?? []}
+              loading={versionsQuery.isLoading}
+              onOpenVersions={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)}
+            />
           ) : null}
           {tab === "history" ? (
             <div className="space-y-2 text-sm text-text-secondary">
@@ -124,6 +124,67 @@ function Info({ label, value }: { label: string; value: string }) {
       <span className="text-text-tertiary">{label}: </span>
       <span className="font-medium text-text-primary">{value}</span>
     </p>
+  );
+}
+
+function DatasetVersionTimeline({
+  dataset,
+  versions,
+  loading,
+  onOpenVersions
+}: {
+  dataset: Dataset;
+  versions: DatasetVersion[];
+  loading: boolean;
+  onOpenVersions: () => void;
+}) {
+  const displayVersions = versions.length > 0 ? versions.slice(0, 5) : [];
+
+  if (loading) {
+    return <div className="rounded-lg border border-border p-4 text-sm text-text-secondary">Loading versions...</div>;
+  }
+
+  if (displayVersions.length === 0) {
+    return (
+      <div className="space-y-3">
+        <div className="relative pl-6">
+          <div className="absolute bottom-1 left-2 top-1 w-px bg-emerald-200" />
+          <div className="relative">
+            <span className="absolute -left-[17px] top-1.5 h-3 w-3 rounded-full border-2 border-emerald-500 bg-emerald-500" />
+            <p className="text-sm font-semibold text-text-primary">{dataset.version || "v1.0"} Current</p>
+            <p className="text-sm text-text-secondary">{formatSize(dataset.size_bytes)} · {dataset.item_count.toLocaleString()} items</p>
+            <p className="text-xs text-text-tertiary">{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</p>
+          </div>
+        </div>
+        <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={onOpenVersions}>
+          <GitBranch size={14} /> View all versions
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="relative pl-6">
+        <div className="absolute bottom-1 left-2 top-1 w-px bg-emerald-200" />
+        <div className="space-y-4">
+          {displayVersions.map((version) => (
+            <div key={version.id} className="relative">
+              <span className={`absolute -left-[17px] top-1.5 h-3 w-3 rounded-full border-2 ${version.is_latest ? "border-emerald-500 bg-emerald-500" : "border-emerald-500 bg-bg-surface"}`} />
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-text-primary">{version.version}</p>
+                {version.is_latest ? <span className="rounded-full bg-[#ECFDF5] px-2 py-0.5 text-xs text-emerald-700">Latest</span> : null}
+              </div>
+              <p className="text-sm text-text-secondary">{formatBytes(version.size_bytes)} · {version.item_count.toLocaleString()} items · {version.status}</p>
+              <p className="text-xs text-text-tertiary">{formatDistanceToNow(new Date(version.created_at), { addSuffix: true })}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+      <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={onOpenVersions}>
+        <GitBranch size={14} /> View all versions
+      </Button>
+    </div>
   );
 }
 

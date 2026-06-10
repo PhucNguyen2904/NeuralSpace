@@ -57,6 +57,10 @@ export default function DatasetsPage() {
   });
   const mountMutation = useMountDatasetMutation();
 
+  const openDatasetVersions = (dataset: Dataset) => {
+    router.push(`/datasets/${encodeURIComponent(dataset.id)}`);
+  };
+
   useEffect(() => {
     setFilters(parseFilters(new URLSearchParams(searchParams.toString())));
   }, [searchParams, setFilters]);
@@ -232,17 +236,24 @@ export default function DatasetsPage() {
           {!isLoading && datasets.length > 0 && filters.view === "grid" ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {datasets.map((dataset) => (
-                <DatasetCard key={dataset.id} dataset={dataset} active={Boolean(mountedMap[dataset.id])} onUse={(item) => setSelectedDataset(item)} onViewDetails={setSelectedDataset} />
+                <DatasetCard
+                  key={dataset.id}
+                  dataset={dataset}
+                  active={Boolean(mountedMap[dataset.id])}
+                  onUse={(item) => setSelectedDataset(item)}
+                  onViewDetails={setSelectedDataset}
+                  onViewVersions={openDatasetVersions}
+                />
               ))}
             </div>
           ) : null}
           {!isLoading && datasets.length > 0 && filters.view === "list" ? (
             <div className="space-y-1">
-              <div className="grid grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr] gap-3 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary">
-                <span>Icon</span><span>Name & Desc</span><span>Type</span><span>Size</span><span>Items</span><span>Status</span><span>Modified</span>
+              <div className="grid grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr_0.7fr] gap-3 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary">
+                <span>Icon</span><span>Name & Desc</span><span>Type</span><span>Size</span><span>Items</span><span>Status</span><span>Modified</span><span>Versions</span>
               </div>
               {datasets.map((dataset) => (
-                <DatasetRow key={dataset.id} dataset={dataset} onSelect={setSelectedDataset} onUse={(item) => setSelectedDataset(item)} />
+                <DatasetRow key={dataset.id} dataset={dataset} onSelect={setSelectedDataset} onUse={(item) => setSelectedDataset(item)} onViewVersions={openDatasetVersions} />
               ))}
             </div>
           ) : null}

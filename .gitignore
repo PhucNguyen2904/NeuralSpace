@@ -15,3 +15,10 @@ __pycache__/
 .venv/
 venv/
 env/
+**/.venv/
+**/venv/
+**/env/
+
+# Python Packages
+*.egg-info/
+**/*.egg-info/

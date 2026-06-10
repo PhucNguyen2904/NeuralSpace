@@ -39,6 +39,11 @@ def _run_payload(row: Run) -> dict:
         "tags": row.tags_snapshot or {},
         "params": params,
         "metrics": metrics,
+        "dvc_dataset_version_id": row.dvc_dataset_version_id,
+        "dvc_md5": row.dvc_md5,
+        "source_type": row.source_type,
+        "source_name": row.source_name,
+        "git_commit": row.git_commit,
     }
 
 

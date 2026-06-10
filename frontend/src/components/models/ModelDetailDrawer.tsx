@@ -14,8 +14,7 @@ type Tab = "overview" | "metrics" | "files" | "usage" | "versions";
 export function ModelDetailDrawer({
   modelId,
   open,
-  onClose,
-  onLoad
+  onClose
 }: {
   modelId: string | null;
   open: boolean;

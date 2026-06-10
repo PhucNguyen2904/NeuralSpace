@@ -1,0 +1,7 @@
+[cache]
+    type = "hardlink,symlink,copy"
+[core]
+    remote = minio
+['remote "minio"']
+    url = s3://workspace-data
+    endpointurl = http://localhost:9000

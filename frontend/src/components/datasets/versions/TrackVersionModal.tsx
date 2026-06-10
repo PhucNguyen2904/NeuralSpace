@@ -13,7 +13,7 @@ interface TrackVersionModalProps {
 
 export function TrackVersionModal({ open, onClose, datasetId, tracker }: TrackVersionModalProps) {
   const [changelog, setChangelog] = useState("");
-  const [path, setPath] = useState("/workspace/datasets/coco2017/");
+  const [path, setPath] = useState("/workspace/datasets/");
 
   const submit = async () => {
     await tracker.trackVersion({ datasetId, changelog, path });
@@ -67,11 +67,9 @@ export function TrackVersionModal({ open, onClose, datasetId, tracker }: TrackVe
         </div>
 
         <div className="rounded-md border border-border bg-bg-elevated p-3 text-sm">
-          <p className="font-medium">Preview sẽ track</p>
-          <p className="mt-1">📁 coco2017/</p>
-          <p className="text-text-secondary">├── images/ (118,287 files, 18.2 GB)</p>
-          <p className="text-text-secondary">└── annotations/ (3 files, 245 MB)</p>
-          <p className="mt-1 font-medium">Tổng: 18.4 GB</p>
+          <p className="font-medium">DVC tracking preview</p>
+          <p className="mt-1 font-mono text-xs">{path || "No path selected"}</p>
+          <p className="mt-1 text-text-secondary">Backend sẽ tạo dataset version mới và lưu metadata DVC cho dataset hiện tại.</p>
         </div>
 
         <p className="flex items-center gap-2 text-sm text-amber-700">

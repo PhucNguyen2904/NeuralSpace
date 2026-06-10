@@ -41,6 +41,11 @@ export interface Run {
   tags?: Record<string, string>;
   params?: MlflowParam[];
   metrics?: MlflowMetric[];
+  dvc_dataset_version_id?: string;
+  dvc_md5?: string;
+  source_type?: string;
+  source_name?: string;
+  git_commit?: string;
 }
 
 export interface Experiment {

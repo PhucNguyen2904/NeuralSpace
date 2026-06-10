@@ -3,7 +3,7 @@ import { BrainCircuit, Database, Sparkles } from "lucide-react";
 
 export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <main className="grid min-h-screen grid-cols-1 bg-bg-base md:grid-cols-2">
+    <main className="auth-light grid min-h-screen grid-cols-1 bg-bg-base md:grid-cols-2">
       <section className="relative hidden overflow-hidden p-10 text-white md:block" style={{ background: "linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #A78BFA 100%)" }}>
         <div
           className="absolute inset-0 opacity-10"

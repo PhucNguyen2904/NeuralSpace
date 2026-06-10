@@ -115,16 +115,27 @@ function sortRuns(runs: RunDetailData[], filters: RunFilters): RunDetailData[] {
   });
 }
 
+function formatDuration(durationMs?: number): string | undefined {
+  if (!durationMs) return undefined;
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
 export function useExperimentList() {
   return useQuery({
     queryKey: ["experiments-list"],
     queryFn: async () => {
       try {
         const response = await getExperiments({ limit: 50 });
-        if (response.items.length === 0) return MOCK_EXPERIMENTS;
         return response.items.map((exp) => ({ ...exp, run_count: exp.run_count ?? 0 }));
       } catch {
-        return MOCK_EXPERIMENTS;
+        return [];
       }
     }
   });
@@ -140,21 +151,34 @@ export function useRunList(experimentId: string, filters: RunFilters) {
         const response = await getRuns({ experiment_id: experimentId, status: filters.status === "ALL" ? undefined : filters.status, limit: 200 });
         runs = response.items.map((run, index) => {
           const base = MOCK_RUNS[index % MOCK_RUNS.length];
+          const paramsMap = Object.fromEntries((run.params ?? []).map((param) => [param.key, param.value]));
+          const metricsMap = Object.fromEntries((run.metrics ?? []).map((metric) => [metric.key, metric.value]));
           return {
             ...base,
             ...run,
             name: run.name ?? base.name,
             status: run.status,
             start_time: run.start_time,
+            branch: run.tags?.branch ?? base.branch,
+            commit: run.git_commit ?? run.tags?.commit ?? base.commit,
+            durationLabel: formatDuration(run.duration_ms) ?? base.durationLabel,
             metricsMap: {
-              accuracy: run.metrics?.find((metric) => metric.key === "accuracy")?.value ?? base.metricsMap.accuracy,
-              loss: run.metrics?.find((metric) => metric.key === "loss")?.value ?? base.metricsMap.loss,
-              f1_score: run.metrics?.find((metric) => metric.key === "f1_score")?.value ?? base.metricsMap.f1_score
+              accuracy: Number(metricsMap.accuracy ?? base.metricsMap.accuracy),
+              loss: Number(metricsMap.loss ?? base.metricsMap.loss),
+              f1_score: Number(metricsMap.f1_score ?? metricsMap.f1 ?? base.metricsMap.f1_score)
+            },
+            paramsMap: Object.keys(paramsMap).length ? paramsMap : base.paramsMap,
+            dataset: {
+              ...base.dataset,
+              id: run.dvc_dataset_version_id ?? base.dataset.id,
+              name: run.dvc_dataset_version_id ? "Dataset version" : base.dataset.name,
+              version: run.dvc_dataset_version_id ? run.dvc_dataset_version_id.slice(0, 8) : base.dataset.version,
+              dvcHash: run.dvc_md5 ?? base.dataset.dvcHash
             }
           };
         });
       } catch {
-        runs = MOCK_RUNS.filter((run) => run.experiment_id === experimentId);
+        runs = [];
       }
 
       const filtered = runs.filter((run) => {
@@ -179,9 +203,31 @@ export function useRunDetail(runId: string) {
       try {
         const run = await getRunById(runId);
         const mock = MOCK_RUNS.find((item) => item.run_id === runId) ?? MOCK_RUNS[0];
-        return { ...mock, ...run, name: run.name ?? mock.name };
+        const paramsMap = Object.fromEntries((run.params ?? []).map((param) => [param.key, param.value]));
+        const metricsMap = Object.fromEntries((run.metrics ?? []).map((metric) => [metric.key, metric.value]));
+        return {
+          ...mock,
+          ...run,
+          name: run.name ?? mock.name,
+          branch: run.tags?.branch ?? mock.branch,
+          commit: run.git_commit ?? run.tags?.commit ?? mock.commit,
+          durationLabel: formatDuration(run.duration_ms) ?? mock.durationLabel,
+          metricsMap: {
+            accuracy: Number(metricsMap.accuracy ?? mock.metricsMap.accuracy),
+            loss: Number(metricsMap.loss ?? mock.metricsMap.loss),
+            f1_score: Number(metricsMap.f1_score ?? metricsMap.f1 ?? mock.metricsMap.f1_score)
+          },
+          paramsMap: Object.keys(paramsMap).length ? paramsMap : mock.paramsMap,
+          dataset: {
+            ...mock.dataset,
+            id: run.dvc_dataset_version_id ?? mock.dataset.id,
+            name: run.dvc_dataset_version_id ? "Dataset version" : mock.dataset.name,
+            version: run.dvc_dataset_version_id ? run.dvc_dataset_version_id.slice(0, 8) : mock.dataset.version,
+            dvcHash: run.dvc_md5 ?? mock.dataset.dvcHash
+          }
+        };
       } catch {
-        return MOCK_RUNS.find((item) => item.run_id === runId) ?? MOCK_RUNS[0];
+        throw new Error("Run not found");
       }
     }
   });

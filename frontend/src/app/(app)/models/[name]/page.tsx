@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
+import { Button } from "@/components/ui";
 import { StageBadge } from "@/components/shared";
 import { VersionTimeline } from "@/components/models/registry/VersionTimeline";
 import { useModelVersions } from "@/lib/hooks/useModelRegistry";
@@ -11,22 +13,27 @@ type Tab = "versions" | "experiments" | "settings";
 export default function ModelRegistryDetailPage() {
   const params = useParams<{ name: string }>();
   const router = useRouter();
-  const modelName = params?.name ?? "";
+  const modelName = safeDecode(params?.name ?? "");
   const [tab, setTab] = useState<Tab>("versions");
   const versions = useModelVersions(modelName);
   const latest = versions.data?.[0];
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl font-semibold">{modelName}</h1>
-        <p className="text-sm text-text-secondary">Framework: PyTorch | Task: Image Classification</p>
-        {latest ? (
-          <div className="mt-2 flex items-center gap-2 text-sm">
-            <span>Latest: {latest.version}</span>
-            <StageBadge stage={latest.stage} />
-          </div>
-        ) : null}
+      <header className="flex flex-wrap items-center gap-3">
+        <Button size="sm" variant="outline" onClick={() => router.push("/models")}>
+          <ArrowLeft size={14} /> Back
+        </Button>
+        <div>
+          <h1 className="text-2xl font-semibold">{modelName}</h1>
+          <p className="text-sm text-text-secondary">Framework: PyTorch | Task: Image Classification</p>
+          {latest ? (
+            <div className="mt-2 flex items-center gap-2 text-sm">
+              <span>Latest: {latest.version}</span>
+              <StageBadge stage={latest.stage} />
+            </div>
+          ) : null}
+        </div>
       </header>
 
       <div className="flex gap-2 border-b border-border pb-2">
@@ -38,7 +45,7 @@ export default function ModelRegistryDetailPage() {
       {tab === "versions" ? (
         <VersionTimeline
           versions={versions.data ?? []}
-          onViewVersion={(version) => router.push(`/models/${modelName}/versions/${version.replace(/^v/, "")}`)}
+          onViewVersion={(version) => router.push(`/models/${encodeURIComponent(modelName)}/versions/${encodeURIComponent(version.replace(/^v/, ""))}`)}
           onRollback={() => {}}
         />
       ) : null}
@@ -58,4 +65,12 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 
 function Placeholder({ text }: { text: string }) {
   return <div className="rounded-md border border-border bg-bg-surface p-4 text-sm text-text-secondary">{text}</div>;
+}
+
+function safeDecode(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 }

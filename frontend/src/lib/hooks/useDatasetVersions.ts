@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createDatasetVersion, getDatasetVersionById, getDatasetVersions } from "@/lib/api/dvc";
+import { createDatasetVersion, diffDatasetVersions, getDatasetVersionById, getDatasetVersions, validateDatasetVersion } from "@/lib/api/dvc";
 import type { Stage } from "@/types/mlflow";
 
 export interface IntegrityCheckResult {
@@ -52,92 +52,56 @@ export interface DatasetVersion {
   };
 }
 
-const MOCK_VERSIONS: DatasetVersion[] = [
-  {
-    id: "dv_13",
-    dataset_id: "dataset_1",
-    version: "v1.3",
-    dvc_md5: "abc1234def4567890",
-    status: "validated",
-    is_latest: true,
-    size_bytes: 18.7 * 1024 ** 3,
-    item_count: 118287,
-    split_ratio: "80/10/10",
-    created_by: "alice",
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    changelog: "Thêm 5K ảnh mới, fix label lỗi class 'car'",
-    git_commit: "abc1234",
-    storage_uri: "s3://dvc-data/datasets/coco2017/",
-    tracked_at: "2024-01-15 14:32:00",
-    linked_models: [
-      { id: "m_1", name: "resnet50-custom v1.3", stage: "Production" },
-      { id: "m_2", name: "yolov8-nano v2.1", stage: "Staging" }
-    ],
+function mapVersion(raw: {
+  id: string;
+  dataset_id?: string;
+  version: string;
+  dvc_md5?: string;
+  dvc_commit?: string;
+  git_commit?: string;
+  status: "draft" | "validated" | "deprecated";
+  is_latest?: boolean;
+  size_bytes?: number;
+  item_count?: number;
+  storage_path?: string;
+  storage_uri?: string;
+  created_by?: string;
+  created_at: string;
+  changelog?: string;
+  note?: string;
+  tracked_at?: string;
+  linked_models?: Array<{ id: string; name: string; stage?: string }>;
+}): DatasetVersion {
+  return {
+    id: raw.id,
+    dataset_id: raw.dataset_id ?? "",
+    version: raw.version,
+    dvc_md5: raw.dvc_md5 ?? "",
+    status: raw.status,
+    is_latest: Boolean(raw.is_latest),
+    size_bytes: raw.size_bytes ?? 0,
+    item_count: raw.item_count ?? 0,
+    split_ratio: "N/A",
+    created_by: raw.created_by ?? "system",
+    created_at: raw.created_at,
+    changelog: raw.changelog ?? raw.note ?? "",
+    git_commit: raw.git_commit ?? raw.dvc_commit ?? "",
+    storage_uri: raw.storage_uri ?? raw.storage_path ?? "",
+    tracked_at: raw.tracked_at ?? raw.created_at,
+    linked_models: (raw.linked_models ?? []).map((model) => ({
+      id: model.id,
+      name: model.name,
+      stage: (model.stage ?? "None") as Stage
+    })),
     integrity: {
-      lastChecked: "2 giờ trước",
+      lastChecked: "Not checked",
       checks: [
-        { key: "md5", label: "MinIO data khớp MD5", passed: true },
-        { key: "git", label: "Git commit còn tồn tại", passed: true },
-        { key: "schema", label: "Schema không thay đổi", passed: true }
+        { key: "md5", label: "DVC md5 metadata exists", passed: Boolean(raw.dvc_md5) },
+        { key: "git", label: "Git commit metadata exists", passed: Boolean(raw.dvc_commit ?? raw.git_commit) },
+        { key: "storage", label: "Storage path metadata exists", passed: Boolean(raw.storage_path ?? raw.storage_uri) }
       ]
     }
-  },
-  {
-    id: "dv_12",
-    dataset_id: "dataset_1",
-    version: "v1.2",
-    dvc_md5: "def5678abc4567890",
-    status: "validated",
-    is_latest: false,
-    size_bytes: 18.2 * 1024 ** 3,
-    item_count: 113053,
-    split_ratio: "80/10/10",
-    created_by: "alice",
-    created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    changelog: "Bổ sung annotation object detection cho 2 class mới",
-    git_commit: "def5678",
-    storage_uri: "s3://dvc-data/datasets/coco2017/",
-    tracked_at: "2024-01-08 08:10:21",
-    linked_models: [],
-    integrity: {
-      lastChecked: "1 ngày trước",
-      checks: [
-        { key: "md5", label: "MinIO data khớp MD5", passed: true },
-        { key: "git", label: "Git commit còn tồn tại", passed: true },
-        { key: "schema", label: "Schema không thay đổi", passed: true }
-      ]
-    }
-  },
-  {
-    id: "dv_11",
-    dataset_id: "dataset_1",
-    version: "v1.1",
-    dvc_md5: "ghi9012abc4567890",
-    status: "deprecated",
-    is_latest: false,
-    size_bytes: 17.8 * 1024 ** 3,
-    item_count: 112937,
-    split_ratio: "80/10/10",
-    created_by: "alice",
-    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    changelog: "Version cũ, có một số sample corrupted",
-    git_commit: "ghi9012",
-    storage_uri: "s3://dvc-data/datasets/coco2017/",
-    tracked_at: "2023-12-12 09:45:00",
-    linked_models: [],
-    integrity: {
-      lastChecked: "2 tuần trước",
-      checks: [
-        { key: "md5", label: "MinIO data khớp MD5", passed: false, message: "Mismatch 12 file annotations." },
-        { key: "git", label: "Git commit còn tồn tại", passed: true },
-        { key: "schema", label: "Schema không thay đổi", passed: true }
-      ]
-    }
-  }
-];
-
-function mapVersion(raw: (typeof MOCK_VERSIONS)[number]): DatasetVersion {
-  return raw;
+  };
 }
 
 export function useVersionList(datasetId: string) {
@@ -147,45 +111,21 @@ export function useVersionList(datasetId: string) {
     queryFn: async () => {
       try {
         const response = await getDatasetVersions({ dataset_name: datasetId, limit: 100 });
-        if (response.items.length === 0) return MOCK_VERSIONS;
-        return response.items.map((item, index) =>
-          mapVersion({
-            ...MOCK_VERSIONS[0],
-            id: item.id,
-            dataset_id: datasetId,
-            version: item.version,
-            dvc_md5: item.dvc_md5,
-            status: item.status,
-            is_latest: index === 0,
-            created_at: item.created_at
-          })
-        );
+        return response.items.map((item) => mapVersion(item));
       } catch {
-        return MOCK_VERSIONS;
+        return [];
       }
     }
   });
 }
 
-export function useVersionDetail(versionId: string) {
+export function useVersionDetail(datasetId: string, versionId: string) {
   return useQuery({
-    queryKey: ["dataset-version-detail", versionId],
-    enabled: Boolean(versionId),
+    queryKey: ["dataset-version-detail", datasetId, versionId],
+    enabled: Boolean(datasetId && versionId),
     queryFn: async () => {
-      try {
-        const response = await getDatasetVersionById(versionId);
-        const fallback = MOCK_VERSIONS.find((item) => item.id === versionId) ?? MOCK_VERSIONS[0];
-        return mapVersion({
-          ...fallback,
-          id: response.id,
-          version: response.version,
-          dvc_md5: response.dvc_md5,
-          status: response.status,
-          created_at: response.created_at
-        });
-      } catch {
-        return MOCK_VERSIONS.find((item) => item.id === versionId) ?? MOCK_VERSIONS[0];
-      }
+      const response = await getDatasetVersionById(datasetId, versionId);
+      return mapVersion(response);
     }
   });
 }
@@ -194,37 +134,45 @@ export interface UseVersionDiffReturn {
   diff: VersionDiffSummary | null;
   isLoading: boolean;
   compare: (againstVersionId: string) => void;
+  recheckIntegrity: () => Promise<void>;
   isRecheckingIntegrity: boolean;
 }
 
-export function useVersionDiff(versionAId: string, _versionBId?: string): UseVersionDiffReturn {
+export function useVersionDiff(datasetId: string, versionAId: string, _versionBId?: string): UseVersionDiffReturn {
   const [diff, setDiff] = useState<VersionDiffSummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecheckingIntegrity] = useState(false);
+  const [isRecheckingIntegrity, setIsRecheckingIntegrity] = useState(false);
 
   const compare = (againstVersionId: string) => {
-    if (!versionAId || !againstVersionId) return;
+    if (!datasetId || !versionAId || !againstVersionId) return;
     setIsLoading(true);
-    window.setTimeout(() => {
-      setDiff({
-        versionAId,
-        versionBId: againstVersionId,
-        added: 5234,
-        modified: 128,
-        removed: 12,
-        netChange: 5222,
-        netPercent: 4.6,
-        samples: [
-          { id: "img_010022.jpg", changeType: "ADDED", note: "new image sample" },
-          { id: "img_031955.jpg", changeType: "MODIFIED", note: "relabeled from truck -> car" },
-          { id: "img_000111.jpg", changeType: "REMOVED", note: "corrupted file" }
-        ]
-      });
-      setIsLoading(false);
-    }, 600);
+    diffDatasetVersions(datasetId, versionAId, againstVersionId)
+      .then((response) => {
+        setDiff({
+          versionAId: response.versionAId ?? versionAId,
+          versionBId: response.versionBId ?? againstVersionId,
+          added: Number(response.added ?? 0),
+          modified: Number(response.modified ?? 0),
+          removed: Number(response.removed ?? 0),
+          netChange: Number(response.netChange ?? 0),
+          netPercent: Number(response.netPercent ?? 0),
+          samples: response.samples ?? []
+        });
+      })
+      .finally(() => setIsLoading(false));
   };
 
-  return { diff, isLoading, compare, isRecheckingIntegrity };
+  const recheck = async () => {
+    if (!datasetId || !versionAId) return;
+    setIsRecheckingIntegrity(true);
+    try {
+      await validateDatasetVersion(datasetId, versionAId);
+    } finally {
+      setIsRecheckingIntegrity(false);
+    }
+  };
+
+  return { diff, isLoading, compare, recheckIntegrity: recheck, isRecheckingIntegrity };
 }
 
 export type TrackProgressStep = {
@@ -246,29 +194,25 @@ export function useTrackVersion(): UseTrackVersionReturn {
 
   const mutation = useMutation({
     mutationFn: async (payload: { datasetId: string; changelog: string; path: string }) => {
-      try {
-        await createDatasetVersion({
-          dataset_name: payload.datasetId,
-          version: `v${Math.floor(Math.random() * 10)}.${Math.floor(Math.random() * 10)}`,
-          dvc_md5: `${Math.random().toString(16).slice(2)}abcdef1`,
-          path: payload.path,
-          note: payload.changelog
-        });
-      } catch {
-        // Keep UI flow alive when backend endpoint is unavailable.
-      }
+      await createDatasetVersion(payload.datasetId, {
+        version: "",
+        local_path: payload.path,
+        path: payload.path,
+        commit_message: payload.changelog || `Track dataset version for ${payload.datasetId}`,
+        changelog: payload.changelog
+      });
     },
     onSuccess: async (_, variables) => {
       const steps: TrackProgressStep[] = [
-        { key: "dvc_add", label: "Đang chạy DVC add...", status: "running" },
-        { key: "push_minio", label: "Đang push lên MinIO...", status: "pending" },
+        { key: "dvc_add", label: "Đang lưu DVC metadata...", status: "running" },
+        { key: "push_minio", label: "Đang đồng bộ storage reference...", status: "pending" },
         { key: "save_metadata", label: "Metadata đã được lưu", status: "pending" }
       ];
       setProgressSteps(steps);
 
       await new Promise<void>((resolve) => {
         window.setTimeout(() => {
-          setProgressSteps((prev) => prev.map((step) => (step.key === "dvc_add" ? { ...step, status: "done", label: "DVC add thành công" } : step)));
+          setProgressSteps((prev) => prev.map((step) => (step.key === "dvc_add" ? { ...step, status: "done", label: "DVC metadata đã sẵn sàng" } : step)));
         }, 800);
         window.setTimeout(() => {
           setProgressSteps((prev) =>
@@ -279,7 +223,7 @@ export function useTrackVersion(): UseTrackVersionReturn {
           );
         }, 1000);
         window.setTimeout(() => {
-          setProgressSteps((prev) => prev.map((step) => (step.key === "push_minio" ? { ...step, status: "done", label: "Upload hoàn tất (18.4 GB)" } : step)));
+          setProgressSteps((prev) => prev.map((step) => (step.key === "push_minio" ? { ...step, status: "done", label: "Storage reference đã đồng bộ" } : step)));
         }, 1800);
         window.setTimeout(() => {
           setProgressSteps((prev) =>

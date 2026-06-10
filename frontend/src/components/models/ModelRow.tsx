@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { Button } from "@/components/ui";
 import type { Model } from "@/types/model";
 
 export function ModelRow({
   model,
   checked,
   onCheck,
-  onDetail,
-  onLoad
+  onDetail
 }: {
   model: Model;
   checked: boolean;

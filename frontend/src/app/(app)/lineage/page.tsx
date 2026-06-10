@@ -9,18 +9,29 @@ import { useImpactAnalysis, useLineageGraph } from "@/hooks/useLineageGraph";
 
 export default function LineagePage() {
   const [rootType, setRootType] = useState<"dataset" | "model">("dataset");
-  const [rootId, setRootId] = useState("dataset_coco_v13");
+  const [rootId, setRootId] = useState("");
   const [depth, setDepth] = useState(3);
   const [highlightPath, setHighlightPath] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [impactMode, setImpactMode] = useState(false);
 
   const graph = useLineageGraph(rootType, rootId, depth);
+  const selectorGraph = useLineageGraph(rootType, "", 4);
   const impact = useImpactAnalysis(impactMode ? rootId : "");
 
   const nodeOptions = useMemo(
-    () => (graph.data?.nodes ?? []).map((node) => ({ id: node.id, name: String((node.data as { name?: string }).name ?? node.id), type: node.type as "dataset" | "run" | "model" })),
-    [graph.data?.nodes]
+    () =>
+      (selectorGraph.data?.nodes ?? []).map((node) => {
+        const data = node.data as { name?: string; version?: string };
+        const name = String(data.name ?? node.id);
+        const version = data.version ? ` ${data.version.startsWith("v") ? data.version : `v${data.version}`}` : "";
+        return {
+          id: node.id,
+          name: `${name}${version}`,
+          type: node.type as "dataset" | "run" | "model"
+        };
+      }),
+    [selectorGraph.data?.nodes]
   );
 
   const selectedNode = useMemo(() => (graph.data?.nodes ?? []).find((node) => node.id === selectedNodeId) ?? null, [graph.data?.nodes, selectedNodeId]);
@@ -41,7 +52,7 @@ export default function LineagePage() {
         highlightPath={highlightPath}
         onRootTypeChange={(value) => {
           setRootType(value);
-          setRootId(value === "dataset" ? "dataset_coco_v13" : "model_resnet_v13");
+          setRootId("");
         }}
         onRootIdChange={(value) => {
           setRootId(value);
@@ -52,6 +63,7 @@ export default function LineagePage() {
         onReset={() => {
           setDepth(3);
           setHighlightPath(true);
+          setRootId("");
           setSelectedNodeId("");
           setImpactMode(false);
         }}

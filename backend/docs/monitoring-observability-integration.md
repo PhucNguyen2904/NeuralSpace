@@ -92,9 +92,6 @@ File: `tests/integration/test_full_workspace_lifecycle.py`
 
 - Yêu cầu Postgres + Redis chạy bằng `docker-compose.test.yml`.
 - Kubernetes API được mock.
-- Celery test chạy eager mode:
-  - `CELERY_TASK_ALWAYS_EAGER=true`
-  - `CELERY_TASK_EAGER_PROPAGATES=true`
 
 ---
 
@@ -107,7 +104,6 @@ Mục đích:
   - `redis-test`
   - `k8s-mock`
   - `api-test`
-  - `worker-test`
 
 ---
 
@@ -136,9 +132,8 @@ Mục đích:
 10. Quota chặn workspace thứ 3 (`429`).
 11. GC kill được workspace idle.
 12. Trace xuất hiện trên Jaeger/collector.
-13. Worker/beat queue routing hoạt động đúng.
-14. Storage sync/restore không làm hỏng shutdown flow.
-15. Proxy truy cập workspace ổn định sau restart.
+13. Storage sync/restore không làm hỏng shutdown flow.
+14. Proxy truy cập workspace ổn định sau restart.
 
 ---
 
@@ -147,8 +142,7 @@ Mục đích:
 1. Database
 2. Redis
 3. API
-4. Workers (Celery worker + beat)
-5. Proxy
+4. Proxy
 
 ---
 
@@ -169,8 +163,5 @@ Mục đích:
 5. Stop task lỗi khi không có K8s thật
    - Mock `KubernetesService` trong integration test/CI.
 
-6. Celery không eager trong test
-   - Xác nhận env eager và `celery_app.conf.task_always_eager`.
-
-7. `/metrics` bị 401
+6. `/metrics` bị 401
    - Kiểm tra `AuthMiddleware.SKIP_PATHS`.

@@ -123,8 +123,8 @@ services:
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       MINIO_ENDPOINT: "minio:9000"
-      MINIO_PUBLIC_ENDPOINT: "localhost:9000"
-      MINIO_PUBLIC_SECURE: "false"
+      MINIO_PUBLIC_ENDPOINT: "${MINIO_PUBLIC_ENDPOINT:-localhost:9000}"
+      MINIO_PUBLIC_SECURE: "${MINIO_PUBLIC_SECURE:-false}"
       MINIO_ACCESS_KEY: "minioadmin"
       MINIO_SECRET_KEY: "minioadmin"
       MINIO_BUCKET: "workspace-data"
@@ -133,7 +133,7 @@ services:
       AWS_ACCESS_KEY_ID: "minioadmin"
       AWS_SECRET_ACCESS_KEY: "minioadmin"
       CORS_ORIGINS: "http://localhost,http://localhost:80,http://localhost:3000"
-      PUBLIC_API_BASE_URL: "http://localhost:8000/api/v1"
+      PUBLIC_API_BASE_URL: "${PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}"
       COLAB_NOTEBOOK_GITHUB_URL: "PhucNguyen2904/CollabClone/blob/master/notebooks/templates/colab_workspace_bootstrap.ipynb"
       COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: "10"
       COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: "480"

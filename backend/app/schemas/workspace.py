@@ -38,6 +38,13 @@ class WorkspaceCreateRequest(BaseModel):
     environment: WorkspaceEnvironmentConfig = Field(default_factory=WorkspaceEnvironmentConfig)
 
 
+class WorkspaceAssetsUpdateRequest(BaseModel):
+    """Replace datasets and models attached to a workspace context."""
+
+    dataset_ids: list[str] = Field(default_factory=list, max_length=10)
+    model_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
 class WorkspaceStopRequest(BaseModel):
     """Stop workspace request payload."""
 

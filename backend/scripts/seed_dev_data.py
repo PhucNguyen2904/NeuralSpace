@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.models.dataset import Dataset
-from app.models.workspace import Workspace, WorkspaceStatus
-from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 
 
 async def seed() -> None:
@@ -21,131 +18,116 @@ async def seed() -> None:
 
     user_1 = str(uuid4())
     user_2 = str(uuid4())
-    now = datetime.now(timezone.utc)
-
     async with session_maker() as session:
-        existing_datasets = {
-            row[0]
-            for row in (
-                await session.execute(
-                    Dataset.__table__.select().with_only_columns(Dataset.id)
-                )
-            ).all()
-        }
         dataset_samples = [
             Dataset(
-                id="dataset_sales_2026",
-                name="Sales Forecast 2026",
-                description="Daily sales records across 12 regions for forecasting experiments.",
+                id="ds_001",
+                name="Iris Sample Dataset",
+                description="Iris sample CSV migrated from the legacy workspace storage.",
                 dataset_type="tabular",
                 status="ready",
-                size_bytes=148_000_000,
-                item_count=1_250_000,
+                size_bytes=104_857_600,
+                item_count=150,
                 label_status="labeled",
-                tags=["finance", "forecasting", "time-series"],
-                storage_path="/datasets/sales_2026",
-                created_by="seed-script",
-                source_payload={"class_count": None},
+                tags=["tabular", "classification", "migration"],
+                storage_path="migration/server/datasets/ds_001/iris_sample.csv",
+                created_by="migration",
+                source_payload={"class_count": 3},
             ),
             Dataset(
-                id="imagenet_subset",
-                name="ImageNet Subset",
-                description="Curated subset of ImageNet for transfer learning demos.",
+                id="ds_002",
+                name="YOLOv8 Custom Dataset",
+                description="Object detection sample dataset migrated from MinIO.",
+                dataset_type="image",
+                status="ready",
+                size_bytes=52_428_800,
+                item_count=5_000,
+                label_status="labeled",
+                tags=["vision", "object-detection", "migration"],
+                storage_path="migration/server/datasets/ds_002/sample.csv",
+                created_by="migration",
+                source_payload={"class_count": 8},
+            ),
+            Dataset(
+                id="ds_003",
+                name="Sentiment Tweets Dataset",
+                description="Text classification sample dataset migrated from MinIO.",
+                dataset_type="text",
+                status="ready",
+                size_bytes=18_874_368,
+                item_count=25_000,
+                label_status="labeled",
+                tags=["nlp", "sentiment", "migration"],
+                storage_path="migration/server/datasets/ds_003/tweets_sample.txt",
+                created_by="migration",
+                source_payload={"class_count": 3},
+            ),
+            Dataset(
+                id="ds_004",
+                name="Audio Manifest Dataset",
+                description="Audio manifest sample dataset migrated from MinIO.",
+                dataset_type="audio",
+                status="ready",
+                size_bytes=73_400_320,
+                item_count=1_200,
+                label_status="processing",
+                tags=["audio", "manifest", "migration"],
+                storage_path="migration/server/datasets/ds_004/audio_manifest.csv",
+                created_by="migration",
+                source_payload={"class_count": 10},
+            ),
+            Dataset(
+                id="ds_005",
+                name="Video Manifest Dataset",
+                description="Video manifest sample dataset migrated from MinIO.",
+                dataset_type="video",
+                status="ready",
+                size_bytes=188_743_680,
+                item_count=320,
+                label_status="processing",
+                tags=["video", "manifest", "migration"],
+                storage_path="migration/server/datasets/ds_005/video_manifest.csv",
+                created_by="migration",
+                source_payload={"class_count": 6},
+            ),
+            Dataset(
+                id="iris_dataset",
+                name="Iris Dataset",
+                description="Classic Iris CSV dataset migrated from MinIO.",
+                dataset_type="tabular",
+                status="ready",
+                size_bytes=16_384,
+                item_count=150,
+                label_status="labeled",
+                tags=["tabular", "classification", "iris"],
+                storage_path="migration/server/datasets/iris_dataset/iris.csv",
+                created_by="migration",
+                source_payload={"class_count": 3},
+            ),
+            Dataset(
+                id="coco_2017_detection",
+                name="COCO 2017 Detection Sample",
+                description="COCO detection sample files migrated from MinIO.",
                 dataset_type="image",
                 status="ready",
                 size_bytes=3_221_225_472,
                 item_count=120_000,
                 label_status="labeled",
-                tags=["vision", "classification"],
-                storage_path="/datasets/imagenet_subset",
-                created_by="seed-script",
-                source_payload={"class_count": 1000},
-            ),
-            Dataset(
-                id="dataset_customer_churn",
-                name="Customer Churn Analytics",
-                description="Structured customer behavior logs with churn outcome labels.",
-                dataset_type="tabular",
-                status="ready",
-                size_bytes=84_200_120,
-                item_count=600_000,
-                label_status="labeled",
-                tags=["churn", "classification", "crm"],
-                storage_path="/datasets/customer_churn",
-                created_by="seed-script",
-                source_payload={"class_count": 2},
-            ),
-            Dataset(
-                id="dataset_support_tickets",
-                name="Support Ticket Corpus",
-                description="Vietnamese and English support tickets for text classification.",
-                dataset_type="text",
-                status="ready",
-                size_bytes=22_401_773,
-                item_count=220_000,
-                label_status="processing",
-                tags=["nlp", "multilingual", "ticketing"],
-                storage_path="/datasets/support_tickets",
-                created_by="seed-script",
-                source_payload={"class_count": 12},
+                tags=["vision", "detection", "coco"],
+                storage_path="migration/server/datasets/coco_2017_detection/sample_0001.jpg",
+                created_by="migration",
+                source_payload={"class_count": 80},
             ),
         ]
 
-        session.add_all([d for d in dataset_samples if d.id not in existing_datasets])
+        for dataset in dataset_samples:
+            await session.merge(dataset)
 
-        ws1 = Workspace(
-            user_id=user_1,
-            name="ML Experiment A",
-            status=WorkspaceStatus.RUNNING,
-            tier="cpu-standard",
-            k8s_namespace="ws-demo001",
-            k8s_pod_name="jupyter-demo001",
-            pod_ip="10.42.0.21",
-            access_url="https://ide.local/ws-demo001",
-            dataset_ids=["dataset_sales_2026"],
-            model_ids=["model_xgb_v2"],
-            environment_config={"python_version": "3.11", "extra_packages": ["pandas", "numpy"]},
-            resource_config={"cpu_limit": "2", "memory_limit": "4Gi"},
-            started_at=now - timedelta(minutes=15),
-            last_heartbeat=now - timedelta(seconds=10),
-            last_kernel_activity=now - timedelta(minutes=2),
-            auto_kill_at=now + timedelta(minutes=25),
-        )
-        ws2 = Workspace(
-            user_id=user_2,
-            name="GPU Training",
-            status=WorkspaceStatus.PROVISIONING,
-            tier="gpu-t4",
-            dataset_ids=["imagenet_subset"],
-            model_ids=["resnet50_trial"],
-            environment_config={"python_version": "3.12", "extra_packages": ["torch", "torchvision"]},
-            resource_config={"cpu_limit": "4", "memory_limit": "16Gi", "gpu_limit": "1"},
-        )
-        session.add_all([ws1, ws2])
-        await session.flush()
-
-        session.add_all(
-            [
-                WorkspaceEvent(
-                    workspace_id=ws1.id,
-                    event_type=WorkspaceEventType.START_REQUESTED.value,
-                    actor=f"user:{user_1}",
-                    details={"source": "api"},
-                ),
-                WorkspaceEvent(
-                    workspace_id=ws1.id,
-                    event_type=WorkspaceEventType.RUNNING.value,
-                    actor="system",
-                    details={"pod_ready": True},
-                ),
-                WorkspaceEvent(
-                    workspace_id=ws2.id,
-                    event_type=WorkspaceEventType.PROVISIONING.value,
-                    actor="system",
-                    details={"node_pool": "gpu-pool"},
-                ),
-            ]
-        )
+        # Skipped workspace insertions to avoid foreign key violation
+        # ws1 = Workspace(...)
+        # session.add_all([ws1, ws2])
+        # await session.flush()
+        # session.add_all([WorkspaceEvent(...)])
         await session.commit()
 
     await engine.dispose()

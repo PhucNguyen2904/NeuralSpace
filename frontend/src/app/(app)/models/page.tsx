@@ -323,11 +323,11 @@ export default function ModelsPage() {
           onClearFilters={resetFilters}
           skeleton={<ModelSkeleton />}
           gridContent={<div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{models.map((m) => <ModelCard key={m.id} model={m} checked={compareIds.includes(m.id)} canLoad onCheck={(id, v) => setCompareIds((prev) => v ? [...new Set([...prev, id])] : prev.filter((x) => x !== id))} onLoad={onLoad} onDetail={setSelectedModel} />)}</div>}
-          listContent={<div className="space-y-1"><div className="grid grid-cols-[30px_1.7fr_1.2fr_0.8fr_0.7fr_0.8fr_0.7fr_70px_70px] gap-2 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary"><span></span><span>Name</span><span>Task</span><span>Framework</span><span>Size</span><span>Metric</span><span>Status</span><span>Use</span><span></span></div>{models.map((m) => <ModelRow key={m.id} model={m} checked={compareIds.includes(m.id)} onCheck={(id, v) => setCompareIds((prev) => v ? [...new Set([...prev, id])] : prev.filter((x) => x !== id))} onDetail={setSelectedModel} onLoad={onLoad} />)}</div>}
+          listContent={<div className="space-y-1"><div className="grid grid-cols-[30px_1.7fr_1.2fr_0.8fr_0.7fr_0.8fr_0.7fr] gap-2 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary"><span></span><span>Name</span><span>Task</span><span>Framework</span><span>Size</span><span>Metric</span><span>Status</span></div>{models.map((m) => <ModelRow key={m.id} model={m} checked={compareIds.includes(m.id)} onCheck={(id, v) => setCompareIds((prev) => v ? [...new Set([...prev, id])] : prev.filter((x) => x !== id))} onDetail={setSelectedModel} onLoad={onLoad} />)}</div>}
         />
       </div>
       {!isLoading && models.length === 0 ? <div className="rounded-lg border border-border bg-bg-surface p-6 text-center"><BrainCircuit className="mx-auto mb-2 text-text-tertiary" /><p className="font-medium">Chưa có model nào</p><p className="text-sm text-text-secondary">Train model đầu tiên của bạn trên Upstream module</p></div> : null}
-      <ModelDetailDrawer modelId={selectedModel?.id ?? null} open={Boolean(selectedModel)} onClose={() => setSelectedModel(null)} onLoad={onLoad} />
+      <ModelDetailDrawer modelId={selectedModel?.id ?? null} open={Boolean(selectedModel)} onClose={() => setSelectedModel(null)} />
       <ModelCompareTool selected={compareModels} onClear={() => setCompareIds([])} />
       <Modal
         open={uploadModalOpen}

@@ -41,13 +41,17 @@ export function TopBar() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-bg-surface/95 px-4 backdrop-blur md:px-6">
-        <div className="truncate pr-4 text-sm text-text-secondary">Workspace / Dashboard</div>
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border bg-bg-base/90 px-4 backdrop-blur md:px-6">
+        <nav className="flex min-w-0 items-center gap-2 truncate pr-4 text-sm" aria-label="Breadcrumb">
+          <span className="text-text-secondary">Workspace</span>
+          <span className="font-mono text-[11px] text-text-tertiary">/</span>
+          <span className="font-medium text-text-primary">Dashboard</span>
+        </nav>
         <div className="flex items-center gap-3">
-          <button className={`relative rounded-md p-2 hover:bg-bg-elevated ${unreadCount > 0 ? "bell-pulse" : ""}`} aria-label="Notifications" onClick={() => setOpenPanel((prev) => !prev)}>
+          <button className={`relative grid h-9 w-9 place-items-center rounded-md border border-border bg-bg-surface text-text-secondary transition hover:bg-bg-elevated hover:text-text-primary ${unreadCount > 0 ? "bell-pulse" : ""}`} aria-label="Notifications" onClick={() => setOpenPanel((prev) => !prev)}>
             <Bell size={18} className="text-text-secondary" />
             {unreadCount > 0 ? (
-              <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-error-500 px-1 text-center text-[10px] font-semibold text-white unread-pop">
+              <span className="absolute right-1 top-1 h-2 min-w-2 rounded-full bg-error-500 px-0 text-center text-[0px] font-semibold text-white unread-pop">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             ) : null}
@@ -59,7 +63,7 @@ export function TopBar() {
               aria-haspopup="menu"
               aria-expanded={openAccountMenu}
               onClick={() => setOpenAccountMenu((prev) => !prev)}
-              className="flex items-center gap-2 rounded-md border border-border bg-bg-surface px-2 py-1.5 transition-colors hover:bg-bg-elevated"
+              className="flex h-9 items-center gap-2 rounded-md border border-border bg-bg-surface px-2 transition-colors hover:bg-bg-elevated"
             >
               <Avatar name={displayName} className="h-7 w-7 text-[11px]" />
               <div className="hidden min-w-0 text-left sm:block">

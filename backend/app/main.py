@@ -3,11 +3,12 @@
 from contextlib import asynccontextmanager
 from time import perf_counter
 
+import httpx
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.requests import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response, JSONResponse
 from pydantic import ValidationError
 
 from app import __version__
@@ -200,6 +201,55 @@ def create_app() -> FastAPI:
 
     # Include API routers
     app.include_router(api_v1_router, prefix="/api/v1")
+
+    @app.api_route(
+        "/{bucket_name}/{object_path:path}",
+        methods=["GET", "HEAD", "PUT"],
+        include_in_schema=False,
+    )
+    async def public_minio_proxy(bucket_name: str, object_path: str, request: Request):
+        if bucket_name not in {"workspace-data", "mlflow-artifacts"}:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+        query = request.url.query
+        target_url = f"http://{settings.MINIO_ENDPOINT}/{bucket_name}/{object_path}"
+        if query:
+            target_url = f"{target_url}?{query}"
+
+        upstream_headers = {"host": request.headers.get("host", "")}
+        for header_name in ("content-type", "content-length", "x-amz-content-sha256"):
+            header_value = request.headers.get(header_name)
+            if header_value:
+                upstream_headers[header_name] = header_value
+
+        async with httpx.AsyncClient(follow_redirects=False, timeout=None) as client:
+            upstream = await client.request(
+                request.method,
+                target_url,
+                headers=upstream_headers,
+                content=await request.body(),
+            )
+
+        response_headers = {
+            name: value
+            for name, value in upstream.headers.items()
+            if name.lower()
+            in {
+                "accept-ranges",
+                "content-disposition",
+                "content-length",
+                "content-range",
+                "content-type",
+                "etag",
+                "last-modified",
+            }
+        }
+        return Response(
+            content=upstream.content if request.method != "HEAD" else b"",
+            status_code=upstream.status_code,
+            headers=response_headers,
+        )
+
     setup_tracing(app, db_engine=get_db_engine())
 
     logger.info("FastAPI application created", environment=settings.ENVIRONMENT)

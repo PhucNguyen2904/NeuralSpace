@@ -1,8 +1,10 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
+import re
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,10 +47,11 @@ class Settings(BaseSettings):
     # CORS Origins (comma-separated)
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:8000"
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
-    COLAB_NOTEBOOK_GITHUB_URL: str = (
-        "PhucNguyen2904/CollabClone/blob/master/notebooks/templates/colab_workspace_bootstrap.ipynb"
-    )
-    COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: int = 10
+    COLAB_TEMPLATE_ORGANIZATION: str = "neuralspace-ai"
+    COLAB_TEMPLATE_REPOSITORY: str = "colab-templates"
+    COLAB_TEMPLATE_REF: str = "main"
+    COLAB_TEMPLATE_NOTEBOOK_PATH: str = "notebooks/bootstrap.ipynb"
+    COLAB_CLAIM_EXPIRE_SECONDS: int = 120
     COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: int = 480
     COLAB_DATA_URL_EXPIRE_SECONDS: int = 900
     MLFLOW_TRACKING_URI: str = "http://localhost:5000"
@@ -64,6 +67,32 @@ class Settings(BaseSettings):
             self.REDOC_URL = None
             self.OPENAPI_URL = None
 
+    @model_validator(mode="after")
+    def validate_colab_template_ref(self):
+        ref = self.COLAB_TEMPLATE_REF.strip()
+        if not re.fullmatch(r"[A-Za-z0-9._/-]+", ref):
+            raise ValueError("COLAB_TEMPLATE_REF contains invalid characters")
+        if self.ENVIRONMENT == "production":
+            is_commit_sha = bool(re.fullmatch(r"[0-9a-fA-F]{40}", ref))
+            is_release_tag = bool(
+                re.fullmatch(r"(?:v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?|release[-/][A-Za-z0-9._-]+)", ref)
+            )
+            if not is_commit_sha and not is_release_tag:
+                raise ValueError("COLAB_TEMPLATE_REF must be a commit SHA or release tag in production")
+            if not self.PUBLIC_API_BASE_URL.startswith("https://"):
+                raise ValueError("PUBLIC_API_BASE_URL must use HTTPS in production")
+        return self
+
+    def get_colab_notebook_url(self) -> str:
+        organization = self.COLAB_TEMPLATE_ORGANIZATION.strip("/")
+        repository = self.COLAB_TEMPLATE_REPOSITORY.strip("/")
+        ref = self.COLAB_TEMPLATE_REF.strip("/")
+        notebook_path = self.COLAB_TEMPLATE_NOTEBOOK_PATH.strip("/")
+        return (
+            "https://colab.research.google.com/github/"
+            f"{organization}/{repository}/blob/{ref}/{notebook_path}"
+        )
+
     def get_cors_origins(self) -> list[str]:
         """Parse CORS origins from comma-separated string."""
         if isinstance(self.CORS_ORIGINS, str):
@@ -75,3 +104,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+# Trigger reload

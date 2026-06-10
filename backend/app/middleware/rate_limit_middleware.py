@@ -64,6 +64,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 workspace_id = parts[-2] if len(parts) >= 2 else None
             return 5, "heartbeat", workspace_id
 
+        if method == "POST" and path.endswith("/colab/claims/exchange"):
+            client_ip = request.client.host if request.client else "unknown"
+            return 10, "colab_claim_exchange", client_ip
+
         if method == "POST" and path.endswith("/workspaces"):
             return 10, "workspaces_post", user_id
 

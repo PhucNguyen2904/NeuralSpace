@@ -16,8 +16,10 @@ from app.models.runtime_session import ExternalRuntimeSession, RuntimeSessionSta
 
 DEFAULT_CAPABILITIES = [
     "dataset:read",
+    "model:read",
     "run:write",
     "artifact:write",
+    "heartbeat:write",
     "model_version:create",
 ]
 

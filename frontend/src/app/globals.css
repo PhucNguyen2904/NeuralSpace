@@ -4,25 +4,29 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-base: #f8f9fc;
-  --color-bg-surface: #ffffff;
-  --color-bg-elevated: #f1f3f8;
-  --color-bg-sunken: #eceef4;
-  --color-border-default: #e2e5ee;
-  --color-border-strong: #c8cedd;
-  --color-text-primary: #0f1117;
-  --color-text-secondary: #5a6070;
-  --color-text-tertiary: #9299a8;
+  color-scheme: dark;
+  --color-bg-base: #0a0a0f;
+  --color-bg-surface: #111118;
+  --color-bg-elevated: #16161f;
+  --color-bg-sunken: #0d0d14;
+  --color-border-subtle: #1e1e2e;
+  --color-border-default: #2a2a3e;
+  --color-border-strong: #3a3a52;
+  --color-text-primary: #f0f0ff;
+  --color-text-secondary: #8888aa;
+  --color-text-tertiary: #55556a;
   --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-50: #eef2ff;
+  --color-brand-600: #6366f1;
+  --color-brand-50: rgba(99, 102, 241, 0.15);
+  --color-accent-secondary: #8b5cf6;
+  --color-accent-glow: rgba(99, 102, 241, 0.15);
   --color-brand-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
   --color-success-500: #10b981;
-  --color-success-50: #ecfdf5;
+  --color-success-50: rgba(16, 185, 129, 0.12);
   --color-warning-500: #f59e0b;
-  --color-warning-50: #fffbeb;
+  --color-warning-50: rgba(245, 158, 11, 0.12);
   --color-error-500: #ef4444;
-  --color-error-50: #fef2f2;
+  --color-error-50: rgba(239, 68, 68, 0.12);
   --color-info-500: #3b82f6;
   --color-dvc-draft: #94a3b8;
   --color-dvc-validated: #10b981;
@@ -49,36 +53,43 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 10px;
+  --radius-xl: 10px;
   --radius-full: 9999px;
-  --shadow-xs: 0 1px 2px rgba(15, 17, 23, 0.06);
-  --shadow-sm: 0 2px 8px rgba(15, 17, 23, 0.08);
-  --shadow-md: 0 4px 16px rgba(15, 17, 23, 0.1);
-  --shadow-lg: 0 8px 32px rgba(15, 17, 23, 0.12);
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
   --shadow-brand: 0 4px 16px rgba(99, 102, 241, 0.25);
 }
 
-.theme-dark {
-  --color-bg-base: #0f1117;
-  --color-bg-surface: #151923;
-  --color-bg-elevated: #1b2130;
-  --color-bg-sunken: #242c3f;
-  --color-border-default: #2b3448;
-  --color-border-strong: #3a4560;
-  --color-text-primary: #e5e7eb;
-  --color-text-secondary: #b1b8c8;
-  --color-text-tertiary: #7f8aa3;
-  --color-brand-50: #222d55;
-  --color-success-50: #0f2f26;
-  --color-warning-50: #33290f;
-  --color-error-50: #331c1c;
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.55);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.65);
+html.light {
+  color-scheme: light;
+  --color-bg-base: #f8f8fc;
+  --color-bg-surface: #ffffff;
+  --color-bg-elevated: #f0f0f8;
+  --color-bg-sunken: #ebebf4;
+  --color-border-subtle: #e8e8f0;
+  --color-border-default: #d0d0e0;
+  --color-border-strong: #b9b9ce;
+  --color-text-primary: #0a0a1a;
+  --color-text-secondary: #555570;
+  --color-text-tertiary: #9999aa;
+  --color-brand-50: rgba(99, 102, 241, 0.1);
+  --color-accent-glow: rgba(99, 102, 241, 0.12);
+  --color-success-50: rgba(16, 185, 129, 0.1);
+  --color-warning-50: rgba(245, 158, 11, 0.12);
+  --color-error-50: rgba(239, 68, 68, 0.1);
+  --shadow-xs: 0 1px 2px rgba(10, 10, 26, 0.06);
+  --shadow-sm: 0 1px 3px rgba(10, 10, 26, 0.08), 0 0 0 1px rgba(10, 10, 26, 0.03);
+  --shadow-md: 0 4px 16px rgba(10, 10, 26, 0.1), 0 0 0 1px rgba(10, 10, 26, 0.04);
+  --shadow-lg: 0 14px 42px rgba(10, 10, 26, 0.14), 0 0 0 1px rgba(10, 10, 26, 0.05);
+}
+
+html.theme-dark {
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -90,6 +101,7 @@ body {
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 200ms ease, color 200ms ease;
 }
 *::selection { background: var(--color-brand-50); }
 *::-webkit-scrollbar { width: 8px; height: 8px; }

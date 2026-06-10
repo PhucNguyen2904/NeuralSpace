@@ -122,6 +122,16 @@ class Run(Base):
         ForeignKey("mlops.experiments.id"),
         nullable=False,
     )
+    workspace_id: Mapped[str | None] = mapped_column(
+        String(20),
+        ForeignKey("workspaces.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    runtime_session_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("external_runtime_sessions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(run_status_enum, nullable=False)
     start_time: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -140,6 +150,29 @@ class Run(Base):
         nullable=True,
     )
     dvc_md5: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+
+
+class RunLog(Base):
+    __tablename__ = "run_logs"
+    __table_args__ = (
+        Index("ix_mlops_run_logs_run_created", "run_id", "created_at"),
+        {"schema": "mlops"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("mlops.runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    runtime_session_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("external_runtime_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    level: Mapped[str] = mapped_column(String(10), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 
 

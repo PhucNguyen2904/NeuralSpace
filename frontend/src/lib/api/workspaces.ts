@@ -70,14 +70,25 @@ export const createWorkspace = async (input: CreateWorkspaceInput) => {
   return detail;
 };
 
+export const updateWorkspaceAssets = async (
+  id: string,
+  input: Pick<CreateWorkspaceInput, "datasets" | "models">
+) => {
+  const { data } = await apiClient.patch<BackendWorkspace>(`/workspaces/${id}/assets`, {
+    dataset_ids: input.datasets,
+    model_ids: input.models
+  });
+  return mapWorkspace(data);
+};
+
 export const deleteWorkspace = async (id: string) => {
   await apiClient.delete(`/workspaces/${id}`);
   return true;
 };
 
-/** Launch a Colab session (always creates a new claim). */
+/** Create a short-lived, one-time Colab claim after explicit user action. */
 export const launchWorkspaceInColab = async (id: string): Promise<ColabLaunchResult> => {
-  const { data } = await apiClient.post<ColabLaunchResult>(`/colab/workspaces/${id}/launch`);
+  const { data } = await apiClient.post<ColabLaunchResult>(`/colab/workspaces/${id}/claims`);
   return data;
 };
 
@@ -95,5 +106,3 @@ export const getWorkspaceRunData = async (id: string): Promise<ColabRunData | nu
     throw err;
   }
 };
-
-

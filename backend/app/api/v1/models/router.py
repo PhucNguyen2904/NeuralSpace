@@ -11,12 +11,20 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db
+from app.models.mlops_tracking import ModelVersion
 from app.models.model_registry import ModelRegistry
 
 router = APIRouter(prefix="/models", tags=["models"])
 
 
-def _to_payload(row: ModelRegistry) -> dict:
+def _format_model_version(version: int | str | None) -> str | None:
+    if version is None:
+        return None
+    value = str(version)
+    return value if value.startswith("v") else f"v{value}"
+
+
+def _to_payload(row: ModelRegistry, latest_version: int | str | None = None) -> dict:
     return {
         "id": row.id,
         "name": row.name,
@@ -36,9 +44,27 @@ def _to_payload(row: ModelRegistry) -> dict:
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
         "training_duration_seconds": (row.source_payload or {}).get("training_duration_seconds"),
-        "version": row.version or "v1.0",
+        "version": _format_model_version(latest_version) or row.version or "v1.0",
         "storage_path": row.storage_path or "",
     }
+
+
+async def _latest_versions_by_model_name(db: AsyncSession, model_names: list[str]) -> dict[str, int]:
+    if not model_names:
+        return {}
+
+    rows = (
+        (
+            await db.execute(
+                select(ModelVersion.mlflow_name, func.max(ModelVersion.mlflow_version))
+                .where(ModelVersion.mlflow_name.in_(model_names))
+                .group_by(ModelVersion.mlflow_name)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    return {name: int(version) for name, version in rows if version is not None}
 
 
 @router.get("")
@@ -49,6 +75,9 @@ async def list_models(
     framework: list[str] | None = Query(default=None),
     task_type: list[str] | None = Query(default=None),
     status: str | None = Query(default=None),
+    size_category: str | None = Query(default=None),
+    min_metric: float | None = Query(default=None),
+    sort: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ) -> dict:
@@ -61,6 +90,15 @@ async def list_models(
         filters.append(ModelRegistry.task_type.in_(task_type))
     if status:
         filters.append(ModelRegistry.status == status)
+    if size_category:
+        if size_category == "small":
+            filters.append(ModelRegistry.size_bytes < 100 * 1024 * 1024)
+        elif size_category == "medium":
+            filters.append(ModelRegistry.size_bytes.between(100 * 1024 * 1024, 1024 * 1024 * 1024))
+        elif size_category == "large":
+            filters.append(ModelRegistry.size_bytes >= 1024 * 1024 * 1024)
+    if min_metric is not None:
+        filters.append((ModelRegistry.primary_metric_value >= min_metric) | (ModelRegistry.primary_metric_value * 100 >= min_metric))
 
     stmt = select(ModelRegistry)
     count_stmt = select(func.count(ModelRegistry.id))
@@ -69,10 +107,29 @@ async def list_models(
             stmt = stmt.where(cond)
             count_stmt = count_stmt.where(cond)
 
-    stmt = stmt.order_by(ModelRegistry.updated_at.desc()).offset((page - 1) * limit).limit(limit)
+    if sort == "oldest":
+        stmt = stmt.order_by(ModelRegistry.updated_at.asc())
+    elif sort == "name-asc":
+        stmt = stmt.order_by(ModelRegistry.name.asc())
+    elif sort == "name-desc":
+        stmt = stmt.order_by(ModelRegistry.name.desc())
+    elif sort == "size-asc":
+        stmt = stmt.order_by(ModelRegistry.size_bytes.asc())
+    elif sort == "size-desc":
+        stmt = stmt.order_by(ModelRegistry.size_bytes.desc())
+    else:
+        stmt = stmt.order_by(ModelRegistry.updated_at.desc())
+
+    stmt = stmt.offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
+    latest_versions = await _latest_versions_by_model_name(db, [row.name for row in rows])
     total = int((await db.execute(count_stmt)).scalar() or 0)
-    return {"items": [_to_payload(row) for row in rows], "total": total, "page": page, "pageSize": limit}
+    return {
+        "items": [_to_payload(row, latest_versions.get(row.name)) for row in rows],
+        "total": total,
+        "page": page,
+        "pageSize": limit,
+    }
 
 
 @router.get("/{model_id}")
@@ -80,7 +137,8 @@ async def get_model(model_id: str, db: AsyncSession = Depends(get_db), _user=Dep
     row = await db.get(ModelRegistry, model_id)
     if row is None:
         return {}
-    payload = _to_payload(row)
+    latest_versions = await _latest_versions_by_model_name(db, [row.name])
+    payload = _to_payload(row, latest_versions.get(row.name))
     payload.update(
         {
             "framework_version": (row.source_payload or {}).get("framework_version", "unknown"),
@@ -107,9 +165,38 @@ async def get_model_versions(model_id: str, db: AsyncSession = Depends(get_db), 
     row = await db.get(ModelRegistry, model_id)
     if row is None:
         return []
+    rows = (
+        (
+            await db.execute(
+                select(ModelVersion)
+                .where(ModelVersion.mlflow_name == row.name)
+                .order_by(ModelVersion.mlflow_version.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return [
+            {
+                "id": f"{model_id}-{row.version or 'v1.0'}",
+                "version": row.version or "v1.0",
+                "note": "Model registry version",
+                "created_at": row.updated_at.isoformat(),
+                "current": True,
+            }
+        ]
+
+    latest_version = max(item.mlflow_version for item in rows)
     return [
-        {"id": f"{model_id}-v3", "version": "v1.3", "note": "Production candidate", "created_at": row.updated_at.isoformat(), "current": True},
-        {"id": f"{model_id}-v2", "version": "v1.2", "note": "Validation passed", "created_at": row.created_at.isoformat(), "current": False},
+        {
+            "id": item.id,
+            "version": _format_model_version(item.mlflow_version),
+            "note": item.description or item.stage,
+            "created_at": item.created_at.isoformat(),
+            "current": item.mlflow_version == latest_version,
+        }
+        for item in rows
     ]
 
 

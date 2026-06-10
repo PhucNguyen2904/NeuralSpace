@@ -48,18 +48,15 @@ export function DatasetCard({
       <p className="truncate text-base font-semibold text-text-primary">{dataset.name}</p>
       <p className="mb-3 truncate text-sm text-text-secondary">{dataset.description}</p>
       <div className="mb-3 h-px bg-border" />
-      <div className="grid grid-cols-2 gap-2 text-sm">
-        <div className="flex items-center gap-1.5 text-text-secondary"><Package size={14} /><span className="font-medium text-text-primary">{formatSize(dataset.size_bytes)}</span></div>
-        <div className="flex items-center gap-1.5 text-text-secondary"><Images size={14} /><span className="font-medium text-text-primary">{formatCount(dataset.item_count)}</span></div>
-        <div className="flex items-center gap-1.5 text-text-secondary"><CheckCircle2 size={14} /><span className="font-medium text-text-primary">{dataset.label_status}</span></div>
-        <div className="flex items-center gap-1.5 text-text-secondary"><Calendar size={14} /><span className="font-medium text-text-primary">{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</span></div>
+      <div className="grid grid-cols-2 gap-x-2 gap-y-3 text-sm">
+        <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><Package size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={formatSize(dataset.size_bytes)}>{formatSize(dataset.size_bytes)}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><Images size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={formatCount(dataset.item_count)}>{formatCount(dataset.item_count)}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><CheckCircle2 size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={dataset.label_status}>{dataset.label_status}</span></div>
+        <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><Calendar size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}>{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</span></div>
       </div>
-      <div className="mt-4 flex items-center gap-2">
-        <Button size="sm" className="flex-1 bg-[#ECFDF5] text-emerald-700 transition-all group-hover:flex-[1.2] hover:bg-[#D1FAE5]" onClick={() => onUse(dataset)}>
-          {active ? <><CheckCircle2 size={14} /> Đang dùng</> : "Use in Workspace"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => onViewDetails(dataset)}>
-          View Details <ExternalLink size={14} />
+      <div className="mt-4 flex">
+        <Button size="sm" variant="outline" className="w-full text-text-secondary" onClick={() => onViewDetails(dataset)}>
+          Chi tiết
         </Button>
       </div>
     </article>

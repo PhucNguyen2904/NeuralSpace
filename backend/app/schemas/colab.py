@@ -7,18 +7,19 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class ColabLaunchResponse(BaseModel):
-    """Response payload for Colab launch."""
+class ColabClaimResponse(BaseModel):
+    """Response payload for a user-entered one-time claim."""
 
-    launch_url: str
+    claim_code: str
+    notebook_url: str
     session_id: str
     expires_in: int
 
 
-class ColabBootstrapRequest(BaseModel):
-    """Notebook bootstrap request payload."""
+class ColabClaimExchangeRequest(BaseModel):
+    """Notebook claim exchange payload."""
 
-    token: str = Field(min_length=1)
+    claim_code: str = Field(min_length=1, max_length=64)
 
 
 class ColabDatasetPayload(BaseModel):
@@ -26,19 +27,36 @@ class ColabDatasetPayload(BaseModel):
 
     dataset_id: str
     name: str
-    signed_url: str
+    signed_url: str | None = None
+
+
+class ColabModelPayload(BaseModel):
+    """Model payload returned to Colab runtime."""
+
+    model_id: str
+    name: str
+    version: str | None = None
+    framework: str | None = None
+    task_type: str | None = None
+    signed_url: str | None = None
+
+
+class ColabAssetsResponse(BaseModel):
+    """Current workspace assets visible to the Colab runtime."""
+
+    datasets: list[ColabDatasetPayload] = Field(default_factory=list)
+    models: list[ColabModelPayload] = Field(default_factory=list)
 
 
 class ColabBootstrapResponse(BaseModel):
     """Validated runtime config payload for Colab notebook."""
 
     session_id: str
-    workspace_id: str
-    user_id: str
     runtime_token: str
     capabilities: list[str]
     expires_at: datetime
     datasets: list[ColabDatasetPayload]
+    models: list[ColabModelPayload] = Field(default_factory=list)
 
 
 class RuntimeSessionResponse(BaseModel):
@@ -73,6 +91,21 @@ class RuntimeHeartbeatResponse(BaseModel):
 
 class RuntimeValuesRequest(BaseModel):
     values: dict[str, float | int | str | bool]
+
+
+class RuntimeRunCreateRequest(BaseModel):
+    name: str = Field(default="Colab test run", min_length=1, max_length=255)
+
+
+class RuntimeRunResponse(BaseModel):
+    run_id: str
+    status: str
+    started_at: datetime
+
+
+class RuntimeLogRequest(BaseModel):
+    level: str = Field(default="INFO", pattern="^(DEBUG|INFO|WARN|ERROR)$")
+    message: str = Field(min_length=1, max_length=4000)
 
 
 class ArtifactUploadGrantRequest(BaseModel):

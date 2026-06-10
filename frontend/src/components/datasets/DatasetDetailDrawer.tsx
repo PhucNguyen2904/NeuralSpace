@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, X, Download } from "lucide-react";
 import * as React from "react";
 import { Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { ClassDistributionChart } from "@/components/datasets/ClassDistributionChart";
@@ -15,18 +15,15 @@ type TabValue = "overview" | "preview" | "distribution" | "history";
 export function DatasetDetailDrawer({
   datasetId,
   open,
-  onClose,
-  onUse
+  onClose
 }: {
   datasetId: string | null;
   open: boolean;
   onClose: () => void;
-  onUse: (dataset: Dataset, workspaceId: string) => void;
 }) {
   const { detail, preview } = useDatasetDetail(datasetId ?? "");
   const dataset = detail.data;
   const [tab, setTab] = React.useState<TabValue>("overview");
-  const [workspaceId, setWorkspaceId] = React.useState("ws_resnet");
 
   React.useEffect(() => {
     if (!open) setTab("overview");
@@ -44,8 +41,14 @@ export function DatasetDetailDrawer({
             <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost">Open in Upstream <ExternalLink size={14} /></Button>
-            <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={() => onUse(dataset, workspaceId)}>Use in Workspace</Button>
+            <Button size="sm" variant="ghost" onClick={() => {
+              const a = document.createElement("a");
+              a.href = "data:text/plain;charset=utf-8,Mock%20Dataset%20Content";
+              a.download = `${dataset.name}.zip`;
+              a.click();
+            }}>
+              <Download size={14} className="mr-1" /> Download
+            </Button>
             <Button size="sm" variant="ghost" onClick={onClose}><X size={16} /></Button>
           </div>
         </div>
@@ -58,10 +61,11 @@ export function DatasetDetailDrawer({
             ))}
           </div>
         </div>
-        <div className="h-[calc(100%-152px)] overflow-y-auto px-5 py-4">
+        <div className="h-[calc(100%-115px)] overflow-y-auto px-5 py-4">
           {tab === "overview" ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-sm">
+                <Info label="Phiên bản" value={dataset.version || "v1.0"} />
                 <Info label="Loại" value={dataset.type} />
                 <Info label="Kích thước" value={formatSize(dataset.size_bytes)} />
                 <Info label="Số items" value={`${dataset.item_count.toLocaleString()} items`} />
@@ -108,16 +112,6 @@ export function DatasetDetailDrawer({
               <p>EDA Session - 1 tuần trước - 45m</p>
             </div>
           ) : null}
-        </div>
-        <div className="absolute bottom-0 left-0 right-0 border-t border-border bg-bg-surface px-5 py-3">
-          <p className="mb-2 text-xs text-text-secondary">Mount vào workspace</p>
-          <div className="flex items-center gap-2">
-            <select value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} className="h-9 flex-1 rounded-md border border-border px-3 text-sm">
-              <option value="ws_resnet">ResNet Training</option>
-              <option value="ws_eda">EDA Session</option>
-            </select>
-            <Button className="bg-emerald-500 text-white hover:bg-emerald-600" onClick={() => onUse(dataset, workspaceId)}>Áp dụng</Button>
-          </div>
         </div>
       </motion.aside>
     </div>

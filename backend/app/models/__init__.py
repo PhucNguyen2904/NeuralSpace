@@ -12,6 +12,7 @@ from app.models.mlops_tracking import (
     ModelDatasetLink,
     ModelVersion,
     Run,
+    RunLog,
 )
 from app.models.user import User
 from app.models.runtime_session import ExternalRuntimeSession, RuntimeSessionStatus
@@ -30,6 +31,7 @@ __all__ = [
     "DatasetVersion",
     "Experiment",
     "Run",
+    "RunLog",
     "ModelVersion",
     "ModelDatasetLink",
     "AuditLog",

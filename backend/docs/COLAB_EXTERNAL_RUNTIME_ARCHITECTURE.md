@@ -136,10 +136,10 @@ It manages two separate credentials:
    - Scoped to one runtime session and normally one run.
    - Contains capabilities, not broad user permissions.
 
-The current `colab/workspaces/{workspace_id}/launch` and `colab/bootstrap`
-implementation is a useful starting point. The target model should evolve from
-workspace ownership plus dataset IDs into an explicit external runtime session
-with version-specific grants and run identity.
+The `colab/workspaces/{workspace_id}/claims` and `colab/claims/exchange`
+endpoints implement the one-time claim flow. The model can evolve from
+workspace ownership plus dataset IDs into version-specific grants and run
+identity.
 
 ### 4.4 Notebook template and lightweight client
 
@@ -352,7 +352,7 @@ The control plane must separate external runtime connectivity from run outcome.
 
 ### Runtime session states
 
-- `ISSUED`: launch claim created but not exchanged.
+- `CREATED`: launch claim created but not exchanged.
 - `CONNECTED`: claim exchanged and runtime session active.
 - `DISCONNECTED`: heartbeat missing beyond a threshold.
 - `EXPIRED`: runtime session credentials expired.
@@ -454,7 +454,7 @@ The UI should use language such as "last reported", "connection stale", and
 ### Retire from the primary path
 
 - Kubernetes namespace, pod, service, PVC, and Jupyter provisioning.
-- Celery tasks that spawn or stop workspace compute.
+- Internal jobs that spawn or stop workspace compute.
 - Idle-kill logic intended to delete internal runtimes.
 - Kernel restart and direct Jupyter API operations.
 - Workspace proxy and pod IP access.

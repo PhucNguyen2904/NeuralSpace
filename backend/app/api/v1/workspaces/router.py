@@ -14,6 +14,7 @@ from app.core.exceptions import (
 from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db, get_redis
 from app.schemas.workspace import (
+    WorkspaceAssetsUpdateRequest,
     WorkspaceCreateAcceptedResponse,
     WorkspaceCreateRequest,
     WorkspaceDetailResponse,
@@ -105,6 +106,36 @@ async def get_workspace_detail(
         workspace = await WorkspaceService.get_workspace_detail(db, redis, id, current_user.user_id)
         return WorkspaceDetailResponse.model_validate(workspace)
     except Exception as exc:
+        raise _translate_workspace_error(exc) from exc
+
+
+@router.patch("/{id}/assets", response_model=WorkspaceDetailResponse)
+async def update_workspace_assets(
+    id: str,
+    payload: WorkspaceAssetsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    current_user: UserContext = Depends(get_current_user),
+):
+    try:
+        workspace = await WorkspaceService.update_workspace_assets(db, redis, id, current_user.user_id, payload)
+        audit_event(
+            logger,
+            "workspace.assets_updated",
+            user_id=current_user.user_id,
+            workspace_id=workspace.id,
+            dataset_count=len(workspace.dataset_ids or []),
+            model_count=len(workspace.model_ids or []),
+        )
+        return WorkspaceDetailResponse.model_validate(workspace)
+    except Exception as exc:
+        audit_event(
+            logger,
+            "workspace.assets_update_failed",
+            user_id=current_user.user_id,
+            workspace_id=id,
+            error=str(exc),
+        )
         raise _translate_workspace_error(exc) from exc
 
 

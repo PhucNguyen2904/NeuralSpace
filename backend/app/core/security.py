@@ -87,6 +87,8 @@ def verify_jwt(token: str) -> TokenPayload:
     settings = get_settings()
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") not in {None, "access"}:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token type")
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed token")

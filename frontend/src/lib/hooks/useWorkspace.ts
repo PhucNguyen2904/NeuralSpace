@@ -8,6 +8,7 @@ import {
   getWorkspaceRunData,
   launchWorkspaceInColab,
   listWorkspaces,
+  updateWorkspaceAssets,
 } from "@/lib/api/workspaces";
 import type { ColabLaunchResult, CreateWorkspaceInput, Workspace } from "@/types/workspace";
 
@@ -67,6 +68,19 @@ export const useLaunchWorkspaceInColab = () => {
   });
 };
 
+export const useUpdateWorkspaceAssets = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, datasets, models }: { id: string; datasets: string[]; models: string[] }) =>
+      updateWorkspaceAssets(id, { datasets, models }),
+    onSuccess: (workspace) => {
+      queryClient.setQueryData(["workspace", workspace.id], workspace);
+      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["workspace", workspace.id] });
+    }
+  });
+};
+
 /** Polls session + run data every 7 seconds for the Data Dashboard. */
 export const useWorkspaceRunData = (id: string) =>
   useQuery({
@@ -76,4 +90,3 @@ export const useWorkspaceRunData = (id: string) =>
     refetchInterval: 7_000,
     staleTime: 5_000,
   });
-

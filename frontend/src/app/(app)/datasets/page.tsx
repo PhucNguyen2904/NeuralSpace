@@ -16,6 +16,8 @@ import type { Dataset, DatasetFilters, DatasetType } from "@/types/dataset";
 
 function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
   const types = params.getAll("type") as DatasetType[];
+  const sizeMin = params.get("sizeMin");
+  const sizeMax = params.get("sizeMax");
   return {
     search: params.get("search") ?? "",
     types,
@@ -23,7 +25,9 @@ function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
     sort: (params.get("sort") as DatasetFilters["sort"]) ?? "newest",
     view: (params.get("view") as DatasetFilters["view"]) ?? "grid",
     tags: params.getAll("tag"),
-    createdWithin: (params.get("created") as DatasetFilters["createdWithin"]) ?? "all"
+    createdWithin: (params.get("created") as DatasetFilters["createdWithin"]) ?? "all",
+    sizeMin: sizeMin ? parseInt(sizeMin, 10) : undefined,
+    sizeMax: sizeMax ? parseInt(sizeMax, 10) : undefined
   };
 }
 
@@ -70,6 +74,8 @@ export default function DatasetsPage() {
     if (filters.sort !== "newest") params.set("sort", filters.sort);
     if (filters.view !== "grid") params.set("view", filters.view);
     if (filters.createdWithin !== "all") params.set("created", filters.createdWithin);
+    if (filters.sizeMin > 0) params.set("sizeMin", filters.sizeMin.toString());
+    if (filters.sizeMax < 50 * 1024 * 1024 * 1024) params.set("sizeMax", filters.sizeMax.toString());
     filters.tags.forEach((tag) => params.append("tag", tag));
     router.replace(`${pathname}?${params.toString()}`);
   }, [filters, pathname, router]);
@@ -226,23 +232,23 @@ export default function DatasetsPage() {
           {!isLoading && datasets.length > 0 && filters.view === "grid" ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {datasets.map((dataset) => (
-                <DatasetCard key={dataset.id} dataset={dataset} active={Boolean(mountedMap[dataset.id])} onUse={(item) => handleMount(item, "ws_resnet")} onViewDetails={setSelectedDataset} />
+                <DatasetCard key={dataset.id} dataset={dataset} active={Boolean(mountedMap[dataset.id])} onUse={(item) => setSelectedDataset(item)} onViewDetails={setSelectedDataset} />
               ))}
             </div>
           ) : null}
           {!isLoading && datasets.length > 0 && filters.view === "list" ? (
             <div className="space-y-1">
-              <div className="grid grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr_90px] gap-3 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary">
-                <span>Icon</span><span>Name & Desc</span><span>Type</span><span>Size</span><span>Items</span><span>Status</span><span>Modified</span><span>Use</span>
+              <div className="grid grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr] gap-3 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary">
+                <span>Icon</span><span>Name & Desc</span><span>Type</span><span>Size</span><span>Items</span><span>Status</span><span>Modified</span>
               </div>
               {datasets.map((dataset) => (
-                <DatasetRow key={dataset.id} dataset={dataset} onSelect={setSelectedDataset} onUse={(item) => handleMount(item, "ws_resnet")} />
+                <DatasetRow key={dataset.id} dataset={dataset} onSelect={setSelectedDataset} onUse={(item) => setSelectedDataset(item)} />
               ))}
             </div>
           ) : null}
         </section>
       </div>
-      <DatasetDetailDrawer datasetId={selectedDataset?.id ?? null} open={Boolean(selectedDataset)} onClose={() => setSelectedDataset(null)} onUse={handleMount} />
+      <DatasetDetailDrawer datasetId={selectedDataset?.id ?? null} open={Boolean(selectedDataset)} onClose={() => setSelectedDataset(null)} />
       <Modal
         open={uploadModalOpen}
         onClose={() => !uploading && setUploadModalOpen(false)}

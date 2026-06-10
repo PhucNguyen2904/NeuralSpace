@@ -43,6 +43,11 @@ async def list_datasets(
     search: str | None = Query(default=None),
     type: list[str] | None = Query(default=None),
     status: str | None = Query(default=None),
+    size_min: int | None = Query(default=None),
+    size_max: int | None = Query(default=None),
+    tags: list[str] | None = Query(default=None),
+    created_after: datetime | None = Query(default=None),
+    sort: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ) -> dict:
@@ -53,6 +58,15 @@ async def list_datasets(
         filters.append(Dataset.dataset_type.in_(type))
     if status:
         filters.append(Dataset.label_status == status)
+    if size_min is not None:
+        filters.append(Dataset.size_bytes >= size_min)
+    if size_max is not None:
+        filters.append(Dataset.size_bytes <= size_max)
+    if created_after is not None:
+        filters.append(Dataset.created_at >= created_after)
+    if tags:
+        for tag in tags:
+            filters.append(Dataset.tags.contains([tag]))
 
     stmt = select(Dataset)
     count_stmt = select(func.count(Dataset.id))
@@ -61,7 +75,16 @@ async def list_datasets(
             stmt = stmt.where(cond)
             count_stmt = count_stmt.where(cond)
 
-    stmt = stmt.order_by(Dataset.updated_at.desc()).offset((page - 1) * limit).limit(limit)
+    if sort == "oldest":
+        stmt = stmt.order_by(Dataset.created_at.asc())
+    elif sort == "name":
+        stmt = stmt.order_by(Dataset.name.asc())
+    elif sort == "size":
+        stmt = stmt.order_by(Dataset.size_bytes.desc())
+    else:
+        stmt = stmt.order_by(Dataset.updated_at.desc())
+        
+    stmt = stmt.offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
     return {"items": [_to_payload(row) for row in rows], "total": total, "page": page, "pageSize": limit}

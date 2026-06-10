@@ -44,9 +44,9 @@ export interface RunDetailData extends Run {
 }
 
 const MOCK_EXPERIMENTS: ExperimentSummary[] = [
-  { experiment_id: "exp_resnet", name: "ResNet Training", lifecycle_stage: "active", run_count: 23 },
-  { experiment_id: "exp_yolo", name: "YOLOv8 Custom", lifecycle_stage: "active", run_count: 8 },
-  { experiment_id: "exp_bert", name: "BERT Sentiment", lifecycle_stage: "active", run_count: 15 }
+  { experiment_id: "exp_resnet", name: "ResNet Training", lifecycle_stage: "active", run_count: 23, created_at: "2024-01-10T08:30:00Z", tags: { description: "Training ResNet models for image classification." } },
+  { experiment_id: "exp_yolo", name: "YOLOv8 Custom", lifecycle_stage: "active", run_count: 8, created_at: "2024-01-12T14:15:00Z", tags: { description: "Object detection using YOLOv8 on custom dataset." } },
+  { experiment_id: "exp_bert", name: "BERT Sentiment", lifecycle_stage: "active", run_count: 15, created_at: "2024-01-15T09:45:00Z", tags: { description: "Fine-tuning BERT for sentiment analysis." } }
 ];
 
 const MOCK_RUNS: RunDetailData[] = [

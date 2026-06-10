@@ -6,7 +6,7 @@ from datetime import datetime
 import re
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workspace import Workspace, WorkspaceStatus
@@ -48,6 +48,43 @@ class WorkspaceRepository:
                     mounted_by=user_id,
                 )
             )
+        await db.refresh(workspace)
+        return workspace
+
+    @staticmethod
+    async def replace_assets(
+        db: AsyncSession,
+        workspace: Workspace,
+        user_id: str,
+        dataset_ids: list[str],
+        model_ids: list[str],
+    ) -> Workspace:
+        workspace.dataset_ids = dataset_ids
+        workspace.model_ids = model_ids
+
+        await db.execute(delete(WorkspaceDataset).where(WorkspaceDataset.workspace_id == workspace.id))
+        await db.execute(delete(WorkspaceModel).where(WorkspaceModel.workspace_id == workspace.id))
+
+        for dataset_id in dataset_ids:
+            db.add(
+                WorkspaceDataset(
+                    workspace_id=workspace.id,
+                    dataset_id=dataset_id,
+                    mount_path=f"/workspace/datasets/{WorkspaceRepository._mount_name(dataset_id)}",
+                    mounted_by=user_id,
+                )
+            )
+        for model_id in model_ids:
+            db.add(
+                WorkspaceModel(
+                    workspace_id=workspace.id,
+                    model_id=model_id,
+                    mount_path=f"/workspace/models/{WorkspaceRepository._mount_name(model_id)}",
+                    mounted_by=user_id,
+                )
+            )
+
+        await db.flush()
         await db.refresh(workspace)
         return workspace
 

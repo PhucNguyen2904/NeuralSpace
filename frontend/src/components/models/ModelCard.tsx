@@ -57,25 +57,19 @@ export function ModelCard({
         ))}
       </div>
       <div className="my-3 h-px bg-border" />
-      <p className="mb-3 flex items-center gap-3 text-xs text-text-secondary">
-        <span>🔥 {prettyFramework(model.framework)}</span>
-        <span className="inline-flex items-center gap-1"><PackageIcon size={12} />{formatSize(model.size_bytes)}</span>
-        <span>{formatDistanceToNow(new Date(model.updated_at), { addSuffix: true })}</span>
-      </p>
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+        <span className="whitespace-nowrap">🔥 {prettyFramework(model.framework)}</span>
+        <span className="inline-flex items-center gap-1 whitespace-nowrap"><PackageIcon size={12} />{formatSize(model.size_bytes)}</span>
+        <span className="whitespace-nowrap">{formatDistanceToNow(new Date(model.updated_at), { addSuffix: true })}</span>
+      </div>
       {model.status === "failed" ? (
         <p className="mb-2 inline-flex items-center gap-1 text-xs text-red-600"><StatusFailedIcon size={13} />Training thất bại</p>
       ) : null}
       <div className="mb-2 flex items-center justify-between">
         <label className="text-xs text-text-secondary"><input type="checkbox" checked={checked} onChange={(e) => onCheck(model.id, e.target.checked)} className="mr-1" />So sánh</label>
       </div>
-      <div className="flex items-center gap-2">
-        <Button size="sm" className="flex-1 bg-violet-50 text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60" disabled={!canLoad} title={!canLoad ? "Cần có workspace đang chạy để load model" : undefined} onClick={() => onLoad(model)}>
-          Load vào Workspace
-        </Button>
-        <Link href={`/models/${encodeURIComponent(model.name)}`} className="rounded-md border border-border px-2.5 py-1.5 text-xs text-text-secondary hover:bg-bg-elevated">
-          Registry
-        </Link>
-        <Button size="sm" variant="ghost" onClick={() => onDetail(model)}>Chi tiết →</Button>
+      <div className="flex">
+        <Button size="sm" variant="outline" className="w-full text-text-secondary" onClick={() => onDetail(model)}>Chi tiết</Button>
       </div>
     </article>
   );
@@ -111,11 +105,11 @@ function MetricRow({ label, value }: { label: string; value: number }) {
   const pct = Math.min(100, Math.max(0, normalized));
   return (
     <div className="flex items-center gap-2 text-xs">
-      <span className="w-16 text-text-secondary">{label}</span>
+      <span className="w-20 shrink-0 truncate text-text-secondary" title={label}>{label}</span>
       <span className="h-2 flex-1 overflow-hidden rounded-full bg-bg-elevated">
         <span className="block h-full bg-violet-500" style={{ width: `${pct}%` }} />
       </span>
-      <span className="w-10 text-right font-medium text-text-primary">{normalized.toFixed(1)}%</span>
+      <span className="w-10 shrink-0 text-right font-medium text-text-primary">{normalized.toFixed(1)}%</span>
     </div>
   );
 }

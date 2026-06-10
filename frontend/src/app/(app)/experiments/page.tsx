@@ -1,65 +1,65 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CompareRunsView } from "@/components/experiments/CompareRunsView";
-import { ExperimentSidebar } from "@/components/experiments/ExperimentSidebar";
-import { RunDetailDrawer } from "@/components/experiments/RunDetailDrawer";
-import { RunsTable } from "@/components/experiments/RunsTable";
-import { useCompareRuns, useExperimentList, useRunDetail, useRunList, type RunFilters } from "@/lib/hooks/useExperiments";
+import { useRouter } from "next/navigation";
+import { ModelSidebar } from "@/components/experiments/ModelSidebar";
+import { VersionsTable } from "@/components/experiments/VersionsTable";
+import { useModels, defaultModelFilters } from "@/lib/hooks/useModels";
+import { useModelVersions } from "@/lib/hooks/useModelRegistry";
 
 export default function ExperimentsPage() {
-  const experiments = useExperimentList();
-  const firstExperimentId = experiments.data?.[0]?.experiment_id ?? "";
-  const [activeExperimentId, setActiveExperimentId] = useState(firstExperimentId);
-  const [filters, setFilters] = useState<RunFilters>({ status: "ALL", sortBy: "started", sortOrder: "desc" });
-  const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
-  const [openedRunId, setOpenedRunId] = useState<string>("");
-  const [compareMode, setCompareMode] = useState(false);
+  const router = useRouter();
+  
+  // Load models for the sidebar
+  const modelsData = useModels(defaultModelFilters);
+  const models = modelsData.data?.items ?? [];
+  const firstModelId = models[0]?.id ?? "";
+  
+  const [activeModelId, setActiveModelId] = useState<string>("");
+  const resolvedModelId = activeModelId || firstModelId;
+  const activeModel = models.find((m) => m.id === resolvedModelId);
 
-  const resolvedExperimentId = activeExperimentId || firstExperimentId;
-  const runs = useRunList(resolvedExperimentId, filters);
-  const openedRun = useRunDetail(openedRunId);
-  const compare = useCompareRuns(selectedRunIds);
+  // Load versions for the right dashboard
+  const versionsData = useModelVersions(activeModel?.name ?? "");
+  const versions = versionsData.data ?? [];
 
-  const activeExperimentName = useMemo(
-    () => experiments.data?.find((item) => item.experiment_id === resolvedExperimentId)?.name ?? "Experiment",
-    [experiments.data, resolvedExperimentId]
-  );
+  const [selectedVersionIds, setSelectedVersionIds] = useState<string[]>([]);
 
-  const toggleSelected = (runId: string) => {
-    setSelectedRunIds((prev) => (prev.includes(runId) ? prev.filter((id) => id !== runId) : [...prev, runId]));
+  const toggleSelected = (versionId: string) => {
+    setSelectedVersionIds((prev) => (prev.includes(versionId) ? prev.filter((id) => id !== versionId) : [...prev, versionId]));
   };
 
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <ExperimentSidebar
-        experiments={experiments.data ?? []}
-        activeExperimentId={resolvedExperimentId}
+      <ModelSidebar
+        models={models}
+        activeModelId={resolvedModelId}
         onSelect={(id) => {
-          setActiveExperimentId(id);
-          setSelectedRunIds([]);
-          setCompareMode(false);
+          setActiveModelId(id);
+          setSelectedVersionIds([]);
         }}
       />
 
       <main className="min-w-0 flex-1 space-y-3">
-        <h1 className="text-xl font-semibold">Experiment: {activeExperimentName}</h1>
-        {compareMode ? (
-          <CompareRunsView runs={compare.data ?? []} onBack={() => setCompareMode(false)} />
-        ) : (
-          <RunsTable
-            runs={runs.data ?? []}
-            filters={filters}
-            onFiltersChange={(patch) => setFilters((prev) => ({ ...prev, ...patch }))}
-            selectedRunIds={selectedRunIds}
-            onToggleSelect={toggleSelected}
-            onOpenRun={setOpenedRunId}
-            onCompare={() => setCompareMode(true)}
-          />
-        )}
+        <h1 className="text-xl font-semibold">Model: {activeModel?.name ?? "N/A"}</h1>
+        <VersionsTable
+          versions={versions}
+          selectedVersionIds={selectedVersionIds}
+          onToggleSelect={toggleSelected}
+          onOpenVersion={(versionId) => {
+            if (activeModel) {
+              const versionNumber = versions.find(v => v.id === versionId)?.version.replace(/^v/, "");
+              if (versionNumber) {
+                router.push(`/models/${encodeURIComponent(activeModel.name)}/versions/${versionNumber}`);
+              }
+            }
+          }}
+          onCompare={() => {
+            // Placeholder for compare functionality
+            console.log("Compare", selectedVersionIds);
+          }}
+        />
       </main>
-
-      <RunDetailDrawer run={openedRun.data ?? null} open={Boolean(openedRunId)} onClose={() => setOpenedRunId("")} />
     </div>
   );
 }

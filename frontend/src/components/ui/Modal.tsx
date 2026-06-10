@@ -115,7 +115,7 @@ export function Modal({
           </div>
         ) : null}
         <div className={cn("flex-1 overflow-y-auto scrollbar-thin", compact ? "px-4 py-3" : "px-6 py-5")}>{children}</div>
-        {footer ? <div className={cn("shrink-0 border-t border-border bg-[#FAFAFA]", compact ? "px-4 py-3" : "px-6 py-4")}>{footer}</div> : null}
+        {footer ? <div className={cn("shrink-0 border-t border-border bg-bg-surface", compact ? "px-4 py-3" : "px-6 py-4")}>{footer}</div> : null}
       </div>
     </div>
   );

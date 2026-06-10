@@ -25,7 +25,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/metrics",
         "/api/v1/auth/login",
         "/api/v1/auth/register",
-        "/api/v1/colab/bootstrap",
+        "/api/v1/colab/claims/exchange",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -33,6 +33,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.url.path in self.SKIP_PATHS
             or request.url.path.startswith("/docs")
             or request.url.path.startswith("/api/v1/colab/runtime/")
+            or request.url.path.startswith("/workspace-data/")
+            or request.url.path.startswith("/mlflow-artifacts/")
         ):
             return await call_next(request)
 

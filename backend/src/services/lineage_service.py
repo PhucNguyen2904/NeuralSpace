@@ -10,7 +10,7 @@ from typing import Literal
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.mlops_tracking import DatasetVersion, ModelDatasetLink, ModelVersion, Run
+from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
 from app.schemas.lineage import (
     DatasetLineageGraph,
     ImpactedModel,
@@ -222,6 +222,101 @@ class LineageService:
 
         return LineageGraph(nodes=list(nodes.values()), edges=edges)
 
+    async def get_ui_lineage_graph(
+        self,
+        root_type: Literal["dataset", "model"] | None = None,
+        root_id: str | None = None,
+        depth: int = 3,
+    ) -> dict:
+        stmt = (
+            select(ModelDatasetLink, DatasetVersion, MLDataset, ModelVersion, Run)
+            .join(DatasetVersion, DatasetVersion.id == ModelDatasetLink.dataset_version_id)
+            .join(MLDataset, MLDataset.id == DatasetVersion.dataset_id)
+            .join(ModelVersion, ModelVersion.id == ModelDatasetLink.model_version_id)
+            .join(Run, Run.id == ModelVersion.run_id)
+            .order_by(MLDataset.name.asc(), Run.start_time.desc(), ModelVersion.mlflow_name.asc())
+        )
+        rows = (await self.db.execute(stmt)).all()
+
+        nodes: dict[str, dict] = {}
+        edges: dict[str, dict] = {}
+        adjacency: dict[str, set[str]] = {}
+
+        def add_edge(source: str, target: str, relation: str) -> None:
+            edge_id = f"{source}->{target}:{relation}"
+            edges[edge_id] = {"id": edge_id, "source": source, "target": target, "relation": relation}
+            adjacency.setdefault(source, set()).add(target)
+            adjacency.setdefault(target, set()).add(source)
+
+        for link, dataset_version, dataset, model_version, run in rows:
+            dataset_node_id = dataset_version.id
+            run_node_id = run.id
+            model_node_id = model_version.id
+
+            nodes[dataset_node_id] = {
+                "id": dataset_node_id,
+                "type": "dataset",
+                "name": dataset.name,
+                "version": dataset_version.version,
+                "status": dataset_version.status,
+                "dvcMd5": dataset_version.dvc_md5,
+                "created_at": dataset_version.created_at.isoformat() if dataset_version.created_at else None,
+                "size": _format_size(dataset_version.size_bytes),
+                "items": dataset_version.item_count,
+            }
+            nodes[run_node_id] = {
+                "id": run_node_id,
+                "type": "run",
+                "name": run.name or run.mlflow_run_id,
+                "status": run.status,
+                "metrics": run.metrics_snapshot or {},
+                "started_at": run.start_time.isoformat() if run.start_time else None,
+                "user": str(run.user_id),
+            }
+            nodes[model_node_id] = {
+                "id": model_node_id,
+                "type": "model",
+                "name": model_version.mlflow_name,
+                "version": str(model_version.mlflow_version),
+                "stage": model_version.stage,
+                "status": model_version.status,
+                "metrics": model_version.metrics or run.metrics_snapshot or {},
+                "created_at": model_version.created_at.isoformat() if model_version.created_at else None,
+                "user": str(model_version.created_by),
+            }
+            add_edge(dataset_node_id, run_node_id, "used_for_training")
+            add_edge(run_node_id, model_node_id, "produced")
+
+        visible_ids = set(nodes)
+        if root_id and root_id in nodes:
+            visible_ids = _collect_lineage_ids(root_id, nodes, list(edges.values()), depth)
+
+        return {
+            "nodes": [node for node_id, node in nodes.items() if node_id in visible_ids],
+            "edges": [
+                edge
+                for edge in edges.values()
+                if edge["source"] in visible_ids and edge["target"] in visible_ids
+            ],
+        }
+
+    async def impact_summary(self, dataset_version_id: str) -> dict:
+        stmt = (
+            select(ModelVersion.id)
+            .join(ModelDatasetLink, ModelDatasetLink.model_version_id == ModelVersion.id)
+            .where(
+                ModelDatasetLink.dataset_version_id == dataset_version_id,
+                ModelVersion.stage == "Production",
+            )
+            .order_by(ModelVersion.created_at.desc())
+        )
+        model_ids = [row[0] for row in (await self.db.execute(stmt)).all()]
+        return {
+            "affected_model_ids": model_ids,
+            "affected_production_count": len(model_ids),
+            "message": f"{len(model_ids)} Production model bị ảnh hưởng",
+        }
+
     async def find_impacted_models(self, dataset_version_id: str, production_only: bool = True) -> list[ImpactedModel]:
         filters = [ModelDatasetLink.dataset_version_id == dataset_version_id]
         if production_only:
@@ -358,3 +453,48 @@ def _risk_level(stage: str) -> Literal["high", "medium", "low"]:
     if stage == "Staging":
         return "medium"
     return "low"
+
+
+def _format_size(size_bytes: int | None) -> str | None:
+    if size_bytes is None:
+        return None
+    value = float(size_bytes)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit_index = 0
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+    return f"{value:.1f} {units[unit_index]}"
+
+
+def _collect_lineage_ids(root_id: str, nodes: dict[str, dict], edges: list[dict], depth: int) -> set[str]:
+    root = nodes[root_id]
+    visible = {root_id}
+
+    if root["type"] == "dataset":
+        run_ids = {edge["target"] for edge in edges if edge["source"] == root_id and edge["relation"] == "used_for_training"}
+        visible.update(run_ids)
+        if depth >= 2:
+            visible.update(
+                edge["target"]
+                for edge in edges
+                if edge["source"] in run_ids and edge["relation"] == "produced"
+            )
+        return visible
+
+    if root["type"] == "model":
+        run_ids = {edge["source"] for edge in edges if edge["target"] == root_id and edge["relation"] == "produced"}
+        visible.update(run_ids)
+        if depth >= 2:
+            visible.update(
+                edge["source"]
+                for edge in edges
+                if edge["target"] in run_ids and edge["relation"] == "used_for_training"
+            )
+        return visible
+
+    related_edges = [edge for edge in edges if root_id in {edge["source"], edge["target"]}]
+    for edge in related_edges:
+        visible.add(edge["source"])
+        visible.add(edge["target"])
+    return visible

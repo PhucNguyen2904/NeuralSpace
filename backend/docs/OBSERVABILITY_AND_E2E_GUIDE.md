@@ -19,9 +19,6 @@ Tài liệu này mô tả phần tích hợp cuối:
 - `app/main.py`
 - `app/dependencies.py`
 - `app/services/workspace_service.py`
-- `app/workers/provisioning_tasks.py`
-- `app/workers/gc_tasks.py`
-- `app/workers/celery_app.py`
 - `tests/integration/test_full_workspace_lifecycle.py`
 - `docker-compose.test.yml`
 - `Makefile`
@@ -116,7 +113,7 @@ File: `tests/integration/test_full_workspace_lifecycle.py`
 Luồng:
 
 1. `POST /workspaces` -> `202`
-2. Poll status -> `RUNNING` (K8s/Celery mocked)
+2. Poll status -> `RUNNING` (K8s mocked)
 3. `POST /heartbeat` -> gia hạn timeout
 4. `POST /stop` -> `202`
 5. Poll -> `STOPPING/STOPPED`
@@ -143,12 +140,6 @@ Services:
 - `redis-test`
 - `k8s-mock` (fake API server)
 - `api-test`
-- `worker-test`
-
-Quan trọng:
-
-- `CELERY_TASK_ALWAYS_EAGER=true`
-- `CELERY_TASK_EAGER_PROPAGATES=true`
 
 
 ## 8. Runbook
@@ -196,8 +187,7 @@ make build
 1. Database
 2. Redis
 3. API
-4. Workers (worker + beat)
-5. Proxy
+4. Proxy
 
 
 ## 10. Common Pitfalls And Debug
@@ -222,10 +212,3 @@ make build
 ### 10.4 Integration test fail do FK `users.id`
 
 - Seed user trước create workspace (test fixture đã xử lý)
-
-### 10.5 Celery không eager trong test
-
-- Kiểm tra env:
-  - `CELERY_TASK_ALWAYS_EAGER=true`
-  - `CELERY_TASK_EAGER_PROPAGATES=true`
-

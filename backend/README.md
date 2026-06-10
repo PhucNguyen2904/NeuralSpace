@@ -17,7 +17,6 @@ backend/
 │   ├── main.py                   # FastAPI app entrypoint
 │   ├── config.py                 # Pydantic Settings configuration
 │   ├── dependencies.py           # FastAPI dependency injection
-│   ├── celery_config.py          # Celery configuration
 │   │
 │   ├── core/                     # Core utilities
 │   │   ├── exceptions.py         # Custom exceptions
@@ -28,10 +27,9 @@ backend/
 │   │   ├── router.py             # Router collection
 │   │   └── health_router.py      # Health check endpoints
 │   │
-│   ├── models/                   # SQLAlchemy ORM models (placeholder)
-│   ├── schemas/                  # Pydantic request/response schemas (placeholder)
-│   ├── services/                 # Business logic layer (placeholder)
-│   └── workers/                  # Celery tasks (placeholder)
+│   ├── models/                   # SQLAlchemy ORM models
+│   ├── schemas/                  # Pydantic request/response schemas
+│   └── services/                 # Business logic layer
 │
 ├── alembic/                      # Database migrations
 │   ├── env.py
@@ -82,8 +80,6 @@ This starts:
 - PostgreSQL (port 5432)
 - Redis (port 6379)
 - FastAPI API (port 8000)
-- Celery Worker
-- Celery Beat Scheduler
 
 4. **Run migrations (when needed):**
 
@@ -136,33 +132,36 @@ Key settings:
 - `MINIO_*`: MinIO S3 configuration
 - `MAX_WORKSPACES_PER_USER`: Workspace quota per user
 - `IDLE_TIMEOUT_SECONDS`: Workspace idle timeout
-- `COLAB_NOTEBOOK_GITHUB_URL`: GitHub notebook template path for Colab launch
-- `COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES`: Launch token TTL in minutes
+- `COLAB_TEMPLATE_ORGANIZATION`, `COLAB_TEMPLATE_REPOSITORY`: Public GitHub template repository
+- `COLAB_TEMPLATE_REF`: Pinned commit SHA or release tag
+- `COLAB_TEMPLATE_NOTEBOOK_PATH`: Public bootstrap notebook path
+- `COLAB_CLAIM_EXPIRE_SECONDS`: One-time claim TTL in seconds
 - `COLAB_DATA_URL_EXPIRE_SECONDS`: Signed dataset URL TTL in seconds
 
 ## Google Colab Integration
 
-The current endpoints below are an initial launch/bootstrap prototype. New
-runtime behavior should follow the scoped external runtime session model
-described in the target architecture document.
+Colab opens a public, pinned notebook URL with no credentials or private
+identifiers in the URL. Users paste a short-lived one-time claim into the
+notebook to obtain a scoped runtime session.
 
 ### Endpoints
 
-- `POST /api/v1/colab/workspaces/{workspace_id}/launch`
+- `POST /api/v1/colab/workspaces/{workspace_id}/claims`
   - Requires bearer auth
   - Validates workspace ownership
-  - Returns Colab launch URL with one-time short-lived `launch_token`
-- `POST /api/v1/colab/bootstrap`
-  - Validates `launch_token`
-  - Validates workspace ownership again
-  - Returns signed dataset URLs for datasets attached to that workspace and owned by the same user
+  - Returns a one-time claim and secret-free public Colab URL
+- `POST /api/v1/colab/claims/exchange`
+  - Atomically consumes the claim
+  - Returns a scoped runtime token and short-lived dataset grants
 
 ### Quick setup
 
 1. Push template notebook to GitHub:
-   - `notebooks/templates/colab_workspace_bootstrap.ipynb`
+   - `notebooks/bootstrap.ipynb`
 2. Set env:
-   - `COLAB_NOTEBOOK_GITHUB_URL=your-org/your-repo/blob/main/notebooks/templates/colab_workspace_bootstrap.ipynb`
+   - `COLAB_TEMPLATE_ORGANIZATION=neuralspace-ai`
+   - `COLAB_TEMPLATE_REPOSITORY=colab-templates`
+   - `COLAB_TEMPLATE_REF=<commit-sha-or-release-tag>`
 3. Restart API service.
 4. In Colab notebook, set:
    - `API_BASE=https://<your-api-domain>/api/v1`
@@ -222,7 +221,7 @@ Following prompts will implement:
 2. **Prompt 03**: User and authentication endpoints
 3. **Prompt 04**: Workspace management API
 4. **Prompt 05**: Jupyter integration and notebook execution
-5. **Prompt 06**: Worker and scheduler configuration
+5. **Prompt 06**: Observability and deployment hardening
 
 ## Deployment
 
@@ -241,12 +240,6 @@ Following prompts will implement:
 ```bash
 # Run API server
 uvicorn app.main:app --reload
-
-# Run Celery worker
-celery -A app.workers worker -l debug
-
-# Run Celery beat scheduler
-celery -A app.workers beat -l debug
 
 # Generate migration
 alembic revision --autogenerate -m "Description"

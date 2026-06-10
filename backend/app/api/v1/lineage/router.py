@@ -29,15 +29,26 @@ async def get_model_lineage(id: str, db: AsyncSession = Depends(get_db), _user: 
     return await LineageService(db).get_model_lineage(id)
 
 
-@router.get("/graph", response_model=LineageGraph)
+@router.get("/graph")
 async def get_full_lineage_graph(
-    root_type: str = Query(..., pattern="^(dataset_version|model_version)$"),
-    root_id: str = Query(...),
+    root_type: str | None = Query(default=None, pattern="^(dataset|model|dataset_version|model_version)$"),
+    root_id: str | None = Query(default=None),
     depth: int = Query(3, ge=1, le=10),
     db: AsyncSession = Depends(get_db),
     _user: UserContext = Depends(get_current_user),
-) -> LineageGraph:
-    return await LineageService(db).get_full_lineage_graph(root_type=root_type, root_id=root_id, depth=depth)
+) -> dict:
+    if root_type in {"dataset_version", "model_version"} and root_id:
+        return await LineageService(db).get_full_lineage_graph(root_type=root_type, root_id=root_id, depth=depth)
+    return await LineageService(db).get_ui_lineage_graph(root_type=root_type, root_id=root_id, depth=depth)
+
+
+@router.get("/impact/{dataset_version_id}")
+async def impact_summary(
+    dataset_version_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: UserContext = Depends(get_current_user),
+) -> dict:
+    return await LineageService(db).impact_summary(dataset_version_id)
 
 
 @router.post("/impact-analysis", response_model=list[ImpactedModel])

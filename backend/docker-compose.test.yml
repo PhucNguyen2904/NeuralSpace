@@ -43,8 +43,6 @@ services:
       REDIS_URL: redis://redis-test:6379/0
       KUBERNETES_IN_CLUSTER: "false"
       KUBERNETES_NAMESPACE_PREFIX: "ws-"
-      CELERY_TASK_ALWAYS_EAGER: "true"
-      CELERY_TASK_EAGER_PROPAGATES: "true"
     depends_on:
       postgres-test:
         condition: service_healthy
@@ -52,22 +50,3 @@ services:
         condition: service_healthy
       k8s-mock:
         condition: service_started
-
-  worker-test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    command: celery -A app.workers worker -l info
-    environment:
-      ENVIRONMENT: development
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres-test:5432/cloud_ide_test
-      REDIS_URL: redis://redis-test:6379/0
-      KUBERNETES_IN_CLUSTER: "false"
-      KUBERNETES_NAMESPACE_PREFIX: "ws-"
-      CELERY_TASK_ALWAYS_EAGER: "true"
-      CELERY_TASK_EAGER_PROPAGATES: "true"
-    depends_on:
-      postgres-test:
-        condition: service_healthy
-      redis-test:
-        condition: service_healthy

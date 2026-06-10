@@ -7,9 +7,27 @@ export const metadata: Metadata = {
   description: "Cloud IDE platform"
 };
 
+const themeInitScript = `
+(() => {
+  try {
+    const preference = window.localStorage.getItem("ui-theme") || "dark";
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const useLight = preference === "light" || (preference === "system" && !systemDark);
+    const root = document.documentElement;
+    root.classList.toggle("light", useLight);
+    root.classList.toggle("theme-dark", !useLight);
+  } catch {
+    document.documentElement.classList.add("theme-dark");
+  }
+})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className="theme-dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[120] focus:rounded-md focus:bg-bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary">
           Skip to main content

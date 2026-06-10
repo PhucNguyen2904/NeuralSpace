@@ -16,6 +16,7 @@ export interface Dataset {
   updated_at: string;
   thumbnail_url?: string;
   storage_path: string;
+  version?: string;
 }
 
 export interface ColumnInfo {

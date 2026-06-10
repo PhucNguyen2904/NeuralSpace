@@ -17,7 +17,7 @@ const typeIconMap = {
 export function DatasetRow({ dataset, onSelect, onUse }: { dataset: Dataset; onSelect: (d: Dataset) => void; onUse: (d: Dataset) => void }) {
   const TypeIcon = typeIconMap[dataset.type];
   return (
-    <button onClick={() => onSelect(dataset)} className="grid w-full grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr_90px] items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-bg-elevated">
+    <button onClick={() => onSelect(dataset)} className="grid w-full grid-cols-[40px_1.8fr_0.8fr_0.8fr_0.7fr_0.8fr_0.8fr] items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-bg-elevated">
       <span className="rounded-md bg-[#ECFDF5] p-1.5 text-emerald-600"><TypeIcon size={16} /></span>
       <span>
         <span className="block truncate font-medium text-text-primary">{dataset.name}</span>
@@ -28,11 +28,6 @@ export function DatasetRow({ dataset, onSelect, onUse }: { dataset: Dataset; onS
       <span className="text-sm text-text-secondary">{formatCount(dataset.item_count)}</span>
       <span className={cn("text-xs font-medium", dataset.label_status === "labeled" && "text-emerald-700", dataset.label_status === "processing" && "text-amber-600", dataset.label_status === "unlabeled" && "text-text-secondary")}>{dataset.label_status}</span>
       <span className="text-sm text-text-secondary">{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</span>
-      <span>
-        <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={(event) => { event.stopPropagation(); onUse(dataset); }}>
-          Use
-        </Button>
-      </span>
     </button>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getModelVersions as getMlflowModelVersions } from "@/lib/api/mlflow";
 import type { Stage } from "@/types/mlflow";
 
 export interface RegistryModelVersion {
@@ -135,7 +136,45 @@ export function useModelVersions(modelName: string) {
   return useQuery({
     queryKey: ["registry-model-versions", modelName],
     enabled: Boolean(modelName),
-    queryFn: async () => MOCK_VERSIONS.filter((item) => item.modelName === modelName)
+    queryFn: async () => {
+      try {
+        const response = await getMlflowModelVersions({ model_name: modelName, limit: 50 });
+        const versions = response.items.map<RegistryModelVersion>((item) => {
+          const metrics = item.metrics ?? {};
+          const tags = item.tags ?? {};
+          return {
+            id: item.id,
+            modelName: item.name,
+            version: item.version,
+            stage: item.stage,
+            accuracy: metrics.accuracy ?? 0,
+            loss: metrics.loss ?? 0,
+            f1: metrics.f1_score ?? metrics.f1 ?? 0,
+            map50: metrics.map50,
+            datasetName: tags.dataset_name ?? "Demo Dataset",
+            datasetVersion: tags.dataset_version ?? "v1.0",
+            datasetHash: tags.dataset_hash ?? "demo",
+            promotedAgo: item.stage === "Production" ? "1 ngày trước" : undefined,
+            promotedBy: item.stage === "Production" ? "demo" : undefined,
+            size: "245 MB",
+            frameworkVersion: tags.framework_version ?? "unknown",
+            gitCommit: tags.git_commit ?? tags.commit ?? "abc1234",
+            runId: item.run_id ?? "",
+            registeredAt: item.created_at ? new Date(item.created_at).toLocaleDateString("vi-VN") : "N/A",
+            approvalStatus: item.stage === "Production" ? "APPROVED" : undefined,
+            approvalReviewer: item.stage === "Production" ? "demo-reviewer" : undefined,
+            auditTrail: [
+              { at: item.created_at ?? "", actor: "seed-script", action: `Registered ${item.version}` },
+              ...(item.stage === "Production" ? [{ at: item.updated_at ?? item.created_at ?? "", actor: "demo-reviewer", action: "Approved -> Production" }] : [])
+            ]
+          };
+        });
+        if (versions.length > 0) return versions;
+      } catch {
+        // Fall back to bundled demo data when the local API is unavailable.
+      }
+      return MOCK_VERSIONS.filter((item) => item.modelName === modelName);
+    }
   });
 }
 

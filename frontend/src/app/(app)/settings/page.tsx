@@ -124,13 +124,14 @@ export default function SettingsPage() {
       applyTheme(saved);
       return;
     }
-    applyTheme("system");
+    applyTheme("dark");
   }, []);
 
   const applyTheme = (value: ThemePreference) => {
     const root = document.documentElement;
     const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const useDark = value === "dark" || (value === "system" && systemDark);
+    root.classList.toggle("light", !useDark);
     root.classList.toggle("theme-dark", useDark);
   };
 

@@ -31,11 +31,11 @@ export interface CreateWorkspaceInput {
 
 // ─── Colab session & run types ────────────────────────────────────────────────
 
-export type ColabSessionStatus = "ISSUED" | "CONNECTED" | "DISCONNECTED" | "EXPIRED" | "REVOKED";
+export type ColabSessionStatus = "CREATED" | "CONNECTED" | "DISCONNECTED" | "EXPIRED" | "REVOKED";
 export type ColabRunStatus = "CREATED" | "RUNNING" | "FINISHED" | "FAILED" | "STALE" | "CANCEL_REQUESTED";
 
 export interface ColabLaunchResult {
-  launch_url: string;
+  notebook_url: string;
   session_id: string;
   claim_code: string;
   expires_in: number;

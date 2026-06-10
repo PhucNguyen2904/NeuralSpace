@@ -36,6 +36,7 @@ export function LineageToolbar({
         <option value="model">Model</option>
       </select>
       <select value={rootId} onChange={(event) => onRootIdChange(event.target.value)} className="h-9 min-w-[180px] rounded-md border border-border bg-white px-2 text-sm">
+        <option value="">All {rootType === "dataset" ? "datasets" : "models"}</option>
         {options.map((node) => (
           <option key={node.id} value={node.id}>
             {node.name}

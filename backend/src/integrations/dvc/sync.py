@@ -28,6 +28,10 @@ class DVCSyncService:
         dvc_track_result: DVCTrackResult,
         created_by: UUID,
         changelog: str = "",
+        item_count: int = 0,
+        status: str = "draft",
+        split_info: dict | None = None,
+        schema_snapshot: dict | None = None,
     ) -> DatasetVersion:
         try:
             version = await self._next_version(str(dataset_id))
@@ -45,10 +49,13 @@ class DVCSyncService:
                 dvc_commit=dvc_track_result.git_commit,
                 storage_path=dvc_track_result.dvc_file_path,
                 size_bytes=dvc_track_result.size_bytes,
+                item_count=item_count,
+                status=status,
+                split_info=split_info or {},
+                schema_snapshot=schema_snapshot or {},
                 created_by=str(created_by),
                 changelog=changelog,
                 is_latest=True,
-                status="validated",
             )
             self.db.add(row)
 
@@ -62,6 +69,8 @@ class DVCSyncService:
                     "version": version,
                     "dvc_md5": dvc_track_result.md5,
                     "dvc_commit": dvc_track_result.git_commit,
+                    "size_bytes": dvc_track_result.size_bytes,
+                    "item_count": item_count,
                 },
             )
             self.db.add(audit)
@@ -72,6 +81,7 @@ class DVCSyncService:
         except Exception as exc:  # noqa: BLE001
             await self.db.rollback()
             raise DVCSyncError(f"sync_dataset_version failed: {exc}") from exc
+
 
     async def sync_all_from_git(self, dataset_id: UUID, dataset_name: str) -> list[DatasetVersion]:
         versions = await self.dvc_client.list_versions(dataset_name)

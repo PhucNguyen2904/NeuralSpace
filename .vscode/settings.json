@@ -1,15 +1,16 @@
 {
-  "python.envFile": "${workspaceFolder}\\backend\\.env",
+  "python.envFile": "${workspaceFolder}/backend/.env",
   "python.analysis.extraPaths": [
-    "${workspaceFolder}\\backend"
+    "${workspaceFolder}/backend"
   ],
   "python.testing.pytestEnabled": true,
-  "python.testing.cwd": "${workspaceFolder}\\backend",
+  "python.testing.cwd": "${workspaceFolder}/backend",
   "python.testing.pytestArgs": [
     "tests"
   ],
   "python.terminal.activateEnvironment": true,
   "terminal.integrated.env.windows": {
-    "PYTHONPATH": "${workspaceFolder}\\backend"
-  }
+    "PYTHONPATH": "${workspaceFolder}/backend"
+  },
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/.venv/Scripts/python.exe"
 }

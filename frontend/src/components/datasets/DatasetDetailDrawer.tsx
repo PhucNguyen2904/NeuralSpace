@@ -148,9 +148,9 @@ function DatasetVersionTimeline({
     return (
       <div className="space-y-3">
         <div className="relative pl-6">
-          <div className="absolute bottom-1 left-2 top-1 w-px bg-emerald-200" />
+          <div className="absolute bottom-1 left-[11.5px] top-1 w-px bg-emerald-200" />
           <div className="relative">
-            <span className="absolute -left-[17px] top-1.5 h-3 w-3 rounded-full border-2 border-emerald-500 bg-emerald-500" />
+            <span className="absolute -left-[18px] top-1.5 h-3 w-3 rounded-full border-2 border-emerald-500 bg-emerald-500" />
             <p className="text-sm font-semibold text-text-primary">{dataset.version || "v1.0"} Current</p>
             <p className="text-sm text-text-secondary">{formatSize(dataset.size_bytes)} · {dataset.item_count.toLocaleString()} items</p>
             <p className="text-xs text-text-tertiary">{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</p>
@@ -166,11 +166,11 @@ function DatasetVersionTimeline({
   return (
     <div className="space-y-3">
       <div className="relative pl-6">
-        <div className="absolute bottom-1 left-2 top-1 w-px bg-emerald-200" />
+        <div className="absolute bottom-1 left-[11.5px] top-1 w-px bg-emerald-200" />
         <div className="space-y-4">
           {displayVersions.map((version) => (
             <div key={version.id} className="relative">
-              <span className={`absolute -left-[17px] top-1.5 h-3 w-3 rounded-full border-2 ${version.is_latest ? "border-emerald-500 bg-emerald-500" : "border-emerald-500 bg-bg-surface"}`} />
+              <span className={`absolute -left-[18px] top-1.5 h-3 w-3 rounded-full border-2 ${version.is_latest ? "border-emerald-500 bg-emerald-500" : "border-emerald-500 bg-bg-surface"}`} />
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-text-primary">{version.version}</p>
                 {version.is_latest ? <span className="rounded-full bg-[#ECFDF5] px-2 py-0.5 text-xs text-emerald-700">Latest</span> : null}

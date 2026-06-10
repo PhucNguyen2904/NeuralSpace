@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +20,14 @@ class DVCClient:
     def __init__(self, repo_path: str, remote_name: str = "minio") -> None:
         self.repo_path = Path(repo_path).resolve()
         self.remote_name = remote_name
+        # Resolve executables once so they work regardless of system PATH.
+        # DVC: prefer the venv-local binary; fall back to `python -m dvc`.
+        _dvc_bin = shutil.which("dvc") or shutil.which(
+            str(Path(sys.executable).parent / "dvc")
+        )
+        self._dvc_cmd: list[str] = [_dvc_bin] if _dvc_bin else [sys.executable, "-m", "dvc"]
+        _git_bin = shutil.which("git") or "git"
+        self._git_cmd: list[str] = [_git_bin]
         self._validate_repo()
 
     async def track(self, local_path: str, dataset_name: str, commit_message: str) -> DVCTrackResult:
@@ -26,13 +36,13 @@ class DVCClient:
         rel_dvc_file = self._relpath(dvc_file)
         rel_data_path = self._relpath(local_abs)
 
-        await self._run_command(["dvc", "add", rel_data_path], cwd=self.repo_path)
-        await self._run_command(["git", "add", rel_dvc_file, ".gitignore"], cwd=self.repo_path)
-        await self._run_command(["git", "commit", "-m", commit_message], cwd=self.repo_path)
-        await self._run_command(["dvc", "push", "-r", self.remote_name], cwd=self.repo_path)
+        await self._run_command([*self._dvc_cmd, "add", rel_data_path], cwd=self.repo_path)
+        await self._run_command([*self._git_cmd, "add", rel_dvc_file, ".gitignore"], cwd=self.repo_path)
+        await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
+        await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name], cwd=self.repo_path)
 
         info = await self.get_version_info(rel_dvc_file)
-        stdout, _, _ = await self._run_command(["git", "rev-parse", "HEAD"], cwd=self.repo_path)
+        stdout, _, _ = await self._run_command([*self._git_cmd, "rev-parse", "HEAD"], cwd=self.repo_path)
         return DVCTrackResult(
             dataset_name=dataset_name,
             md5=info.md5,
@@ -55,21 +65,21 @@ class DVCClient:
         target = Path(target_path)
         target.mkdir(parents=True, exist_ok=True)
         await self._run_command(
-            ["dvc", "pull", dvc_file_path, "-r", self.remote_name],
+            [*self._dvc_cmd, "pull", dvc_file_path, "-r", self.remote_name],
             cwd=self.repo_path,
         )
 
     async def list_versions(self, dataset_name: str) -> list[DVCVersionInfo]:
         dvc_file_path = self._dataset_name_to_dvc_file(dataset_name)
         stdout, _, _ = await self._run_command(
-            ["git", "log", "--all", "--date=iso-strict", "--pretty=format:%H|%cI", "--", dvc_file_path],
+            [*self._git_cmd, "log", "--all", "--date=iso-strict", "--pretty=format:%H|%cI", "--", dvc_file_path],
             cwd=self.repo_path,
         )
         versions: list[DVCVersionInfo] = []
         for line in (row.strip() for row in stdout.splitlines() if row.strip()):
             commit_sha, committed_at = line.split("|", maxsplit=1)
             content, _, _ = await self._run_command(
-                ["git", "show", f"{commit_sha}:{dvc_file_path}"],
+                [*self._git_cmd, "show", f"{commit_sha}:{dvc_file_path}"],
                 cwd=self.repo_path,
             )
             parsed = self._parse_dvc_yaml(content, dvc_file_path)
@@ -88,11 +98,11 @@ class DVCClient:
 
     async def diff(self, version_a: str, version_b: str, dvc_file_path: str) -> DVCDiffResult:
         content_a, _, _ = await self._run_command(
-            ["git", "show", f"{version_a}:{dvc_file_path}"],
+            [*self._git_cmd, "show", f"{version_a}:{dvc_file_path}"],
             cwd=self.repo_path,
         )
         content_b, _, _ = await self._run_command(
-            ["git", "show", f"{version_b}:{dvc_file_path}"],
+            [*self._git_cmd, "show", f"{version_b}:{dvc_file_path}"],
             cwd=self.repo_path,
         )
         parsed_a = self._parse_dvc_yaml(content_a, dvc_file_path)
@@ -112,7 +122,7 @@ class DVCClient:
 
     async def reproduce(self, pipeline_stage: str) -> DVCReproResult:
         stdout, stderr, _ = await self._run_command(
-            ["dvc", "repro", pipeline_stage],
+            [*self._dvc_cmd, "repro", pipeline_stage],
             cwd=self.repo_path,
         )
         return DVCReproResult(stage=pipeline_stage, success=True, stdout=stdout, stderr=stderr)

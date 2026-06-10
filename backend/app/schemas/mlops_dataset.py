@@ -68,6 +68,29 @@ class DatasetVersionResponse(BaseModel):
     dvc_commit: str | None = None
     storage_path: str | None = None
     size_bytes: int | None = None
+    item_count: int | None = None
+    split_info: dict[str, Any] | None = None
+    schema_snapshot: dict[str, Any] | None = None
+    changelog: str | None = None
+    is_latest: bool
+    status: str
+    created_by: str
+    created_at: datetime
+
+
+class DatasetVersionTrackResponse(BaseModel):
+    """Response schema for POST /datasets/{id}/versions/track."""
+
+    id: str
+    dataset_id: str
+    version: str
+    dvc_md5: str | None = None
+    dvc_commit: str | None = None
+    storage_path: str | None = None
+    size_bytes: int | None = None
+    item_count: int | None = None
+    split_info: dict[str, Any] | None = None
+    schema_snapshot: dict[str, Any] | None = None
     changelog: str | None = None
     is_latest: bool
     status: str

@@ -74,7 +74,10 @@ export default function DatasetDetailPage() {
         open={trackModalOpen}
         onClose={() => setTrackModalOpen(false)}
         datasetId={datasetId}
-        tracker={tracker}
+        onSuccess={() => {
+          // Auto-select the newly created version (first in refetched list)
+          setSelectedVersionId(null);
+        }}
       />
     </div>
   );

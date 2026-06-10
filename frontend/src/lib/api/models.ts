@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { PaginatedResponse } from "@/types/api";
-import type { Model, ModelDetail, ModelListParams, ModelMetrics, ModelVersion } from "@/types/model";
+import type { Model, ModelDetail, ModelListParams, ModelMetrics, ModelVersion, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
 
 export async function getModels(params: ModelListParams): Promise<PaginatedResponse<Model>> {
   const response = await apiClient.get<PaginatedResponse<Model>>("/models", { params });
@@ -33,6 +33,23 @@ export async function uploadModel(file: File, metadata?: Record<string, unknown>
     formData.append("metadata", JSON.stringify(metadata));
   }
   const response = await apiClient.post<Model>("/models/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data;
+}
+
+export async function updateModel(modelId: string, payload: UpdateModelPayload): Promise<Model> {
+  const response = await apiClient.patch<Model>(`/models/${modelId}`, payload);
+  return response.data;
+}
+
+export async function uploadModelVersion(modelId: string, file: File, metadata?: UploadModelVersionMetadata): Promise<Model> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (metadata) {
+    formData.append("metadata", JSON.stringify(metadata));
+  }
+  const response = await apiClient.post<Model>(`/models/${modelId}/versions`, formData, {
     headers: { "Content-Type": "multipart/form-data" }
   });
   return response.data;

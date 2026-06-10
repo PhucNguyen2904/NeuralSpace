@@ -2,8 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createDatasetVersion, diffDatasetVersions, getDatasetVersionById, getDatasetVersions, validateDatasetVersion } from "@/lib/api/dvc";
+import {
+  createDatasetVersion,
+  diffDatasetVersions,
+  getDatasetVersionById,
+  getDatasetVersions,
+  trackDatasetVersion,
+  validateDatasetVersion,
+  type DvcVersionStatus,
+  type TrackVersionPayload,
+} from "@/lib/api/dvc";
 import type { Stage } from "@/types/mlflow";
+
 
 export interface IntegrityCheckResult {
   key: string;
@@ -248,5 +258,113 @@ export function useTrackVersion(): UseTrackVersionReturn {
       reset: () => setProgressSteps([])
     }),
     [mutation, progressSteps]
+  );
+}
+
+// ─── Upload New Version (file multipart → /versions/track) ───────────────────
+
+export type UploadStep =
+  | { key: "upload"; label: string; status: "pending" | "running" | "done" | "error"; percent?: number }
+  | { key: "dvc"; label: string; status: "pending" | "running" | "done" | "error" }
+  | { key: "save"; label: string; status: "pending" | "running" | "done" | "error" };
+
+export interface UseUploadVersionReturn {
+  upload: (opts: {
+    datasetId: string;
+    file: File;
+    commitMessage: string;
+    changelog?: string;
+    itemCount?: number;
+    status?: DvcVersionStatus;
+  }) => Promise<void>;
+  isUploading: boolean;
+  steps: UploadStep[];
+  error: string | null;
+  reset: () => void;
+}
+
+const INITIAL_STEPS: UploadStep[] = [
+  { key: "upload", label: "Uploading file...", status: "pending" },
+  { key: "dvc", label: "DVC tracking (add → commit → push)...", status: "pending" },
+  { key: "save", label: "Saving version metadata...", status: "pending" },
+];
+
+export function useUploadVersion(): UseUploadVersionReturn {
+  const queryClient = useQueryClient();
+  const [steps, setSteps] = useState<UploadStep[]>(INITIAL_STEPS);
+  const [error, setError] = useState<string | null>(null);
+
+  const setStep = (key: UploadStep["key"], patch: Partial<UploadStep>) =>
+    setSteps((prev) => prev.map((s) => (s.key === key ? ({ ...s, ...patch } as UploadStep) : s)));
+
+  const mutation = useMutation({
+    mutationFn: async (opts: {
+      datasetId: string;
+      file: File;
+      commitMessage: string;
+      changelog?: string;
+      itemCount?: number;
+      status?: DvcVersionStatus;
+    }) => {
+      // ── Phase 1: upload ───────────────────────────────────────────────
+      setStep("upload", { status: "running", label: "Uploading file..." });
+
+      const result = await trackDatasetVersion(opts.datasetId, {
+        file: opts.file,
+        commitMessage: opts.commitMessage,
+        changelog: opts.changelog,
+        itemCount: opts.itemCount ?? 0,
+        status: opts.status ?? "draft",
+        onUploadProgress: (pct) => {
+          if (pct < 100) {
+            setStep("upload", { percent: pct, label: `Uploading file... ${pct}%` });
+          } else {
+            // File arrived at server – backend now runs DVC
+            setStep("upload", { status: "done", label: "File uploaded" });
+            setStep("dvc", { status: "running", label: "DVC tracking (add → commit → push)..." });
+          }
+        },
+      });
+
+      // ── Phase 2: DVC done (server responded) ──────────────────────────
+      setStep("dvc", { status: "done", label: `DVC commit: ${result.dvc_commit?.slice(0, 7) ?? "ok"}` });
+      setStep("save", { status: "running", label: "Saving version metadata..." });
+
+      return { result, datasetId: opts.datasetId };
+    },
+
+    onSuccess: async ({ result, datasetId }) => {
+      setStep("save", { status: "done", label: `Version ${result.version} saved (is_latest: true)` });
+      await queryClient.invalidateQueries({ queryKey: ["dataset-versions", datasetId] });
+    },
+
+    onError: (err: unknown) => {
+      const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? (err instanceof Error ? err.message : "Upload failed");
+      setError(msg);
+      // Mark running step as errored
+      setSteps((prev) =>
+        prev.map((s) => (s.status === "running" ? ({ ...s, status: "error" } as UploadStep) : s))
+      );
+    },
+  });
+
+  return useMemo(
+    () => ({
+      upload: async (opts) => {
+        setError(null);
+        setSteps(INITIAL_STEPS);
+        await mutation.mutateAsync(opts);
+      },
+      isUploading: mutation.isPending,
+      steps,
+      error,
+      reset: () => {
+        setSteps(INITIAL_STEPS);
+        setError(null);
+        mutation.reset();
+      },
+    }),
+    [mutation, steps, error]
   );
 }

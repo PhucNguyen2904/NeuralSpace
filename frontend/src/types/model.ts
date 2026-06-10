@@ -71,6 +71,30 @@ export interface ModelListParams {
   limit?: number;
 }
 
+export interface UpdateModelPayload {
+  description?: string;
+  tags?: string[];
+  status?: ModelStatus;
+  primary_metric_name?: string;
+  primary_metric_value?: number;
+  metrics?: Record<string, number>;
+  all_metrics?: Record<string, number>;
+  framework_version?: string;
+  input_shape?: string;
+  output_shape?: string;
+}
+
+export interface UploadModelVersionMetadata {
+  version?: string;
+  changelog?: string;
+  framework_version?: string;
+  input_shape?: string;
+  output_shape?: string;
+  primary_metric_name?: string;
+  primary_metric_value?: number;
+  metrics?: Record<string, number>;
+}
+
 export interface ModelFilters {
   search: string;
   frameworks: ModelFramework[];

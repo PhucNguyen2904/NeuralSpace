@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, Paperclip, Plus } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ModelCard } from "@/components/models/ModelCard";
 import { ModelCompareTool } from "@/components/models/ModelCompareTool";
@@ -46,6 +47,7 @@ function parseFilters(params: URLSearchParams): Partial<ModelFilters> {
 
 export default function ModelsPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -194,6 +196,7 @@ export default function ModelsPage() {
 
     if (successCount > 0) {
       toast.success(`Đã upload ${successCount}/${pendingUploadFiles.length} model`);
+      await queryClient.invalidateQueries({ queryKey: ["models"] });
       router.refresh();
     }
   };

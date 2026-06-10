@@ -55,8 +55,12 @@ def _minio_client(public: bool = False) -> Minio:
     )
 
 
-def _object_name(storage_path: str) -> str:
-    return storage_path.lstrip("/")
+def _storage_location(storage_path: str, default_bucket: str) -> tuple[str, str]:
+    value = storage_path.strip()
+    if value.startswith("s3://"):
+        bucket, _, object_name = value.removeprefix("s3://").partition("/")
+        return bucket or default_bucket, object_name.lstrip("/")
+    return default_bucket, value.lstrip("/")
 
 
 def _presigned_existing_object(
@@ -104,11 +108,12 @@ async def _workspace_assets_payload(
         for row in dataset_rows:
             if not row.storage_path:
                 continue
+            bucket, object_name = _storage_location(row.storage_path, settings.MINIO_BUCKET)
             signed_url = _presigned_existing_object(
                 internal_client,
                 public_client,
-                settings.MINIO_BUCKET,
-                _object_name(row.storage_path),
+                bucket,
+                object_name,
                 expires,
             )
             datasets.append(ColabDatasetPayload(dataset_id=row.id, name=row.name, signed_url=signed_url))
@@ -124,11 +129,12 @@ async def _workspace_assets_payload(
         for row in model_rows:
             signed_url = None
             if row.storage_path:
+                bucket, object_name = _storage_location(row.storage_path, settings.MINIO_BUCKET)
                 signed_url = _presigned_existing_object(
                     internal_client,
                     public_client,
-                    settings.MINIO_BUCKET,
-                    _object_name(row.storage_path),
+                    bucket,
+                    object_name,
                     expires,
                 )
             models.append(

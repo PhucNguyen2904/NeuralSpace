@@ -2,9 +2,9 @@
 
 import { create } from "zustand";
 import { useMemo } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace } from "@/lib/api/models";
-import type { ModelFilters, ModelListParams } from "@/types/model";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace, updateModel, uploadModelVersion } from "@/lib/api/models";
+import type { ModelFilters, ModelListParams, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
 
 export const defaultModelFilters: ModelFilters = {
   search: "",
@@ -62,5 +62,35 @@ export function useLoadModel() {
   return useMutation({
     mutationFn: ({ modelId, workspaceId, mountPath }: { modelId: string; workspaceId: string; mountPath: string }) =>
       loadModelToWorkspace(modelId, workspaceId, mountPath)
+  });
+}
+
+export function useUpdateModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ modelId, payload }: { modelId: string; payload: UpdateModelPayload }) => updateModel(modelId, payload),
+    onSuccess: async (_, vars) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["models"] }),
+        queryClient.invalidateQueries({ queryKey: ["model-detail", vars.modelId] }),
+        queryClient.invalidateQueries({ queryKey: ["model-versions", vars.modelId] })
+      ]);
+    }
+  });
+}
+
+export function useUploadModelVersion() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ modelId, file, metadata }: { modelId: string; file: File; metadata?: UploadModelVersionMetadata }) =>
+      uploadModelVersion(modelId, file, metadata),
+    onSuccess: async (_, vars) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["models"] }),
+        queryClient.invalidateQueries({ queryKey: ["model-detail", vars.modelId] }),
+        queryClient.invalidateQueries({ queryKey: ["model-metrics", vars.modelId] }),
+        queryClient.invalidateQueries({ queryKey: ["model-versions", vars.modelId] })
+      ]);
+    }
   });
 }

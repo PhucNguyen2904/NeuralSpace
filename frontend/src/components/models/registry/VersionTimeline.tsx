@@ -10,7 +10,7 @@ interface VersionTimelineProps {
 export function VersionTimeline({ versions, onViewVersion, onRollback }: VersionTimelineProps) {
   return (
     <div className="relative pl-6">
-      <div className="absolute bottom-1 left-2 top-1 w-px border-l-2 border-dashed border-slate-200" />
+      <div className="absolute bottom-1 left-[11px] top-1 w-px border-l-2 border-dashed border-slate-200" />
       <div className="space-y-4">
         {versions.map((item) => (
           <div key={item.id} className="relative rounded-md border border-border bg-bg-surface p-3">

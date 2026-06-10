@@ -31,47 +31,133 @@ export interface DvcDatasetVersionListParams {
   limit?: number;
 }
 
-export async function getDatasetVersions(params: DvcDatasetVersionListParams = {}): Promise<PaginatedResponse<DvcDatasetVersion>> {
+export async function getDatasetVersions(
+  params: DvcDatasetVersionListParams = {}
+): Promise<PaginatedResponse<DvcDatasetVersion>> {
   const { dataset_name: datasetId, ...query } = params;
   if (!datasetId) {
     return { items: [], total: 0, page: 1, pageSize: params.limit ?? 100 };
   }
-  const response = await apiClient.get<PaginatedResponse<DvcDatasetVersion>>(`/datasets/${datasetId}/versions`, { params: query });
+  const response = await apiClient.get<PaginatedResponse<DvcDatasetVersion>>(
+    `/datasets/${datasetId}/versions`,
+    { params: query }
+  );
   return response.data;
 }
 
-export async function getDatasetVersionById(datasetId: string, versionId: string): Promise<DvcDatasetVersion> {
-  const response = await apiClient.get<DvcDatasetVersion>(`/datasets/${datasetId}/versions/${versionId}`);
+export async function getDatasetVersionById(
+  datasetId: string,
+  versionId: string
+): Promise<DvcDatasetVersion> {
+  const response = await apiClient.get<DvcDatasetVersion>(
+    `/datasets/${datasetId}/versions/${versionId}`
+  );
   return response.data;
 }
 
-export async function createDatasetVersion(datasetId: string, payload: {
-  version: string;
-  dvc_md5?: string;
-  dvc_commit?: string;
-  path?: string;
-  local_path?: string;
-  commit_message?: string;
+export async function createDatasetVersion(
+  datasetId: string,
+  payload: {
+    version: string;
+    dvc_md5?: string;
+    dvc_commit?: string;
+    path?: string;
+    local_path?: string;
+    commit_message?: string;
+    changelog?: string;
+    note?: string;
+  }
+): Promise<DvcDatasetVersion> {
+  const response = await apiClient.post<DvcDatasetVersion>(
+    `/datasets/${datasetId}/versions`,
+    payload
+  );
+  return response.data;
+}
+
+// ─── New: Upload-and-Track ────────────────────────────────────────────────────
+
+export interface TrackVersionPayload {
+  file: File;
+  commitMessage: string;
   changelog?: string;
-  note?: string;
-}): Promise<DvcDatasetVersion> {
-  const response = await apiClient.post<DvcDatasetVersion>(`/datasets/${datasetId}/versions`, payload);
+  itemCount?: number;
+  status?: DvcVersionStatus;
+  splitInfo?: Record<string, number>;
+  schemaSnapshot?: Record<string, unknown>;
+  onUploadProgress?: (percent: number) => void;
+}
+
+/**
+ * Upload a new dataset file and create a new DatasetVersion via DVC.
+ * Calls  POST /api/v1/datasets/{id}/versions/track  (multipart/form-data).
+ */
+export async function trackDatasetVersion(
+  datasetId: string,
+  payload: TrackVersionPayload
+): Promise<DvcDatasetVersion> {
+  const form = new FormData();
+  form.append("file", payload.file);
+  form.append("commit_message", payload.commitMessage);
+  form.append("changelog", payload.changelog ?? "");
+  form.append("item_count", String(payload.itemCount ?? 0));
+  form.append("status", payload.status ?? "draft");
+  if (payload.splitInfo) {
+    form.append("split_info", JSON.stringify(payload.splitInfo));
+  }
+  if (payload.schemaSnapshot) {
+    form.append("schema_snapshot", JSON.stringify(payload.schemaSnapshot));
+  }
+
+  const response = await apiClient.post<DvcDatasetVersion>(
+    `/datasets/${datasetId}/versions/track`,
+    form,
+    {
+      // Let the browser set Content-Type with correct boundary
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 300_000, // 5 min – DVC push can be slow
+      onUploadProgress: (evt) => {
+        if (payload.onUploadProgress && evt.total) {
+          payload.onUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      },
+    }
+  );
   return response.data;
 }
 
-export async function updateDatasetVersionStatus(datasetId: string, versionId: string, status: DvcVersionStatus): Promise<DvcDatasetVersion> {
-  const response = await apiClient.patch<DvcDatasetVersion>(`/datasets/${datasetId}/versions/${versionId}`, { status });
+// ─── Existing helpers ─────────────────────────────────────────────────────────
+
+export async function updateDatasetVersionStatus(
+  datasetId: string,
+  versionId: string,
+  status: DvcVersionStatus
+): Promise<DvcDatasetVersion> {
+  const response = await apiClient.patch<DvcDatasetVersion>(
+    `/datasets/${datasetId}/versions/${versionId}`,
+    { status }
+  );
   return response.data;
 }
 
 export async function validateDatasetVersion(datasetId: string, versionId: string) {
-  const response = await apiClient.post(`/datasets/${datasetId}/versions/${versionId}/validate`);
-  return response.data as { is_valid: boolean; checked_at: string; details: Record<string, unknown> };
+  const response = await apiClient.post(
+    `/datasets/${datasetId}/versions/${versionId}/validate`
+  );
+  return response.data as {
+    is_valid: boolean;
+    checked_at: string;
+    details: Record<string, unknown>;
+  };
 }
 
-export async function diffDatasetVersions(datasetId: string, versionA: string, versionB: string) {
+export async function diffDatasetVersions(
+  datasetId: string,
+  versionA: string,
+  versionB: string
+) {
   const response = await apiClient.get(`/datasets/${datasetId}/diff`, {
-    params: { version_a: versionA, version_b: versionB }
+    params: { version_a: versionA, version_b: versionB },
   });
   return response.data;
 }

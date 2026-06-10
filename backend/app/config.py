@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     MLFLOW_ARTIFACT_BUCKET: str = "mlflow-artifacts"
     MLFLOW_WEBHOOK_SECRET: str = ""
 
+    # DVC – local git+dvc working directory used for dataset tracking
+    # Must be a path to an already-initialised `git init && dvc init` repo.
+    DVC_REPO_PATH: str = "/srv/dvc-repo"
+    DVC_REMOTE_NAME: str = "minio"
+
     def __init__(self, **data):
         """Initialize settings with environment-based docs visibility."""
         super().__init__(**data)

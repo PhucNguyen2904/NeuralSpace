@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { X, Link2 } from "lucide-react";
-import { Button } from "@/components/ui";
+import { X, Link2, UploadCloud } from "lucide-react";
+import { Button, Modal } from "@/components/ui";
 import { MetricsChart } from "@/components/models/MetricsChart";
 import { VersionTimeline } from "@/components/models/VersionTimeline";
-import { useModelDetail } from "@/lib/hooks/useModels";
+import { useToast } from "@/lib/hooks/useToast";
+import { useModelDetail, useUploadModelVersion } from "@/lib/hooks/useModels";
+import { cn } from "@/lib/utils/cn";
 import type { Model } from "@/types/model";
 
 type Tab = "overview" | "metrics" | "files" | "usage" | "versions";
@@ -20,11 +22,64 @@ export function ModelDetailDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const { toast } = useToast();
   const { detail, metrics, versions } = useModelDetail(modelId ?? "");
+  const uploadVersion = useUploadModelVersion();
   const model = detail.data;
   const [tab, setTab] = React.useState<Tab>("overview");
+  const [versionModalOpen, setVersionModalOpen] = React.useState(false);
+  const [versionFile, setVersionFile] = React.useState<File | null>(null);
+  const [versionForm, setVersionForm] = React.useState({
+    version: "",
+    changelog: "",
+    primaryMetricName: model?.primary_metric_name ?? "accuracy",
+    primaryMetricValue: model ? String(model.primary_metric_value) : "",
+    frameworkVersion: model?.framework_version ?? ""
+  });
   const mountPath = "/workspace/models/resnet50";
+
+  React.useEffect(() => {
+    if (!model) return;
+    setVersionForm((prev) => ({
+      ...prev,
+      primaryMetricName: model.primary_metric_name,
+      primaryMetricValue: String(model.primary_metric_value),
+      frameworkVersion: model.framework_version ?? ""
+    }));
+    setVersionFile(null);
+  }, [model?.id, model?.primary_metric_name, model?.primary_metric_value, model?.framework_version]);
+
   if (!open || !model) return null;
+
+  const submitVersionUpload = async () => {
+    if (!versionFile) {
+      toast.warning("Chọn file model mới trước khi upload");
+      return;
+    }
+    const metricValue = Number(versionForm.primaryMetricValue);
+    const hasMetric = versionForm.primaryMetricName.trim() && Number.isFinite(metricValue);
+    try {
+      await uploadVersion.mutateAsync({
+        modelId: model.id,
+        file: versionFile,
+        metadata: {
+          version: versionForm.version.trim() || undefined,
+          changelog: versionForm.changelog.trim() || undefined,
+          framework_version: versionForm.frameworkVersion.trim() || undefined,
+          primary_metric_name: hasMetric ? versionForm.primaryMetricName.trim() : undefined,
+          primary_metric_value: hasMetric ? metricValue : undefined,
+          metrics: hasMetric ? { [versionForm.primaryMetricName.trim()]: metricValue } : undefined
+        }
+      });
+      toast.success("Đã upload phiên bản model mới");
+      setVersionFile(null);
+      setVersionForm((prev) => ({ ...prev, version: "", changelog: "" }));
+      setVersionModalOpen(false);
+      setTab("versions");
+    } catch {
+      toast.error("Upload version thất bại");
+    }
+  };
 
   const code = `import torch\nmodel_path = "${mountPath}/model.pt"\nmodel = torch.load(model_path)\nmodel.eval()`;
 
@@ -41,6 +96,9 @@ export function ModelDetailDrawer({
             </div>
           </div>
           <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setVersionModalOpen(true)}>
+              <UploadCloud size={14} /> New version
+            </Button>
             <Button size="sm" variant="ghost" onClick={onClose}><X size={16} /></Button>
           </div>
         </div>
@@ -59,10 +117,74 @@ export function ModelDetailDrawer({
           {tab === "versions" ? <VersionTimeline versions={versions.data ?? []} /> : null}
         </div>
       </motion.aside>
+      <Modal
+        open={versionModalOpen}
+        onClose={() => !uploadVersion.isPending && setVersionModalOpen(false)}
+        title="Upload model version"
+        size="md"
+        showCloseButton
+        closeOnBackdrop={false}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setVersionModalOpen(false)} disabled={uploadVersion.isPending}>Hủy</Button>
+            <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void submitVersionUpload()} disabled={uploadVersion.isPending}>
+              {uploadVersion.isPending ? "Đang upload..." : "Upload version"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-bg-elevated/40 px-3 py-3 text-sm hover:bg-bg-elevated">
+            <span className="min-w-0">
+              <span className="block font-medium text-text-primary">{versionFile?.name ?? "Chọn artifact model mới"}</span>
+              <span className="block truncate text-xs text-text-secondary">.onnx, .pt, .pth, .h5, .safetensors</span>
+            </span>
+            <UploadCloud size={18} className="shrink-0 text-violet-600" />
+            <input
+              type="file"
+              accept=".onnx,.pt,.pth,.h5,.safetensors"
+              className="hidden"
+              onChange={(event) => setVersionFile(event.target.files?.[0] ?? null)}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <VersionField label="Version">
+              <input className={versionInputCls()} value={versionForm.version} onChange={(e) => setVersionForm((p) => ({ ...p, version: e.target.value }))} placeholder={`Sau ${model.version}`} />
+            </VersionField>
+            <VersionField label="Framework version">
+              <input className={versionInputCls()} value={versionForm.frameworkVersion} onChange={(e) => setVersionForm((p) => ({ ...p, frameworkVersion: e.target.value }))} placeholder="PyTorch 2.3, ONNX opset 17..." />
+            </VersionField>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <VersionField label="Primary metric">
+              <input className={versionInputCls()} value={versionForm.primaryMetricName} onChange={(e) => setVersionForm((p) => ({ ...p, primaryMetricName: e.target.value }))} placeholder="accuracy" />
+            </VersionField>
+            <VersionField label="Metric value">
+              <input className={versionInputCls()} type="number" step="0.001" value={versionForm.primaryMetricValue} onChange={(e) => setVersionForm((p) => ({ ...p, primaryMetricValue: e.target.value }))} placeholder="0.92" />
+            </VersionField>
+          </div>
+          <VersionField label="Changelog">
+            <textarea className={cn(versionInputCls(), "min-h-20 resize-none")} value={versionForm.changelog} onChange={(e) => setVersionForm((p) => ({ ...p, changelog: e.target.value }))} placeholder="Điểm thay đổi chính của phiên bản này" />
+          </VersionField>
+        </div>
+      </Modal>
     </div>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return <p><span className="text-text-tertiary">{label}: </span><span className="font-medium text-text-primary">{value}</span></p>;
+}
+
+function VersionField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-[12.5px] font-medium text-text-secondary">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function versionInputCls() {
+  return "w-full rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100";
 }

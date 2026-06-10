@@ -273,6 +273,99 @@ async def create_dataset_version(
     return _version_payload(row)
 
 
+@router.post("/{dataset_id}/versions/track", status_code=status.HTTP_201_CREATED)
+async def track_dataset_version(
+    dataset_id: str,
+    # ── File upload ──────────────────────────────────────────────────────────
+    file: UploadFile = File(..., description="New dataset file to track with DVC"),
+    # ── Form fields ──────────────────────────────────────────────────────────
+    commit_message: str = Form(..., description="Git commit message for this DVC snapshot"),
+    changelog: str = Form(default="", description="Human-readable change description"),
+    item_count: int = Form(default=0, description="Number of samples/rows in the dataset"),
+    version_status: str = Form(default="draft", alias="status", description="draft | validated | deprecated"),
+    split_info: str | None = Form(default=None, description="JSON string: {train, val, test} split ratios"),
+    schema_snapshot: str | None = Form(default=None, description="JSON string: column/feature schema snapshot"),
+    # ── Dependencies ─────────────────────────────────────────────────────────
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    """
+    Upload a new dataset file and track it as a new DatasetVersion via DVC.
+
+    - Saves the file to a safe staging path inside the local DVC repo.
+    - Runs `dvc add`, `git commit`, `dvc push`.
+    - Marks the previous latest version as `is_latest=false`.
+    - Creates a new `DatasetVersion` row with `is_latest=true`.
+    - Updates the parent `MLDataset` metadata.
+
+    Requires `DVC_REPO_PATH` to point to an initialised `git+dvc` repository.
+    """
+    import json
+
+    from app.config import get_settings
+    from app.services.mlops_dataset_service import DatasetService
+
+    settings = get_settings()
+
+    # ── Resolve / auto-create the MLDataset row ───────────────────────────
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+
+    # ── Parse optional JSON form fields ──────────────────────────────────
+    parsed_split_info: dict | None = None
+    parsed_schema_snapshot: dict | None = None
+    if split_info:
+        try:
+            parsed_split_info = json.loads(split_info)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="split_info must be valid JSON",
+            )
+    if schema_snapshot:
+        try:
+            parsed_schema_snapshot = json.loads(schema_snapshot)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="schema_snapshot must be valid JSON",
+            )
+
+    # ── Read file bytes ───────────────────────────────────────────────────
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Uploaded file is empty",
+        )
+
+    # ── Validate version_status value ────────────────────────────────────
+    allowed_statuses = {"draft", "validated", "deprecated"}
+    if version_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"status must be one of {sorted(allowed_statuses)}",
+        )
+
+    # ── Delegate to service ──────────────────────────────────────────────
+    svc = DatasetService(db)
+    new_version = await svc.track_new_version(
+        dataset=dataset,
+        file_bytes=file_bytes,
+        filename=file.filename or "upload",
+        commit_message=commit_message,
+        changelog=changelog,
+        item_count=item_count,
+        version_status=version_status,
+        split_info=parsed_split_info,
+        schema_snapshot=parsed_schema_snapshot,
+        user=current_user,
+        dvc_repo_path=settings.DVC_REPO_PATH,
+        dvc_remote_name=settings.DVC_REMOTE_NAME,
+    )
+
+    return _version_payload(new_version)
+
+
 @router.get("/{dataset_id}/versions/{version_id}")
 async def get_dataset_version(
     dataset_id: str,
@@ -280,6 +373,7 @@ async def get_dataset_version(
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
+
     dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
     row = await db.get(DatasetVersion, version_id)
     if row is None or row.dataset_id != dataset.id:
@@ -371,22 +465,46 @@ async def upload_dataset(
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ) -> dict:
+    from app.clients.minio_client import get_minio_client, md5_hex
+
     parsed = json.loads(metadata) if metadata else {}
     now = datetime.now(timezone.utc)
     dataset_id = f"ds_{uuid4().hex[:10]}"
+
+    # --- Read file contents ---
+    raw = await file.read()
+    file_size = len(raw)
+    file_md5 = md5_hex(raw)
+
+    # --- Upload to MinIO ---
+    minio = get_minio_client()
+    safe_filename = (file.filename or "upload").replace("\\", "/").split("/")[-1]
+    object_name = f"datasets/{dataset_id}/versions/v1/{safe_filename}"
+    content_type = file.content_type or "application/octet-stream"
+    storage_path = await minio.upload_bytes(
+        object_name=object_name,
+        data=raw,
+        content_type=content_type,
+    )
+
+    # --- Persist metadata to DB ---
     payload = Dataset(
         id=dataset_id,
-        name=parsed.get("name") or file.filename.rsplit(".", 1)[0],
+        name=parsed.get("name") or safe_filename.rsplit(".", 1)[0],
         description=parsed.get("description") or "Uploaded dataset",
         dataset_type=parsed.get("type") or "tabular",
         status="ready",
-        size_bytes=int(file.size or 0),
+        size_bytes=file_size,
         item_count=int(parsed.get("item_count") or 0),
         label_status=parsed.get("label_status") or "processing",
         tags=parsed.get("tags") or [],
-        storage_path=f"/datasets/{dataset_id}",
-        created_by="upload-user",
-        source_payload={"class_count": parsed.get("class_count")},
+        storage_path=storage_path,
+        created_by=str(getattr(_user, "user_id", "upload-user")),
+        source_payload={
+            "class_count": parsed.get("class_count"),
+            "minio_object": object_name,
+            "md5": file_md5,
+        },
         created_at=now,
         updated_at=now,
     )

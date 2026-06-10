@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext
@@ -18,6 +20,7 @@ from app.schemas.mlops_dataset import (
     DatasetVersionTrackRequest,
 )
 from src.integrations.dvc.client import DVCClient
+from src.integrations.dvc.exceptions import DVCCommandError, DVCRepositoryError
 from src.integrations.dvc.sync import DVCSyncService
 
 
@@ -139,6 +142,85 @@ class DatasetService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Missing DVC metadata for diff")
         diff = await dvc_client.diff(a.dvc_commit, b.dvc_commit, a.storage_path)
         return diff.model_dump()
+
+    async def track_new_version(
+        self,
+        *,
+        dataset: MLDataset,
+        file_bytes: bytes,
+        filename: str,
+        commit_message: str,
+        changelog: str,
+        item_count: int,
+        version_status: str,
+        split_info: dict | None,
+        schema_snapshot: dict | None,
+        user: UserContext,
+        dvc_repo_path: str,
+        dvc_remote_name: str,
+    ) -> DatasetVersion:
+        """
+        Upload *file_bytes* into the DVC working repo, run `dvc add` + `git commit`
+        + `dvc push`, then persist a new DatasetVersion row in Postgres.
+
+        The staging file is always cleaned up, even on failure.
+        """
+        # ── 1. Validate DVC repo ─────────────────────────────────────────────
+        try:
+            dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
+        except DVCRepositoryError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"DVC repo not ready: {exc}",
+            ) from exc
+
+        # ── 2. Write file to a safe staging path inside the DVC repo ────────
+        # Structure: <dvc_repo>/{dataset_id}/{upload_uuid}/{original_filename}
+        safe_name = Path(filename).name or "upload"
+        staging_dir = Path(dvc_repo_path) / dataset.id / uuid4().hex
+        staging_dir.mkdir(parents=True, exist_ok=True)
+        staging_file = staging_dir / safe_name
+
+        try:
+            await asyncio.to_thread(staging_file.write_bytes, file_bytes)
+
+            # ── 3. DVC track: add → git commit → push ────────────────────────
+            try:
+                track_result = await dvc_client.track(
+                    local_path=str(staging_file),
+                    dataset_name=dataset.name,
+                    commit_message=commit_message or f"chore(data): track version for {dataset.name}",
+                )
+            except DVCCommandError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"DVC tracking failed: {exc.stderr or exc}",
+                ) from exc
+
+            # ── 4. Sync metadata into DB (marks old version as not-latest) ───
+            sync = DVCSyncService(self.db, dvc_client)
+            new_version = await sync.sync_dataset_version(
+                dataset_id=UUID(dataset.id),
+                dvc_track_result=track_result,
+                created_by=UUID(user.user_id),
+                changelog=changelog,
+                item_count=item_count,
+                status=version_status,
+                split_info=split_info,
+                schema_snapshot=schema_snapshot,
+            )
+
+            # ── 5. Update parent MLDataset metadata ──────────────────────────
+            dataset.storage_path = track_result.dvc_file_path
+            dataset.updated_at = datetime.now(timezone.utc)
+            await self.db.commit()
+            await self.db.refresh(dataset)
+
+            return new_version
+
+        finally:
+            # ── 6. Cleanup staging directory (best-effort) ───────────────────
+            await asyncio.to_thread(shutil.rmtree, str(staging_dir), True)
 
     def _check_write_permission(self, row: MLDataset, user: UserContext) -> None:
         if row.owner_id != user.user_id and "admin" not in user.roles:

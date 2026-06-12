@@ -10,7 +10,9 @@ from typing import Literal
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.dataset import Dataset as AssetDataset
 from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
+from app.models.model_registry import ModelRegistry
 from app.schemas.lineage import (
     DatasetLineageGraph,
     ImpactedModel,
@@ -287,6 +289,8 @@ class LineageService:
             add_edge(dataset_node_id, run_node_id, "used_for_training")
             add_edge(run_node_id, model_node_id, "produced")
 
+        await self._add_colab_lineage_nodes(nodes, edges, adjacency)
+
         visible_ids = set(nodes)
         if root_id and root_id in nodes:
             visible_ids = _collect_lineage_ids(root_id, nodes, list(edges.values()), depth)
@@ -299,6 +303,164 @@ class LineageService:
                 if edge["source"] in visible_ids and edge["target"] in visible_ids
             ],
         }
+
+    async def _add_colab_lineage_nodes(
+        self,
+        nodes: dict[str, dict],
+        edges: dict[str, dict],
+        adjacency: dict[str, set[str]],
+    ) -> None:
+        def add_edge(source: str, target: str, relation: str) -> None:
+            edge_id = f"{source}->{target}:{relation}"
+            edges[edge_id] = {"id": edge_id, "source": source, "target": target, "relation": relation}
+            adjacency.setdefault(source, set()).add(target)
+            adjacency.setdefault(target, set()).add(source)
+
+        runs = list(
+            (
+                await self.db.execute(
+                    select(Run)
+                    .where(Run.tags_snapshot.is_not(None))
+                    .order_by(Run.start_time.desc().nullslast(), Run.created_at.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        colab_runs: list[Run] = []
+        dataset_ids: set[str] = set()
+        model_ids: set[str] = set()
+        for run in runs:
+            lineage = _colab_lineage(run)
+            if not lineage:
+                continue
+            colab_runs.append(run)
+            for item in list(lineage.get("inputs") or []) + list(lineage.get("outputs") or []):
+                asset_type = item.get("asset_type")
+                asset_id = item.get("asset_id")
+                if not asset_id:
+                    continue
+                if asset_type == "dataset":
+                    dataset_ids.add(asset_id)
+                elif asset_type == "model":
+                    model_ids.add(asset_id)
+
+        if not colab_runs:
+            return
+
+        run_ids = [run.id for run in colab_runs]
+        model_versions_by_run: dict[str, list[ModelVersion]] = {run_id: [] for run_id in run_ids}
+        model_version_rows = list(
+            (
+                await self.db.execute(
+                    select(ModelVersion)
+                    .where(ModelVersion.run_id.in_(run_ids))
+                    .order_by(ModelVersion.created_at.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for model_version in model_version_rows:
+            model_versions_by_run.setdefault(model_version.run_id, []).append(model_version)
+
+        dataset_rows = []
+        if dataset_ids:
+            dataset_rows = list(
+                (await self.db.execute(select(AssetDataset).where(AssetDataset.id.in_(dataset_ids))))
+                .scalars()
+                .all()
+            )
+        model_rows = []
+        if model_ids:
+            model_rows = list(
+                (await self.db.execute(select(ModelRegistry).where(ModelRegistry.id.in_(model_ids))))
+                .scalars()
+                .all()
+            )
+        datasets_by_id = {row.id: row for row in dataset_rows}
+        models_by_id = {row.id: row for row in model_rows}
+
+        for run in colab_runs:
+            run_node_id = run.id
+            nodes[run_node_id] = {
+                "id": run_node_id,
+                "type": "run",
+                "name": run.name or run.mlflow_run_id,
+                "status": run.status,
+                "metrics": run.metrics_snapshot or {},
+                "started_at": run.start_time.isoformat() if run.start_time else None,
+                "user": str(run.user_id),
+            }
+            lineage = _colab_lineage(run)
+            for item in lineage.get("inputs") or []:
+                asset_id = item.get("asset_id")
+                if not asset_id:
+                    continue
+                if item.get("asset_type") == "dataset":
+                    dataset = datasets_by_id.get(asset_id)
+                    nodes[asset_id] = {
+                        "id": asset_id,
+                        "type": "dataset",
+                        "name": dataset.name if dataset else asset_id,
+                        "version": "workspace",
+                        "status": "validated",
+                        "created_at": dataset.created_at.isoformat() if dataset and dataset.created_at else None,
+                        "size": _format_size(dataset.size_bytes) if dataset else None,
+                        "items": dataset.item_count if dataset else None,
+                    }
+                    add_edge(asset_id, run_node_id, "used_for_training")
+                elif item.get("asset_type") == "model":
+                    model = models_by_id.get(asset_id)
+                    nodes[asset_id] = {
+                        "id": asset_id,
+                        "type": "model",
+                        "name": model.name if model else asset_id,
+                        "version": model.version or "workspace" if model else "workspace",
+                        "stage": "None",
+                        "status": model.status if model else "ready",
+                        "metrics": model.all_metrics if model else {},
+                        "created_at": model.created_at.isoformat() if model and model.created_at else None,
+                        "user": str(model.created_by) if model and model.created_by else None,
+                    }
+                    add_edge(asset_id, run_node_id, "used_for_training")
+
+            for model_version in model_versions_by_run.get(run.id, []):
+                model_node_id = model_version.id
+                nodes[model_node_id] = {
+                    "id": model_node_id,
+                    "type": "model",
+                    "name": model_version.mlflow_name,
+                    "version": str(model_version.mlflow_version),
+                    "stage": model_version.stage,
+                    "status": model_version.status,
+                    "metrics": model_version.metrics or run.metrics_snapshot or {},
+                    "created_at": model_version.created_at.isoformat() if model_version.created_at else None,
+                    "user": str(model_version.created_by),
+                }
+                add_edge(run_node_id, model_node_id, "produced")
+
+            for item in lineage.get("outputs") or []:
+                asset_id = item.get("asset_id")
+                if not asset_id or item.get("asset_type") != "model":
+                    continue
+                if nodes.get(asset_id, {}).get("type") == "model":
+                    add_edge(run_node_id, asset_id, "produced")
+                    continue
+                model = models_by_id.get(asset_id)
+                nodes[asset_id] = {
+                    "id": asset_id,
+                    "type": "model",
+                    "name": model.name if model else asset_id,
+                    "version": model.version or "workspace" if model else "workspace",
+                    "stage": "None",
+                    "status": model.status if model else "ready",
+                    "metrics": model.all_metrics if model else {},
+                    "created_at": model.created_at.isoformat() if model and model.created_at else None,
+                    "user": str(model.created_by) if model and model.created_by else None,
+                }
+                add_edge(run_node_id, asset_id, "produced")
 
     async def impact_summary(self, dataset_version_id: str) -> dict:
         stmt = (
@@ -447,6 +609,16 @@ def _as_float(value) -> float | None:
         return None
 
 
+def _colab_lineage(run: Run) -> dict:
+    tags = run.tags_snapshot or {}
+    if not isinstance(tags, dict):
+        return {}
+    lineage = tags.get("colab_lineage") or {}
+    if not isinstance(lineage, dict):
+        return {}
+    return lineage
+
+
 def _risk_level(stage: str) -> Literal["high", "medium", "low"]:
     if stage == "Production":
         return "high"
@@ -479,6 +651,13 @@ def _collect_lineage_ids(root_id: str, nodes: dict[str, dict], edges: list[dict]
                 edge["target"]
                 for edge in edges
                 if edge["source"] in run_ids and edge["relation"] == "produced"
+            )
+            visible.update(
+                edge["source"]
+                for edge in edges
+                if edge["target"] in run_ids
+                and edge["relation"] == "used_for_training"
+                and nodes.get(edge["source"], {}).get("type") == "model"
             )
         return visible
 

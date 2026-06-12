@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { PaginatedResponse } from "@/types/api";
-import type { Dataset, DatasetListParams, DatasetPreview, WorkspaceDatasetMountResponse } from "@/types/dataset";
+import type { Dataset, DatasetListParams, DatasetPreview, UpdateDatasetPayload, WorkspaceDatasetMountResponse } from "@/types/dataset";
 
 export async function getDatasets(params: DatasetListParams): Promise<PaginatedResponse<Dataset>> {
   const response = await apiClient.get<PaginatedResponse<Dataset>>("/datasets", { params });
@@ -29,7 +29,17 @@ export async function uploadDataset(file: File, metadata?: Record<string, unknow
     formData.append("metadata", JSON.stringify(metadata));
   }
   const response = await apiClient.post<Dataset>("/datasets/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" }
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 120_000
   });
   return response.data;
+}
+
+export async function updateDataset(datasetId: string, payload: UpdateDatasetPayload): Promise<Dataset> {
+  const response = await apiClient.patch<Dataset>(`/datasets/${datasetId}`, payload);
+  return response.data;
+}
+
+export async function deleteDataset(datasetId: string): Promise<void> {
+  await apiClient.delete(`/datasets/${datasetId}`);
 }

@@ -3,6 +3,8 @@ node_modules/
 .next/
 dist/
 build/
+*.tsbuildinfo
+test_out.txt
 .DS_Store
 __pycache__/
 *.pyc

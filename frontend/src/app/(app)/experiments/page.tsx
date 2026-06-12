@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AlertTriangle } from "lucide-react";
 import { CompareRunsView } from "@/components/experiments/CompareRunsView";
 import { ExperimentSidebar } from "@/components/experiments/ExperimentSidebar";
 import { RunDetailDrawer } from "@/components/experiments/RunDetailDrawer";
 import { RunsTable } from "@/components/experiments/RunsTable";
-import { useExperimentList, useRunDetail, useRunList, type RunFilters } from "@/lib/hooks/useExperiments";
+import { Button, Modal } from "@/components/ui";
+import { useDeleteRun, useExperimentList, useRunDetail, useRunList, type RunDetailData, type RunFilters } from "@/lib/hooks/useExperiments";
 
 export default function ExperimentsPage() {
   const experimentsQuery = useExperimentList();
@@ -18,8 +20,11 @@ export default function ExperimentsPage() {
   const [selectedRunIds, setSelectedRunIds] = useState<string[]>([]);
   const [openRunId, setOpenRunId] = useState<string>("");
   const [compareMode, setCompareMode] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<RunDetailData | null>(null);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
 
   const runsQuery = useRunList(resolvedExperimentId, filters);
+  const deleteRunMutation = useDeleteRun();
   const runs = runsQuery.data ?? [];
   const runDetail = useRunDetail(openRunId);
   const compareRuns = useMemo(
@@ -37,6 +42,24 @@ export default function ExperimentsPage() {
         ? current.filter((id) => id !== runId)
         : [...current, runId].slice(0, 4)
     );
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteRunMutation.isPending) return;
+    setDeleteTarget(null);
+    setDeleteConfirmed(false);
+  };
+
+  const confirmDeleteRun = () => {
+    if (!deleteTarget) return;
+    deleteRunMutation.mutate(deleteTarget.run_id, {
+      onSuccess: () => {
+        setSelectedRunIds((current) => current.filter((id) => id !== deleteTarget.run_id));
+        if (openRunId === deleteTarget.run_id) setOpenRunId("");
+        setDeleteTarget(null);
+        setDeleteConfirmed(false);
+      }
+    });
   };
 
   return (
@@ -76,6 +99,10 @@ export default function ExperimentsPage() {
             selectedRunIds={selectedRunIds}
             onToggleSelect={toggleRun}
             onOpenRun={setOpenRunId}
+            onDeleteRun={(run) => {
+              setDeleteTarget(run);
+              setDeleteConfirmed(false);
+            }}
             onCompare={() => setCompareMode(true)}
           />
         )}
@@ -98,6 +125,39 @@ export default function ExperimentsPage() {
         open={Boolean(openRunId)}
         onClose={() => setOpenRunId("")}
       />
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteModal}
+        size="sm"
+        title={<span className="flex items-center gap-2"><AlertTriangle className="text-error-500" size={18} /> Delete run?</span>}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={closeDeleteModal} disabled={deleteRunMutation.isPending}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={confirmDeleteRun}
+              disabled={!deleteConfirmed}
+              loading={deleteRunMutation.isPending}
+            >
+              Delete permanently
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">
+          This will delete {deleteTarget?.name ?? "this run"} and linked model versions from experiment tracking. This action cannot be undone.
+        </p>
+        <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border"
+            checked={deleteConfirmed}
+            onChange={(event) => setDeleteConfirmed(event.target.checked)}
+          />
+          I understand and want to delete this run
+        </label>
+      </Modal>
     </div>
   );
 }

@@ -10,6 +10,7 @@ export interface Dataset {
   size_bytes: number;
   item_count: number;
   class_count?: number;
+  custom_metadata?: Record<string, string>;
   tags: string[];
   created_by: string;
   created_at: string;
@@ -45,6 +46,14 @@ export interface WorkspaceDatasetMountResponse {
   mounted_path: string;
   mount_status: "mounted";
   message: string;
+}
+
+export interface UpdateDatasetPayload {
+  description?: string;
+  tags?: string[];
+  label_status?: LabelStatus;
+  class_count?: number | null;
+  custom_metadata?: Record<string, string>;
 }
 
 export interface DatasetListParams {

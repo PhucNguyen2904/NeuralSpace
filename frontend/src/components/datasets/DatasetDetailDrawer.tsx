@@ -2,17 +2,19 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Download, GitBranch, X } from "lucide-react";
+import { Download, GitBranch, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
-import { Button } from "@/components/ui";
-import { useDatasetDetail } from "@/lib/hooks/useDatasets";
+import { Button, Modal } from "@/components/ui";
+import { useDatasetDetail, useDeleteDataset, useUpdateDataset } from "@/lib/hooks/useDatasets";
+import { useToast } from "@/lib/hooks/useToast";
 import { useVersionList } from "@/lib/hooks/useDatasetVersions";
 import { formatBytes } from "@/lib/utils/format";
 import type { DatasetVersion } from "@/lib/hooks/useDatasetVersions";
 import type { Dataset } from "@/types/dataset";
 
 type TabValue = "overview" | "preview" | "versions" | "history";
+type CustomField = { key: string; value: string };
 
 export function DatasetDetailDrawer({
   datasetId,
@@ -24,16 +26,79 @@ export function DatasetDetailDrawer({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const { detail, preview } = useDatasetDetail(datasetId ?? "");
+  const updateDataset = useUpdateDataset();
+  const deleteDataset = useDeleteDataset();
   const versionsQuery = useVersionList(datasetId ?? "");
   const dataset = detail.data;
   const [tab, setTab] = React.useState<TabValue>("overview");
+  const [metadataModalOpen, setMetadataModalOpen] = React.useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
+  const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
+  const [metadataForm, setMetadataForm] = React.useState({
+    description: "",
+    labelStatus: "processing",
+    classCount: "",
+    tags: "",
+    customFields: [] as CustomField[]
+  });
 
   React.useEffect(() => {
     if (!open) setTab("overview");
   }, [open]);
 
+  React.useEffect(() => {
+    if (!dataset) return;
+    setMetadataForm({
+      description: dataset.description ?? "",
+      labelStatus: dataset.label_status,
+      classCount: dataset.class_count == null ? "" : String(dataset.class_count),
+      tags: dataset.tags.join(", "),
+      customFields: Object.entries(dataset.custom_metadata ?? {}).map(([key, value]) => ({
+        key,
+        value: String(value)
+      }))
+    });
+  }, [dataset]);
+
   if (!open || !dataset) return null;
+
+  const submitMetadata = async () => {
+    const classCount = metadataForm.classCount.trim() ? Number(metadataForm.classCount) : null;
+    if (classCount !== null && (!Number.isInteger(classCount) || classCount < 0)) {
+      toast.warning("Class count phải là số nguyên không âm");
+      return;
+    }
+    try {
+      await updateDataset.mutateAsync({
+        datasetId: dataset.id,
+        payload: {
+          description: metadataForm.description.trim(),
+          label_status: metadataForm.labelStatus as Dataset["label_status"],
+          class_count: classCount,
+          custom_metadata: fieldsToMetadata(metadataForm.customFields),
+          tags: metadataForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
+        }
+      });
+      toast.success("Đã cập nhật metadata dataset");
+      setMetadataModalOpen(false);
+    } catch {
+      toast.error("Cập nhật metadata dataset thất bại");
+    }
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await deleteDataset.mutateAsync(dataset.id);
+      toast.success("Đã xóa dataset");
+      setDeleteModalOpen(false);
+      setDeleteConfirmed(false);
+      onClose();
+    } catch {
+      toast.error("Xóa dataset thất bại");
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50">
@@ -45,6 +110,9 @@ export function DatasetDetailDrawer({
             <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
           </div>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setMetadataModalOpen(true)}>
+              <Pencil size={14} className="mr-1" /> Edit
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)}>
               <GitBranch size={14} className="mr-1" /> Versions
             </Button>
@@ -55,6 +123,9 @@ export function DatasetDetailDrawer({
               a.click();
             }}>
               <Download size={14} className="mr-1" /> Download
+            </Button>
+            <Button size="sm" variant="ghost" className="text-error-600 hover:text-error-700" onClick={() => setDeleteModalOpen(true)}>
+              <Trash2 size={14} />
             </Button>
             <Button size="sm" variant="ghost" onClick={onClose}><X size={16} /></Button>
           </div>
@@ -114,6 +185,102 @@ export function DatasetDetailDrawer({
           ) : null}
         </div>
       </motion.aside>
+      <Modal
+        open={metadataModalOpen}
+        onClose={() => !updateDataset.isPending && setMetadataModalOpen(false)}
+        title="Update dataset metadata"
+        size="md"
+        showCloseButton
+        closeOnBackdrop={false}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setMetadataModalOpen(false)} disabled={updateDataset.isPending}>Hủy</Button>
+            <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submitMetadata()} disabled={updateDataset.isPending}>
+              {updateDataset.isPending ? "Đang lưu..." : "Lưu metadata"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <MetadataField label="Description">
+            <textarea className={`${metadataInputCls()} min-h-24 resize-none`} value={metadataForm.description} onChange={(event) => setMetadataForm((prev) => ({ ...prev, description: event.target.value }))} />
+          </MetadataField>
+          <div className="grid grid-cols-2 gap-3">
+            <MetadataField label="Label status">
+              <select className={metadataInputCls()} value={metadataForm.labelStatus} onChange={(event) => setMetadataForm((prev) => ({ ...prev, labelStatus: event.target.value }))}>
+                <option value="processing">processing</option>
+                <option value="labeled">labeled</option>
+                <option value="unlabeled">unlabeled</option>
+              </select>
+            </MetadataField>
+            <MetadataField label="Class count">
+              <input className={metadataInputCls()} type="number" min="0" value={metadataForm.classCount} onChange={(event) => setMetadataForm((prev) => ({ ...prev, classCount: event.target.value }))} />
+            </MetadataField>
+          </div>
+          <MetadataField label="Tags">
+            <input className={metadataInputCls()} value={metadataForm.tags} onChange={(event) => setMetadataForm((prev) => ({ ...prev, tags: event.target.value }))} placeholder="vision, gold, pii-redacted" />
+          </MetadataField>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[12.5px] font-medium text-text-secondary">Custom fields</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => setMetadataForm((prev) => ({ ...prev, customFields: [...prev.customFields, { key: "", value: "" }] }))}
+              >
+                <Plus size={14} /> Add field
+              </Button>
+            </div>
+            {metadataForm.customFields.map((field, index) => (
+              <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                <input
+                  className={metadataInputCls()}
+                  value={field.key}
+                  onChange={(event) => setMetadataForm((prev) => updateCustomField(prev, index, "key", event.target.value))}
+                  placeholder="field_name"
+                />
+                <input
+                  className={metadataInputCls()}
+                  value={field.value}
+                  onChange={(event) => setMetadataForm((prev) => updateCustomField(prev, index, "value", event.target.value))}
+                  placeholder="value"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setMetadataForm((prev) => ({ ...prev, customFields: prev.customFields.filter((_, itemIndex) => itemIndex !== index) }))}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={deleteModalOpen}
+        onClose={() => !deleteDataset.isPending && setDeleteModalOpen(false)}
+        title="Xóa dataset?"
+        size="sm"
+        showCloseButton
+        closeOnBackdrop={false}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDeleteModalOpen(false)} disabled={deleteDataset.isPending}>Hủy</Button>
+            <Button variant="danger" onClick={() => void confirmDelete()} disabled={!deleteConfirmed || deleteDataset.isPending}>
+              {deleteDataset.isPending ? "Đang xóa..." : "Xóa vĩnh viễn"}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">Metadata và object lưu trên MinIO của dataset này sẽ bị xóa.</p>
+        <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary">
+          <input type="checkbox" className="h-4 w-4 rounded border-border" checked={deleteConfirmed} onChange={(event) => setDeleteConfirmed(event.target.checked)} />
+          Tôi hiểu và muốn xóa
+        </label>
+      </Modal>
     </div>
   );
 }
@@ -192,4 +359,40 @@ function formatSize(size: number) {
   const gb = 1024 ** 3;
   if (size >= gb) return `${(size / gb).toFixed(1)} GB`;
   return `${Math.round(size / 1024 ** 2)} MB`;
+}
+
+function MetadataField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1 text-[12.5px] font-medium text-text-secondary">
+      {label}
+      {children}
+    </label>
+  );
+}
+
+function metadataInputCls() {
+  return "w-full rounded-lg border border-border bg-white px-3 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-100";
+}
+
+function updateCustomField<T extends { customFields: CustomField[] }>(
+  form: T,
+  index: number,
+  property: keyof CustomField,
+  value: string
+): T {
+  return {
+    ...form,
+    customFields: form.customFields.map((field, itemIndex) =>
+      itemIndex === index ? { ...field, [property]: value } : field
+    )
+  };
+}
+
+function fieldsToMetadata(fields: CustomField[]) {
+  return fields.reduce<Record<string, string>>((metadata, field) => {
+    const key = field.key.trim();
+    const value = field.value.trim();
+    if (key && value) metadata[key] = value;
+    return metadata;
+  }, {});
 }

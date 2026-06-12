@@ -43,6 +43,10 @@ export async function updateModel(modelId: string, payload: UpdateModelPayload):
   return response.data;
 }
 
+export async function deleteModel(modelId: string): Promise<void> {
+  await apiClient.delete(`/models/${modelId}`);
+}
+
 export async function uploadModelVersion(modelId: string, file: File, metadata?: UploadModelVersionMetadata): Promise<Model> {
   const formData = new FormData();
   formData.append("file", file);

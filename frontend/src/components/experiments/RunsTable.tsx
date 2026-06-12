@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui";
 import { RunStatusBadge } from "@/components/shared";
 import { cn } from "@/lib/utils/cn";
@@ -15,6 +16,7 @@ interface RunsTableProps {
   selectedRunIds: string[];
   onToggleSelect: (runId: string) => void;
   onOpenRun: (runId: string) => void;
+  onDeleteRun: (run: RunDetailData) => void;
   onCompare: () => void;
 }
 
@@ -25,6 +27,7 @@ export function RunsTable({
   selectedRunIds,
   onToggleSelect,
   onOpenRun,
+  onDeleteRun,
   onCompare
 }: RunsTableProps) {
   const [columns, setColumns] = useState<MetricColumn[]>(["accuracy", "loss"]);
@@ -105,6 +108,7 @@ export function RunsTable({
                 </th>
               ))}
               <th className="px-2 py-2 cursor-pointer" onClick={() => onFiltersChange({ sortBy: "started" })}>Started</th>
+              <th className="px-2 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -133,6 +137,19 @@ export function RunsTable({
                   );
                 })}
                 <td className="px-2 py-2 text-text-secondary">{formatRelativeTime(run.start_time)}</td>
+                <td className="px-2 py-2 text-right">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 w-7 px-0 text-error-500 hover:text-error-500"
+                    onClick={() => onDeleteRun(run)}
+                    aria-label={`Delete run ${run.name ?? run.run_id}`}
+                    title="Delete run"
+                  >
+                    <Trash2 size={14} />
+                  </Button>
+                </td>
               </tr>
             ))}
           </tbody>

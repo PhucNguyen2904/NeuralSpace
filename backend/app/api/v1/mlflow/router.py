@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
-from app.models.mlops_tracking import Experiment, ModelVersion, Run
+from app.models.mlops_tracking import ApprovalRequest, Experiment, ModelDatasetLink, ModelVersion, Run, RunLog
 
 router = APIRouter(prefix="/mlflow", tags=["mlflow"])
 
@@ -173,6 +173,34 @@ async def get_run(
     if row is None or row.user_id != current_user.user_id:
         return {}
     return _run_payload(row)
+
+
+@router.delete("/runs/{run_id}")
+async def delete_run(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    row = await db.get(Run, run_id)
+    if row is None or row.user_id != current_user.user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Run not found")
+
+    model_version_ids = (
+        await db.execute(select(ModelVersion.id).where(ModelVersion.run_id == run_id))
+    ).scalars().all()
+    if model_version_ids:
+        await db.execute(
+            delete(ApprovalRequest).where(ApprovalRequest.model_version_id.in_(model_version_ids))
+        )
+        await db.execute(
+            delete(ModelDatasetLink).where(ModelDatasetLink.model_version_id.in_(model_version_ids))
+        )
+        await db.execute(delete(ModelVersion).where(ModelVersion.id.in_(model_version_ids)))
+
+    await db.execute(delete(RunLog).where(RunLog.run_id == run_id))
+    await db.delete(row)
+    await db.commit()
+    return {"deleted": True, "run_id": run_id}
 
 
 @router.get("/model-versions")

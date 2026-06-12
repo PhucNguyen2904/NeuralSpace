@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Grid2X2, List, Paperclip, Plus, SearchX } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { DatasetCard } from "@/components/datasets/DatasetCard";
 import { DatasetDetailDrawer } from "@/components/datasets/DatasetDetailDrawer";
 import { DatasetRow } from "@/components/datasets/DatasetRow";
@@ -26,14 +27,15 @@ function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
     view: (params.get("view") as DatasetFilters["view"]) ?? "grid",
     tags: params.getAll("tag"),
     createdWithin: (params.get("created") as DatasetFilters["createdWithin"]) ?? "all",
-    sizeMin: sizeMin ? parseInt(sizeMin, 10) : undefined,
-    sizeMax: sizeMax ? parseInt(sizeMax, 10) : undefined
+    ...(sizeMin ? { sizeMin: parseInt(sizeMin, 10) } : {}),
+    ...(sizeMax ? { sizeMax: parseInt(sizeMax, 10) } : {})
   };
 }
 
 export default function DatasetsPage() {
   const { toast } = useToast();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { filters, setFilters, resetFilters } = useDatasetFilterStore();
@@ -48,6 +50,7 @@ export default function DatasetsPage() {
   const [metadataFileName, setMetadataFileName] = useState("");
   const [uploadMeta, setUploadMeta] = useState({
     name: "",
+    version: "",
     description: "",
     type: "tabular",
     label_status: "unlabeled",
@@ -133,6 +136,7 @@ export default function DatasetsPage() {
       const classCount = Number(uploadMeta.class_count);
       const metadata = {
         name: pendingUploadFiles.length === 1 ? uploadMeta.name.trim() || undefined : undefined,
+        version: uploadMeta.version.trim() || undefined,
         description: uploadMeta.description.trim() || undefined,
         type: uploadMeta.type,
         label_status: uploadMeta.label_status,
@@ -154,6 +158,7 @@ export default function DatasetsPage() {
     setPendingUploadFiles([]);
     if (successCount > 0) {
       toast.success(`Đã upload ${successCount}/${pendingUploadFiles.length} dataset`);
+      await queryClient.invalidateQueries({ queryKey: ["datasets"] });
       router.refresh();
     }
   };
@@ -167,6 +172,7 @@ export default function DatasetsPage() {
       setUploadMeta((prev) => ({
         ...prev,
         name: typeof parsed.name === "string" ? parsed.name : prev.name,
+        version: typeof parsed.version === "string" ? parsed.version : prev.version,
         description: typeof parsed.description === "string" ? parsed.description : prev.description,
         type: typeof parsed.type === "string" ? parsed.type : prev.type,
         label_status: typeof parsed.label_status === "string" ? parsed.label_status : prev.label_status,
@@ -328,6 +334,9 @@ export default function DatasetsPage() {
           {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Tên dataset sẽ lấy theo từng tên file khi upload nhiều file.</p> : null}
           <Field label="Tên dataset" hint="(tùy chọn)">
             <input className={inputCls()} value={uploadMeta.name} onChange={(e) => setUploadMeta((p) => ({ ...p, name: e.target.value }))} placeholder="vd: Customer Churn 2026" />
+          </Field>
+          <Field label="Version" hint="(tùy chọn)">
+            <input className={inputCls()} value={uploadMeta.version} onChange={(e) => setUploadMeta((p) => ({ ...p, version: e.target.value }))} placeholder="v2 hoặc v2.0" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type" required>

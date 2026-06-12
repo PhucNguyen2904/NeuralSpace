@@ -93,14 +93,26 @@ class RuntimeValuesRequest(BaseModel):
     values: dict[str, float | int | str | bool]
 
 
+class RuntimeRunAssetRequest(BaseModel):
+    asset_type: str = Field(pattern="^(dataset|model|artifact)$")
+    asset_id: str = Field(min_length=1, max_length=255)
+    role: str = Field(default="input", min_length=1, max_length=80)
+
+
 class RuntimeRunCreateRequest(BaseModel):
     name: str = Field(default="Colab test run", min_length=1, max_length=255)
+    inputs: list[RuntimeRunAssetRequest] = Field(default_factory=list)
+    outputs: list[RuntimeRunAssetRequest] = Field(default_factory=list)
 
 
 class RuntimeRunResponse(BaseModel):
     run_id: str
     status: str
     started_at: datetime
+
+
+class RuntimeRunFinishRequest(BaseModel):
+    status: str = Field(default="success", pattern="^(success|failed|killed|FINISHED|FAILED|KILLED|RUNNING)$")
 
 
 class RuntimeLogRequest(BaseModel):

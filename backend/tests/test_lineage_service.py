@@ -20,6 +20,9 @@ class _ExecResult:
     def all(self):
         return self._rows
 
+    def scalars(self):
+        return self
+
 
 class _FakeSession:
     def __init__(self):
@@ -129,3 +132,68 @@ async def test_full_lineage_graph(monkeypatch: pytest.MonkeyPatch) -> None:
     out = await svc.get_full_lineage_graph("dataset_version", "dv1", depth=2)
     assert any(node.type == "dataset_version" for node in out.nodes)
     assert any(edge.label == "produced" for edge in out.edges)
+
+
+@pytest.mark.asyncio
+async def test_ui_lineage_graph_includes_colab_run_assets() -> None:
+    db = _FakeSession()
+    svc = LineageService(db)
+
+    run = _Obj({
+        "id": "r1",
+        "name": "colab run",
+        "mlflow_run_id": "mlflow-r1",
+        "status": "FINISHED",
+        "metrics_snapshot": {"accuracy": 0.91},
+        "start_time": datetime.now(timezone.utc),
+        "created_at": datetime.now(timezone.utc),
+        "user_id": "user-1",
+        "tags_snapshot": {
+            "colab_lineage": {
+                "inputs": [
+                    {"asset_type": "dataset", "asset_id": "ds1", "role": "training_dataset"},
+                    {"asset_type": "model", "asset_id": "base1", "role": "base_model"},
+                ],
+                "outputs": [
+                    {"asset_type": "model", "asset_id": "out1", "role": "fine_tuned_model"},
+                ],
+            }
+        },
+    })
+    dataset = _Obj({
+        "id": "ds1",
+        "name": "Train dataset",
+        "created_at": datetime.now(timezone.utc),
+        "size_bytes": 100,
+        "item_count": 5,
+    })
+    base_model = _Obj({
+        "id": "base1",
+        "name": "Base model",
+        "version": "1",
+        "status": "ready",
+        "all_metrics": {},
+        "created_at": datetime.now(timezone.utc),
+        "created_by": "user-1",
+    })
+    output_model = _Obj({
+        "id": "out1",
+        "name": "Output model",
+        "version": "2",
+        "status": "ready",
+        "all_metrics": {"accuracy": 0.91},
+        "created_at": datetime.now(timezone.utc),
+        "created_by": "user-1",
+    })
+
+    db.exec_rows.append([])
+    db.exec_rows.append([run])
+    db.exec_rows.append([dataset])
+    db.exec_rows.append([base_model, output_model])
+
+    out = await svc.get_ui_lineage_graph()
+
+    node_ids = {node["id"] for node in out["nodes"]}
+    assert {"ds1", "base1", "r1", "out1"}.issubset(node_ids)
+    assert {"source": "ds1", "target": "r1", "relation": "used_for_training"}.items() <= out["edges"][0].items()
+    assert any(edge["source"] == "r1" and edge["target"] == "out1" and edge["relation"] == "produced" for edge in out["edges"])

@@ -10,12 +10,13 @@ import pytest
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.colab.router import _owned_run, create_colab_claim
+from app.api.v1.colab.router import _append_runtime_asset, _owned_run, _runtime_run_status, create_colab_claim
 from app.config import Settings
 from app.core.security import create_access_token
 from app.dependencies import UserContext
 from app.main import create_app
 from app.models.runtime_session import RuntimeSessionStatus
+from app.schemas.colab import RuntimeRunAssetRequest
 from app.services.colab_claim_service import ColabClaimService
 from app.services.runtime_session_service import RuntimeSessionService
 
@@ -153,6 +154,29 @@ def test_notebook_url_is_public_clean_and_pinned() -> None:
 def test_production_rejects_unpinned_branch() -> None:
     with pytest.raises(ValueError):
         Settings(ENVIRONMENT="production", COLAB_TEMPLATE_REF="main")
+
+
+def test_runtime_asset_helpers_store_colab_lineage() -> None:
+    run = SimpleNamespace(tags_snapshot={"runtime_session_id": "session-1"})
+    payload = RuntimeRunAssetRequest(asset_type="dataset", asset_id="dataset-1", role="training_dataset")
+
+    assert _append_runtime_asset(run, "inputs", payload) == {
+        "asset_type": "dataset",
+        "asset_id": "dataset-1",
+        "role": "training_dataset",
+    }
+    _append_runtime_asset(run, "inputs", payload)
+
+    assert run.tags_snapshot["runtime_session_id"] == "session-1"
+    assert run.tags_snapshot["colab_lineage"]["inputs"] == [
+        {"asset_type": "dataset", "asset_id": "dataset-1", "role": "training_dataset"}
+    ]
+
+
+def test_runtime_run_status_maps_colab_helper_values() -> None:
+    assert _runtime_run_status("success") == "FINISHED"
+    assert _runtime_run_status("FAILED") == "FAILED"
+    assert _runtime_run_status("unexpected") == "FAILED"
 
 
 @pytest.mark.asyncio

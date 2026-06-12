@@ -79,6 +79,7 @@ export async function createDatasetVersion(
 
 export interface TrackVersionPayload {
   file: File;
+  version?: string;
   commitMessage: string;
   changelog?: string;
   itemCount?: number;
@@ -98,6 +99,9 @@ export async function trackDatasetVersion(
 ): Promise<DvcDatasetVersion> {
   const form = new FormData();
   form.append("file", payload.file);
+  if (payload.version?.trim()) {
+    form.append("version", payload.version.trim());
+  }
   form.append("commit_message", payload.commitMessage);
   form.append("changelog", payload.changelog ?? "");
   form.append("item_count", String(payload.itemCount ?? 0));

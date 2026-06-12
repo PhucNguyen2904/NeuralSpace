@@ -7,14 +7,47 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db
-from app.models.mlops_tracking import ModelVersion
+from app.dependencies import UserContext, get_current_user, get_db
+from app.models.mlops_tracking import ApprovalRequest, Experiment, ModelDatasetLink, ModelVersion, Run, RunLog
 from app.models.model_registry import ModelRegistry
+from app.models.workspace_assets import WorkspaceModel
 
 router = APIRouter(prefix="/models", tags=["models"])
+
+
+def _object_from_storage_path(storage_path: str | None) -> tuple[str | None, str] | None:
+    if not storage_path:
+        return None
+    if storage_path.startswith("s3://"):
+        _, rest = storage_path.split("s3://", 1)
+        bucket, _, object_name = rest.partition("/")
+        return (bucket or None, object_name) if object_name else None
+    normalized = storage_path.replace("\\", "/").lstrip("/")
+    return (None, normalized) if normalized else None
+
+
+def _collect_source_payload_refs(source_payload: dict) -> set[tuple[str | None, str]]:
+    refs: set[tuple[str | None, str]] = set()
+    minio_object = source_payload.get("minio_object")
+    if isinstance(minio_object, str) and minio_object.strip():
+        refs.add((None, minio_object.strip()))
+    for item in source_payload.get("files") or []:
+        if isinstance(item, dict):
+            ref = _object_from_storage_path(item.get("storage_path"))
+            if ref:
+                refs.add(ref)
+    for item in source_payload.get("version_history") or []:
+        if isinstance(item, dict):
+            object_name = item.get("object_name")
+            if isinstance(object_name, str) and object_name.strip():
+                refs.add((None, object_name.strip()))
+            ref = _object_from_storage_path(item.get("storage_path"))
+            if ref:
+                refs.add(ref)
+    return refs
 
 
 def _parse_metadata(metadata: str | None) -> dict:
@@ -104,6 +137,7 @@ def _to_payload(row: ModelRegistry, latest_version: int | str | None = None) -> 
         "all_metrics": row.all_metrics or {},
         "tags": row.tags or [],
         "dataset_id": source_payload.get("dataset_id"),
+        "custom_metadata": source_payload.get("custom_metadata") or {},
         "created_by": row.created_by or "system",
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
@@ -129,6 +163,107 @@ async def _latest_versions_by_model_name(db: AsyncSession, model_names: list[str
         .all()
     )
     return {name: int(version) for name, version in rows if version is not None}
+
+
+async def _ensure_upload_experiment(db: AsyncSession, user: UserContext) -> Experiment:
+    name = "Manual model uploads"
+    existing = (
+        await db.execute(select(Experiment).where(Experiment.name == name).limit(1))
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    next_mlflow_id = (
+        await db.execute(select(func.coalesce(func.max(Experiment.mlflow_experiment_id), 0) + 1))
+    ).scalar_one()
+    experiment = Experiment(
+        mlflow_experiment_id=int(next_mlflow_id),
+        name=name,
+        description="Models uploaded through the NeuralSpace API",
+        owner_id=str(getattr(user, "user_id", "upload-user")),
+        lifecycle_stage="active",
+    )
+    db.add(experiment)
+    await db.flush()
+    return experiment
+
+
+async def _create_tracked_model_version(
+    *,
+    db: AsyncSession,
+    row: ModelRegistry,
+    user: UserContext,
+    source: str,
+    file_size: int,
+    parsed: dict,
+    metrics: dict,
+) -> ModelVersion:
+    now = datetime.now()
+    experiment = await _ensure_upload_experiment(db, user)
+    run = Run(
+        mlflow_run_id=uuid4().hex,
+        experiment_id=experiment.id,
+        name=f"Upload {row.name} {row.version or ''}".strip(),
+        status="FINISHED",
+        start_time=now,
+        end_time=now,
+        artifact_uri=source,
+        source_type="LOCAL",
+        source_name="models/upload",
+        user_id=str(getattr(user, "user_id", "upload-user")),
+        metrics_snapshot=metrics,
+        params_snapshot={
+            "architecture": row.architecture,
+            "framework": row.framework,
+            "task_type": row.task_type,
+        },
+        tags_snapshot={"model_registry_id": row.id},
+    )
+    db.add(run)
+    await db.flush()
+
+    next_version = (
+        await db.execute(
+            select(func.coalesce(func.max(ModelVersion.mlflow_version), 0) + 1).where(
+                ModelVersion.mlflow_name == row.name
+            )
+        )
+    ).scalar_one()
+    model_version = ModelVersion(
+        mlflow_name=row.name,
+        mlflow_version=int(next_version),
+        run_id=run.id,
+        description=parsed.get("changelog") or parsed.get("description") or "Uploaded model",
+        stage="None",
+        status="READY",
+        source=source,
+        framework=row.framework,
+        task_type=row.task_type,
+        size_bytes=file_size,
+        metrics=metrics,
+        tags={
+            "model_registry_id": row.id,
+            "md5": (row.source_payload or {}).get("md5"),
+            "uploaded_version": row.version,
+        },
+        created_by=str(getattr(user, "user_id", "upload-user")),
+    )
+    db.add(model_version)
+    await db.flush()
+
+    dataset_version_id = parsed.get("dataset_version_id")
+    if dataset_version_id:
+        db.add(
+            ModelDatasetLink(
+                model_version_id=model_version.id,
+                dataset_version_id=str(dataset_version_id),
+                link_type=str(parsed.get("dataset_link_type") or "train"),
+                created_by=str(getattr(user, "user_id", "upload-user")),
+                notes=parsed.get("dataset_link_notes"),
+            )
+        )
+
+    return model_version
 
 
 @router.get("")
@@ -289,9 +424,62 @@ async def update_model(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
 
     if "status" in payload and payload["status"] is not None:
-        row.status = str(payload["status"])
+        allowed_statuses = {"ready", "training", "trained", "failed"}
+        model_status = str(payload["status"])
+        if model_status not in allowed_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"status must be one of {sorted(allowed_statuses)}",
+            )
+        row.status = model_status
+    if "architecture" in payload and payload["architecture"] is not None:
+        row.architecture = str(payload["architecture"])
+    if "framework" in payload and payload["framework"] is not None:
+        allowed_frameworks = {"pytorch", "tensorflow", "onnx", "huggingface", "sklearn"}
+        framework = str(payload["framework"])
+        if framework not in allowed_frameworks:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"framework must be one of {sorted(allowed_frameworks)}",
+            )
+        row.framework = framework
+    if "task_type" in payload and payload["task_type"] is not None:
+        allowed_task_types = {
+            "image_classification",
+            "object_detection",
+            "semantic_segmentation",
+            "text_classification",
+            "text_generation",
+            "regression",
+        }
+        task_type = str(payload["task_type"])
+        if task_type not in allowed_task_types:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"task_type must be one of {sorted(allowed_task_types)}",
+            )
+        row.task_type = task_type
+    if "parameter_count" in payload and payload["parameter_count"] is not None:
+        try:
+            parameter_count = int(payload["parameter_count"])
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="parameter_count must be an integer",
+            ) from exc
+        if parameter_count < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="parameter_count must be greater than or equal to 0",
+            )
+        row.parameter_count = parameter_count
     if "tags" in payload and isinstance(payload["tags"], list):
-        row.tags = [str(item) for item in payload["tags"]]
+        row.tags = [str(item).strip() for item in payload["tags"] if str(item).strip()]
+    if "custom_metadata" in payload and not isinstance(payload["custom_metadata"], dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="custom_metadata must be an object",
+        )
 
     primary_name, primary_value, metrics = _coerce_metrics(payload)
     if primary_name is not None:
@@ -306,6 +494,15 @@ async def update_model(
         "framework_version": payload.get("framework_version"),
         "input_shape": payload.get("input_shape"),
         "output_shape": payload.get("output_shape"),
+        "dataset_id": payload.get("dataset_id"),
+        "training_duration_seconds": payload.get("training_duration_seconds"),
+        "custom_metadata": {
+            str(key).strip(): str(value).strip()
+            for key, value in (payload.get("custom_metadata") or {}).items()
+            if str(key).strip() and value is not None and str(value).strip()
+        }
+        if "custom_metadata" in payload
+        else None,
     }
     row.source_payload = _merge_source_payload(row, source_patch)
     row.updated_at = datetime.now(timezone.utc)
@@ -314,13 +511,72 @@ async def update_model(
     return _to_payload(row)
 
 
+@router.delete("/{model_id}")
+async def delete_model(
+    model_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.clients.minio_client import get_minio_client
+
+    row = await db.get(ModelRegistry, model_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Model not found")
+    if row.created_by and row.created_by != current_user.user_id and "admin" not in current_user.roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+
+    versions = list(
+        (
+            await db.execute(select(ModelVersion).where(ModelVersion.mlflow_name == row.name))
+        ).scalars().all()
+    )
+    run_ids = [item.run_id for item in versions if item.run_id]
+    runs = []
+    if run_ids:
+        runs = list((await db.execute(select(Run).where(Run.id.in_(run_ids)))).scalars().all())
+
+    refs = _collect_source_payload_refs(row.source_payload or {})
+    ref = _object_from_storage_path(row.storage_path)
+    if ref:
+        refs.add(ref)
+    for version in versions:
+        ref = _object_from_storage_path(version.source)
+        if ref:
+            refs.add(ref)
+    for run in runs:
+        ref = _object_from_storage_path(run.artifact_uri)
+        if ref:
+            refs.add(ref)
+
+    minio = get_minio_client()
+    deleted_objects = 0
+    for bucket, object_name in refs:
+        await minio.delete_object(object_name, bucket=bucket)
+        deleted_objects += 1
+    deleted_objects += await minio.delete_prefix(f"models/{row.id}/")
+
+    version_ids = [item.id for item in versions]
+    if version_ids:
+        await db.execute(delete(ApprovalRequest).where(ApprovalRequest.model_version_id.in_(version_ids)))
+        await db.execute(delete(ModelDatasetLink).where(ModelDatasetLink.model_version_id.in_(version_ids)))
+        await db.execute(delete(ModelVersion).where(ModelVersion.id.in_(version_ids)))
+    if run_ids:
+        await db.execute(delete(RunLog).where(RunLog.run_id.in_(run_ids)))
+        await db.execute(delete(Run).where(Run.id.in_(run_ids)))
+    await db.execute(delete(WorkspaceModel).where(WorkspaceModel.model_id == row.id))
+    await db.delete(row)
+    await db.commit()
+
+    return {"deleted": True, "model_id": model_id, "deleted_objects": deleted_objects}
+
+
 @router.post("/{model_id}/versions")
 async def upload_model_version(
     model_id: str,
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    current_user: UserContext = Depends(get_current_user),
 ) -> dict:
     from app.clients.minio_client import get_minio_client, md5_hex
 
@@ -368,7 +624,7 @@ async def upload_model_version(
         "object_name": object_name,
         "file": file_info,
         "created_at": now.isoformat(),
-        "created_by": str(getattr(_user, "user_id", "upload-user")),
+        "created_by": str(getattr(current_user, "user_id", "upload-user")),
     }
 
     row.version = version
@@ -387,9 +643,20 @@ async def upload_model_version(
         },
     )
     row.updated_at = now
+    model_version = await _create_tracked_model_version(
+        db=db,
+        row=row,
+        user=current_user,
+        source=storage_path,
+        file_size=file_size,
+        parsed=parsed,
+        metrics=metrics,
+    )
     await db.commit()
     await db.refresh(row)
-    return _to_payload(row)
+    response = _to_payload(row, model_version.mlflow_version)
+    response["latest_model_version_id"] = model_version.id
+    return response
 
 
 @router.post("/upload")
@@ -397,7 +664,7 @@ async def upload_model(
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    current_user: UserContext = Depends(get_current_user),
 ) -> dict:
     from app.clients.minio_client import get_minio_client, md5_hex
 
@@ -439,7 +706,7 @@ async def upload_model(
         all_metrics=parsed.get("all_metrics") or {},
         tags=parsed.get("tags") or [],
         storage_path=storage_path,
-        created_by=str(getattr(_user, "user_id", "upload-user")),
+        created_by=str(getattr(current_user, "user_id", "upload-user")),
         source_payload={
             "framework_version": parsed.get("framework_version", "unknown"),
             "input_shape": parsed.get("input_shape", "-"),
@@ -459,7 +726,7 @@ async def upload_model(
                     "storage_path": storage_path,
                     "object_name": object_name,
                     "created_at": now.isoformat(),
-                    "created_by": str(getattr(_user, "user_id", "upload-user")),
+                    "created_by": str(getattr(current_user, "user_id", "upload-user")),
                 }
             ],
         },
@@ -467,6 +734,18 @@ async def upload_model(
         updated_at=now,
     )
     db.add(row)
+    await db.flush()
+    model_version = await _create_tracked_model_version(
+        db=db,
+        row=row,
+        user=current_user,
+        source=storage_path,
+        file_size=file_size,
+        parsed=parsed,
+        metrics=parsed.get("all_metrics") or {},
+    )
     await db.commit()
     await db.refresh(row)
-    return _to_payload(row)
+    response = _to_payload(row, model_version.mlflow_version)
+    response["latest_model_version_id"] = model_version.id
+    return response

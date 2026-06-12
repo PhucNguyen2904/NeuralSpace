@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace, updateModel, uploadModelVersion } from "@/lib/api/models";
+import { deleteModel, getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace, updateModel, uploadModelVersion } from "@/lib/api/models";
 import type { ModelFilters, ModelListParams, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
 
 export const defaultModelFilters: ModelFilters = {
@@ -75,6 +75,19 @@ export function useUpdateModel() {
         queryClient.invalidateQueries({ queryKey: ["model-detail", vars.modelId] }),
         queryClient.invalidateQueries({ queryKey: ["model-versions", vars.modelId] })
       ]);
+    }
+  });
+}
+
+export function useDeleteModel() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (modelId: string) => deleteModel(modelId),
+    onSuccess: async (_, modelId) => {
+      queryClient.removeQueries({ queryKey: ["model-detail", modelId] });
+      queryClient.removeQueries({ queryKey: ["model-metrics", modelId] });
+      queryClient.removeQueries({ queryKey: ["model-versions", modelId] });
+      await queryClient.invalidateQueries({ queryKey: ["models"] });
     }
   });
 }

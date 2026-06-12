@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BrainCircuit, Database, Sparkles } from "lucide-react";
+import { BrainCircuit, Database, Activity } from "lucide-react";
 
 export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -14,17 +14,23 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         />
         <div className="relative z-10 flex h-full flex-col">
           <div className="mb-12 flex items-center gap-2 text-lg font-semibold">
-            <Sparkles size={18} /> NeuralSpace
+            <BrainCircuit size={18} /> NeuralSpace
           </div>
           <h2 className="max-w-sm text-3xl font-semibold leading-tight">Your interactive ML workspace</h2>
           <div className="mt-8 space-y-4 text-sm text-white/90">
-            <p className="flex items-center gap-2"><BrainCircuit size={16} /> Instant JupyterLab in seconds</p>
-            <p className="flex items-center gap-2"><Database size={16} /> Connected to your datasets & models</p>
-            <p className="flex items-center gap-2"><Sparkles size={16} /> Auto-saved, always available</p>
+            <p className="flex items-center gap-2"><BrainCircuit size={16} /> Seamless Google Colab integration</p>
+            <p className="flex items-center gap-2"><Database size={16} /> DVC data versioning & MinIO storage</p>
+            <p className="flex items-center gap-2"><Activity size={16} /> MLflow experiment tracking</p>
           </div>
           <div className="relative mt-auto grid gap-3">
-            <div className="auth-float rounded-lg bg-white/15 p-3 font-mono text-xs backdrop-blur">run train.py --epochs=8\nacc: 94.2%</div>
-            <div className="auth-float rounded-lg bg-white/15 p-3 font-mono text-xs backdrop-blur [animation-delay:0.6s]">dataset.load("customer-churn")\nrows: 1,200,000</div>
+            <div className="auth-float rounded-lg bg-white/15 p-3 font-mono text-xs backdrop-blur">
+              mlflow.log_metric("accuracy", 0.942)<br />
+              mlflow.log_param("epochs", 8)
+            </div>
+            <div className="auth-float rounded-lg bg-white/15 p-3 font-mono text-xs backdrop-blur [animation-delay:0.6s]">
+              $ dvc pull data/dataset.csv<br />
+              1 file fetched
+            </div>
           </div>
         </div>
       </section>

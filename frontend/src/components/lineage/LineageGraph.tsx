@@ -16,7 +16,12 @@ const nodeTypes = {
   model: ModelNode
 };
 
-function collectConnected(nodeId: string, nodes: Node<LineageNodeData>[], edges: Edge[]) {
+function collectConnected(
+  nodeId: string,
+  nodes: Node<LineageNodeData>[],
+  edges: Edge[],
+  direction: "forward" | "backward" | "both"
+) {
   const queue = [nodeId];
   const visited = new Set<string>([nodeId]);
   const visitedEdges = new Set<string>();
@@ -24,13 +29,17 @@ function collectConnected(nodeId: string, nodes: Node<LineageNodeData>[], edges:
   while (queue.length > 0) {
     const current = queue.shift()!;
     edges.forEach((edge) => {
-      if (edge.source === current || edge.target === current) {
-        visitedEdges.add(edge.id);
-        const other = edge.source === current ? edge.target : edge.source;
-        if (!visited.has(other)) {
-          visited.add(other);
-          queue.push(other);
-        }
+      const forward = edge.source === current;
+      const backward = edge.target === current;
+      const shouldFollow =
+        direction === "forward" ? forward : direction === "backward" ? backward : forward || backward;
+      if (!shouldFollow) return;
+
+      visitedEdges.add(edge.id);
+      const other = forward ? edge.target : edge.source;
+      if (!visited.has(other)) {
+        visited.add(other);
+        queue.push(other);
       }
     });
   }
@@ -63,9 +72,25 @@ export function LineageGraph({
     return "";
   }, [rawNodes, selectedNodeId, rootNodeId]);
   const hasHighlightAnchor = Boolean(highlightAnchorId);
+
+  // Determine traversal direction based on the anchor node type:
+  //   model   → backward only  (model ← run ← dataset)
+  //   dataset → forward only   (dataset → run → model)
+  //   run     → both directions (middle of the graph)
+  const anchorDirection = useMemo((): "forward" | "backward" | "both" => {
+    if (!highlightAnchorId) return "both";
+    const anchor = rawNodes.find((n) => n.id === highlightAnchorId);
+    if (anchor?.type === "model") return "backward";
+    if (anchor?.type === "dataset") return "forward";
+    return "both";
+  }, [highlightAnchorId, rawNodes]);
+
   const connected = useMemo(
-    () => (hasHighlightAnchor ? collectConnected(highlightAnchorId, rawNodes, rawEdges) : { nodeIds: new Set<string>(), edgeIds: new Set<string>() }),
-    [hasHighlightAnchor, highlightAnchorId, rawNodes, rawEdges]
+    () =>
+      hasHighlightAnchor
+        ? collectConnected(highlightAnchorId, rawNodes, rawEdges, anchorDirection)
+        : { nodeIds: new Set<string>(), edgeIds: new Set<string>() },
+    [hasHighlightAnchor, highlightAnchorId, rawNodes, rawEdges, anchorDirection]
   );
 
   const nodes = useMemo(

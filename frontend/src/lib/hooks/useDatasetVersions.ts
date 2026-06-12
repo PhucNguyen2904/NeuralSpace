@@ -272,6 +272,7 @@ export interface UseUploadVersionReturn {
   upload: (opts: {
     datasetId: string;
     file: File;
+    version?: string;
     commitMessage: string;
     changelog?: string;
     itemCount?: number;
@@ -301,6 +302,7 @@ export function useUploadVersion(): UseUploadVersionReturn {
     mutationFn: async (opts: {
       datasetId: string;
       file: File;
+      version?: string;
       commitMessage: string;
       changelog?: string;
       itemCount?: number;
@@ -311,6 +313,7 @@ export function useUploadVersion(): UseUploadVersionReturn {
 
       const result = await trackDatasetVersion(opts.datasetId, {
         file: opts.file,
+        version: opts.version,
         commitMessage: opts.commitMessage,
         changelog: opts.changelog,
         itemCount: opts.itemCount ?? 0,

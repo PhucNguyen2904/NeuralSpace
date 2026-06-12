@@ -27,6 +27,7 @@ class DVCSyncService:
         dataset_id: UUID,
         dvc_track_result: DVCTrackResult,
         created_by: UUID,
+        version: str | None = None,
         changelog: str = "",
         item_count: int = 0,
         status: str = "draft",
@@ -34,7 +35,7 @@ class DVCSyncService:
         schema_snapshot: dict | None = None,
     ) -> DatasetVersion:
         try:
-            version = await self._next_version(str(dataset_id))
+            version = version or await self._next_version(str(dataset_id))
             await self.db.execute(
                 update(DatasetVersion)
                 .where(DatasetVersion.dataset_id == str(dataset_id), DatasetVersion.is_latest.is_(True))

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext
@@ -149,6 +148,7 @@ class DatasetService:
         dataset: MLDataset,
         file_bytes: bytes,
         filename: str,
+        version: str | None,
         commit_message: str,
         changelog: str,
         item_count: int,
@@ -162,9 +162,23 @@ class DatasetService:
         """
         Upload *file_bytes* into the DVC working repo, run `dvc add` + `git commit`
         + `dvc push`, then persist a new DatasetVersion row in Postgres.
-
-        The staging file is always cleaned up, even on failure.
         """
+        requested_version = self._normalize_version(version) if version else None
+        if requested_version:
+            existing_version = (
+                await self.db.execute(
+                    select(DatasetVersion.id).where(
+                        DatasetVersion.dataset_id == dataset.id,
+                        DatasetVersion.version == requested_version,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_version is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Dataset version already exists: {requested_version}",
+                )
+
         # ── 1. Validate DVC repo ─────────────────────────────────────────────
         try:
             dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
@@ -181,46 +195,64 @@ class DatasetService:
         staging_dir.mkdir(parents=True, exist_ok=True)
         staging_file = staging_dir / safe_name
 
+        await asyncio.to_thread(staging_file.write_bytes, file_bytes)
+
+        # ── 3. DVC track: add → git commit → push ────────────────────────
         try:
-            await asyncio.to_thread(staging_file.write_bytes, file_bytes)
-
-            # ── 3. DVC track: add → git commit → push ────────────────────────
-            try:
-                track_result = await dvc_client.track(
-                    local_path=str(staging_file),
-                    dataset_name=dataset.name,
-                    commit_message=commit_message or f"chore(data): track version for {dataset.name}",
-                )
-            except DVCCommandError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"DVC tracking failed: {exc.stderr or exc}",
-                ) from exc
-
-            # ── 4. Sync metadata into DB (marks old version as not-latest) ───
-            sync = DVCSyncService(self.db, dvc_client)
-            new_version = await sync.sync_dataset_version(
-                dataset_id=UUID(dataset.id),
-                dvc_track_result=track_result,
-                created_by=UUID(user.user_id),
-                changelog=changelog,
-                item_count=item_count,
-                status=version_status,
-                split_info=split_info,
-                schema_snapshot=schema_snapshot,
+            track_result = await dvc_client.track(
+                local_path=str(staging_file),
+                dataset_name=dataset.name,
+                commit_message=commit_message or f"chore(data): track version for {dataset.name}",
             )
+        except DVCCommandError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"DVC tracking failed: {exc.stderr or exc}",
+            ) from exc
 
-            # ── 5. Update parent MLDataset metadata ──────────────────────────
-            dataset.storage_path = track_result.dvc_file_path
-            dataset.updated_at = datetime.now(timezone.utc)
-            await self.db.commit()
-            await self.db.refresh(dataset)
+        # ── 4. Sync metadata into DB (marks old version as not-latest) ───
+        sync = DVCSyncService(self.db, dvc_client)
+        new_version = await sync.sync_dataset_version(
+            dataset_id=UUID(dataset.id),
+            dvc_track_result=track_result,
+            created_by=UUID(user.user_id),
+            version=requested_version,
+            changelog=changelog,
+            item_count=item_count,
+            status=version_status,
+            split_info=split_info,
+            schema_snapshot=schema_snapshot,
+        )
 
-            return new_version
+        # ── 5. Update parent MLDataset metadata ──────────────────────────
+        dataset.storage_path = track_result.dvc_file_path
+        dataset.updated_at = datetime.now()
+        await self.db.commit()
+        await self.db.refresh(dataset)
 
-        finally:
-            # ── 6. Cleanup staging directory (best-effort) ───────────────────
-            await asyncio.to_thread(shutil.rmtree, str(staging_dir), True)
+        return new_version
+
+    @staticmethod
+    def _normalize_version(version: str | None) -> str:
+        token = (version or "").strip().lower()
+        if not token:
+            return ""
+        if token.startswith("v"):
+            token = token[1:]
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="version must not be empty",
+            )
+        parts = token.split(".")
+        if len(parts) == 1:
+            parts.append("0")
+        if len(parts) != 2 or not all(part.isdigit() for part in parts):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="version must look like v2 or v2.0",
+            )
+        return f"v{int(parts[0])}.{int(parts[1])}"
 
     def _check_write_permission(self, row: MLDataset, user: UserContext) -> None:
         if row.owner_id != user.user_id and "admin" not in user.roles:

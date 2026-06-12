@@ -10,9 +10,13 @@ export function ModelNode({ data }: { data: ModelNodeData }) {
   return (
     <div
       className={cn(
-        "min-w-[170px] rounded-xl border-2 bg-white px-3 py-2.5 shadow-sm",
-        data.stage === "Production" ? "border-emerald-400" : "border-node-model/60",
-        data.isSelected && "shadow-md shadow-indigo-100",
+        "min-w-[170px] rounded-xl border-2 bg-white px-3 py-2.5 shadow-sm transition-all",
+        // Selection overrides stage border so the green border never looks like a persistent "selected" indicator
+        data.isSelected
+          ? "border-indigo-500 ring-2 ring-offset-1 ring-indigo-400 shadow-lg shadow-indigo-100"
+          : data.stage === "Production"
+            ? "border-emerald-400"
+            : "border-node-model/60",
         data.impacted && "border-red-400"
       )}
     >

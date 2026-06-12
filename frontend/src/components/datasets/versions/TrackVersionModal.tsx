@@ -148,6 +148,7 @@ export function TrackVersionModal({
   const uploader = useUploadVersion();
 
   const [file, setFile] = useState<File | null>(null);
+  const [version, setVersion] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [changelog, setChangelog] = useState("");
   const [itemCount, setItemCount] = useState<string>("");
@@ -163,6 +164,7 @@ export function TrackVersionModal({
     if (isActive) return;
     uploader.reset();
     setFile(null);
+    setVersion("");
     setCommitMessage("");
     setChangelog("");
     setItemCount("");
@@ -175,6 +177,7 @@ export function TrackVersionModal({
     await uploader.upload({
       datasetId,
       file,
+      version,
       commitMessage,
       changelog,
       itemCount: itemCount ? parseInt(itemCount, 10) : 0,
@@ -232,6 +235,22 @@ export function TrackVersionModal({
               Dataset file <span className="text-red-500">*</span>
             </label>
             <FileDrop file={file} onFile={setFile} disabled={isActive} />
+          </div>
+        )}
+
+        {/* ── Version ── */}
+        {!showProgress && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">
+              Version <span className="text-text-tertiary">(optional)</span>
+            </label>
+            <input
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              disabled={isActive}
+              placeholder="v2 or v2.0"
+              className="h-9 w-full rounded-md border border-border bg-bg-surface px-3 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+            />
           </div>
         )}
 

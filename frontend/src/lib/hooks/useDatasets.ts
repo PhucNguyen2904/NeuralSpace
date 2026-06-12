@@ -2,10 +2,10 @@
 
 import { create } from "zustand";
 import { useMemo } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { subDays, startOfDay, subMonths } from "date-fns";
-import { getDatasetById, getDatasets, getDatasetPreview, mountDatasetToWorkspace } from "@/lib/api/datasets";
-import type { DatasetFilters, DatasetListParams } from "@/types/dataset";
+import { deleteDataset, getDatasetById, getDatasets, getDatasetPreview, mountDatasetToWorkspace, updateDataset } from "@/lib/api/datasets";
+import type { DatasetFilters, DatasetListParams, UpdateDatasetPayload } from "@/types/dataset";
 
 export const defaultDatasetFilters: DatasetFilters = {
   search: "",
@@ -83,5 +83,31 @@ export function useMountDatasetMutation() {
   return useMutation({
     mutationFn: ({ datasetId, workspaceId }: { datasetId: string; workspaceId: string }) =>
       mountDatasetToWorkspace(datasetId, workspaceId)
+  });
+}
+
+export function useUpdateDataset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ datasetId, payload }: { datasetId: string; payload: UpdateDatasetPayload }) =>
+      updateDataset(datasetId, payload),
+    onSuccess: async (_, vars) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["datasets"] }),
+        queryClient.invalidateQueries({ queryKey: ["dataset-detail", vars.datasetId] })
+      ]);
+    }
+  });
+}
+
+export function useDeleteDataset() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (datasetId: string) => deleteDataset(datasetId),
+    onSuccess: async (_, datasetId) => {
+      queryClient.removeQueries({ queryKey: ["dataset-detail", datasetId] });
+      queryClient.removeQueries({ queryKey: ["dataset-preview", datasetId] });
+      await queryClient.invalidateQueries({ queryKey: ["datasets"] });
+    }
   });
 }

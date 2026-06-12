@@ -11,8 +11,20 @@ import { Button } from "@/components/ui";
 import { useDeleteWorkspace, useWorkspaces } from "@/lib/hooks/useWorkspace";
 import type { Workspace, WorkspaceStatus } from "@/types/workspace";
 
-type StatusFilter = "All" | "READY" | "ERROR";
+type StatusFilter = "All" | "READY" | "RUNNING" | "PROVISIONING" | "STOPPING" | "STOPPED" | "ERROR";
 type SortMode = "Newest" | "Oldest" | "Name A-Z";
+
+const STATUS_LABELS: Record<StatusFilter, string> = {
+  All: "All",
+  READY: "Sẵn sàng",
+  RUNNING: "Đang chạy",
+  PROVISIONING: "Đang khởi động",
+  STOPPING: "Đang dừng",
+  STOPPED: "Đã dừng",
+  ERROR: "Lỗi",
+};
+
+const ALL_STATUSES: StatusFilter[] = ["All", "READY", "RUNNING", "PROVISIONING", "STOPPING", "STOPPED", "ERROR"];
 
 function SkeletonRows() {
   return (
@@ -31,7 +43,7 @@ function SkeletonRows() {
   );
 }
 
-function rowActions(workspace: Workspace) {
+function rowActions(_workspace: Workspace) {
   return ["Open", "Delete"];
 }
 
@@ -90,10 +102,14 @@ export default function WorkspacesPage() {
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm theo tên..." className="h-10 w-full rounded-md border border-border bg-bg-sunken pl-9 pr-3 text-sm outline-none focus:border-brand-500" />
           </label>
 
-          <div className="flex rounded-md bg-bg-elevated p-1">
-            {(["All", "READY", "ERROR"] as StatusFilter[]).map((status) => (
-              <button key={status} onClick={() => setStatusFilter(status)} className={`rounded px-3 py-1.5 text-xs ${statusFilter === status ? "bg-bg-surface text-brand-600 shadow-xs" : "text-text-secondary"}`}>
-                {status}
+          <div className="flex flex-wrap rounded-md bg-bg-elevated p-1 gap-0.5">
+            {ALL_STATUSES.map((status) => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`rounded px-3 py-1.5 text-xs transition-colors ${statusFilter === status ? "bg-bg-surface text-brand-600 shadow-xs" : "text-text-secondary hover:text-text-primary"}`}
+              >
+                {STATUS_LABELS[status]}
               </button>
             ))}
           </div>
@@ -111,6 +127,7 @@ export default function WorkspacesPage() {
           </div>
         ) : (
           <>
+            {/* Mobile cards */}
             <div className="space-y-2 md:hidden">
               {paginated.map((workspace) => (
                 <div key={workspace.id} className="rounded-lg border border-border p-3">
@@ -119,7 +136,7 @@ export default function WorkspacesPage() {
                     <StatusBadge status={workspace.status as WorkspaceStatus} />
                   </div>
                   <p className="text-xs text-text-secondary">Google Colab · {(workspace.datasets?.length ?? 0) + (workspace.models?.length ?? 0)} assets</p>
-                  <p className="mt-1 text-xs text-text-secondary">{formatDistanceToNow(new Date(workspace.lastActiveAt), { addSuffix: true })}</p>
+                  <p className="mt-1 text-xs text-text-secondary">Created {formatDistanceToNow(new Date(workspace.createdAt), { addSuffix: true })}</p>
                   <div className="mt-3 flex gap-2">
                     <Button size="sm" onClick={() => router.push(`/workspaces/${workspace.id}`)}>Open</Button>
                     <Button size="sm" variant="ghost" aria-label="Row actions menu" onClick={(e) => { e.stopPropagation(); setMenuOpenId(workspace.id); }}>
@@ -130,6 +147,7 @@ export default function WorkspacesPage() {
               ))}
             </div>
 
+            {/* Desktop table */}
             <div className="hidden overflow-x-auto overflow-y-visible md:block">
               <table className="min-w-full table-fixed overflow-visible text-sm">
                 <thead>
@@ -138,7 +156,7 @@ export default function WorkspacesPage() {
                     <th className="w-[20%] py-2 pr-4">Status</th>
                     <th className="w-[18%] py-2 pr-4">Runtime</th>
                     <th className="w-[10%] py-2 pr-4">Assets</th>
-                    <th className="w-[13%] py-2 pr-4">Last Active</th>
+                    <th className="w-[13%] py-2 pr-4">Created</th>
                     <th className="w-[8%] py-2">Actions</th>
                   </tr>
                 </thead>
@@ -158,7 +176,7 @@ export default function WorkspacesPage() {
                         <td className="py-3 pr-4"><StatusBadge status={workspace.status as WorkspaceStatus} /></td>
                         <td className="py-3 pr-4 text-text-secondary">Google Colab</td>
                         <td className="py-3 pr-4 text-text-secondary">{(workspace.datasets?.length ?? 0) + (workspace.models?.length ?? 0)}</td>
-                        <td className="py-3 pr-4 text-text-secondary">{formatDistanceToNow(new Date(workspace.lastActiveAt), { addSuffix: true })}</td>
+                        <td className="py-3 pr-4 text-text-secondary">{formatDistanceToNow(new Date(workspace.createdAt), { addSuffix: true })}</td>
                         <td className={`relative py-3 ${menuOpenId === workspace.id ? "z-[120]" : ""}`}>
                           <div className="flex items-center justify-start gap-2">
                             <Button size="sm" className="w-20 bg-brand-600 text-white hover:bg-brand-500" onClick={(e) => { e.stopPropagation(); router.push(`/workspaces/${workspace.id}`); }}>Open</Button>

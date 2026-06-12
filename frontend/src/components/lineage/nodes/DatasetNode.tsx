@@ -8,8 +8,8 @@ export function DatasetNode({ data }: { data: DatasetNodeData }) {
   return (
     <div
       className={cn(
-        "min-w-[170px] rounded-xl border-2 border-node-dataset/60 bg-white px-3 py-2.5 shadow-sm",
-        data.isSelected && "border-node-dataset shadow-md shadow-cyan-100",
+        "min-w-[170px] rounded-xl border-2 border-node-dataset/60 bg-white px-3 py-2.5 shadow-sm transition-shadow",
+        data.isSelected && "border-node-dataset ring-2 ring-offset-1 ring-cyan-400 shadow-lg shadow-cyan-100",
         data.impacted && "border-red-400"
       )}
     >

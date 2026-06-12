@@ -37,7 +37,14 @@ class DVCClient:
         rel_data_path = self._relpath(local_abs)
 
         await self._run_command([*self._dvc_cmd, "add", rel_data_path], cwd=self.repo_path)
-        await self._run_command([*self._git_cmd, "add", rel_dvc_file, ".gitignore"], cwd=self.repo_path)
+        git_add_paths = [rel_dvc_file]
+        root_gitignore = self.repo_path / ".gitignore"
+        data_gitignore = local_abs.parent / ".gitignore"
+        if root_gitignore.exists():
+            git_add_paths.append(".gitignore")
+        if data_gitignore.exists():
+            git_add_paths.append(self._relpath(data_gitignore))
+        await self._run_command([*self._git_cmd, "add", *git_add_paths], cwd=self.repo_path)
         await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
         await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name], cwd=self.repo_path)
 

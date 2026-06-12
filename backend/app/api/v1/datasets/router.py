@@ -8,14 +8,44 @@ from uuid import uuid4
 import re
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.dataset import Dataset
 from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
+from app.models.workspace_assets import WorkspaceDataset
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+def _object_from_storage_path(storage_path: str | None) -> tuple[str | None, str] | None:
+    if not storage_path:
+        return None
+    if storage_path.startswith("s3://"):
+        _, rest = storage_path.split("s3://", 1)
+        bucket, _, object_name = rest.partition("/")
+        return (bucket or None, object_name) if object_name else None
+    normalized = storage_path.replace("\\", "/").lstrip("/")
+    return (None, normalized) if normalized else None
+
+
+def _dataset_minio_refs(row: Dataset | None, mlops_row: MLDataset | None, versions: list[DatasetVersion]) -> set[tuple[str | None, str]]:
+    refs: set[tuple[str | None, str]] = set()
+    for storage_path in [getattr(row, "storage_path", None), getattr(mlops_row, "storage_path", None)]:
+        ref = _object_from_storage_path(storage_path)
+        if ref:
+            refs.add(ref)
+    if row is not None:
+        source = row.source_payload or {}
+        minio_object = source.get("minio_object")
+        if isinstance(minio_object, str) and minio_object.strip():
+            refs.add((None, minio_object.strip()))
+    for version in versions:
+        ref = _object_from_storage_path(version.storage_path)
+        if ref:
+            refs.add(ref)
+    return refs
 
 
 def _to_payload(row: Dataset) -> dict:
@@ -29,6 +59,7 @@ def _to_payload(row: Dataset) -> dict:
         "size_bytes": int(row.size_bytes or 0),
         "item_count": int(row.item_count or 0),
         "class_count": source.get("class_count"),
+        "custom_metadata": source.get("custom_metadata") or {},
         "tags": row.tags or [],
         "created_by": row.created_by or "system",
         "created_at": row.created_at.isoformat(),
@@ -186,6 +217,156 @@ async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user
     return _to_payload(row)
 
 
+@router.patch("/{dataset_id}")
+async def update_dataset(
+    dataset_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    row = await db.get(Dataset, dataset_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    if "description" in payload:
+        row.description = str(payload["description"] or "")
+    if "tags" in payload and isinstance(payload["tags"], list):
+        row.tags = [str(item).strip() for item in payload["tags"] if str(item).strip()]
+    if "label_status" in payload and payload["label_status"] is not None:
+        allowed_label_statuses = {"labeled", "unlabeled", "processing"}
+        label_status = str(payload["label_status"])
+        if label_status not in allowed_label_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"label_status must be one of {sorted(allowed_label_statuses)}",
+            )
+        row.label_status = label_status
+
+    if "class_count" in payload:
+        source_payload = dict(row.source_payload or {})
+        class_count = payload["class_count"]
+        if class_count in (None, ""):
+            source_payload.pop("class_count", None)
+        else:
+            try:
+                parsed_class_count = int(class_count)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="class_count must be an integer",
+                ) from exc
+            if parsed_class_count < 0:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="class_count must be greater than or equal to 0",
+                )
+            source_payload["class_count"] = parsed_class_count
+        row.source_payload = source_payload
+
+    if "custom_metadata" in payload:
+        custom_metadata = payload["custom_metadata"]
+        if not isinstance(custom_metadata, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="custom_metadata must be an object",
+            )
+        source_payload = dict(row.source_payload or {})
+        source_payload["custom_metadata"] = {
+            str(key).strip(): str(value).strip()
+            for key, value in custom_metadata.items()
+            if str(key).strip() and value is not None and str(value).strip()
+        }
+        row.source_payload = source_payload
+
+    row.updated_at = datetime.now(timezone.utc)
+
+    mlops_dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    mlops_dataset.description = row.description
+    mlops_dataset.tags = row.tags or []
+
+    await db.commit()
+    await db.refresh(row)
+    return _to_payload(row)
+
+
+@router.delete("/{dataset_id}")
+async def delete_dataset(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.clients.minio_client import get_minio_client
+
+    row = await db.get(Dataset, dataset_id)
+    mlops_dataset: MLDataset | None = None
+    if re.fullmatch(r"[0-9a-fA-F-]{36}", dataset_id):
+        mlops_dataset = await db.get(MLDataset, dataset_id)
+    if row is not None and mlops_dataset is None:
+        mlops_dataset = (
+            await db.execute(select(MLDataset).where(MLDataset.name == row.name))
+        ).scalar_one_or_none()
+    if mlops_dataset is None:
+        mlops_dataset = (
+            await db.execute(select(MLDataset).where(MLDataset.name == dataset_id))
+        ).scalar_one_or_none()
+    if row is None and mlops_dataset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset not found")
+
+    if (
+        row is not None
+        and row.created_by
+        and row.created_by != current_user.user_id
+        and "admin" not in current_user.roles
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+    if (
+        mlops_dataset is not None
+        and mlops_dataset.owner_id != current_user.user_id
+        and "admin" not in current_user.roles
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permission")
+
+    versions = []
+    if mlops_dataset is not None:
+        versions = list(
+            (
+                await db.execute(
+                    select(DatasetVersion).where(DatasetVersion.dataset_id == mlops_dataset.id)
+                )
+            ).scalars().all()
+        )
+
+    minio = get_minio_client()
+    deleted_objects = 0
+    for bucket, object_name in _dataset_minio_refs(row, mlops_dataset, versions):
+        if object_name.endswith(".dvc"):
+            continue
+        await minio.delete_object(object_name, bucket=bucket)
+        deleted_objects += 1
+    if row is not None:
+        deleted_objects += await minio.delete_prefix(f"datasets/{row.id}/")
+    if mlops_dataset is not None:
+        deleted_objects += await minio.delete_prefix(f"datasets/{mlops_dataset.id}/")
+
+    if mlops_dataset is not None and versions:
+        version_ids = [item.id for item in versions]
+        await db.execute(
+            update(Run)
+            .where(Run.dvc_dataset_version_id.in_(version_ids))
+            .values(dvc_dataset_version_id=None, dvc_md5=None)
+        )
+        await db.execute(delete(ModelDatasetLink).where(ModelDatasetLink.dataset_version_id.in_(version_ids)))
+        await db.execute(delete(DatasetVersion).where(DatasetVersion.id.in_(version_ids)))
+    if row is not None:
+        await db.execute(delete(WorkspaceDataset).where(WorkspaceDataset.dataset_id == row.id))
+        await db.delete(row)
+    if mlops_dataset is not None:
+        await db.delete(mlops_dataset)
+    await db.commit()
+
+    return {"deleted": True, "dataset_id": dataset_id, "deleted_objects": deleted_objects}
+
+
 @router.get("/{dataset_id}/preview")
 async def get_dataset_preview(dataset_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
     row = await db.get(Dataset, dataset_id)
@@ -279,6 +460,7 @@ async def track_dataset_version(
     # ── File upload ──────────────────────────────────────────────────────────
     file: UploadFile = File(..., description="New dataset file to track with DVC"),
     # ── Form fields ──────────────────────────────────────────────────────────
+    version: str | None = Form(default=None, description="Optional explicit version, e.g. v2 or v2.0"),
     commit_message: str = Form(..., description="Git commit message for this DVC snapshot"),
     changelog: str = Form(default="", description="Human-readable change description"),
     item_count: int = Form(default=0, description="Number of samples/rows in the dataset"),
@@ -352,6 +534,7 @@ async def track_dataset_version(
         dataset=dataset,
         file_bytes=file_bytes,
         filename=file.filename or "upload",
+        version=version,
         commit_message=commit_message,
         changelog=changelog,
         item_count=item_count,
@@ -463,9 +646,11 @@ async def upload_dataset(
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
-    _user=Depends(get_current_user),
+    current_user: UserContext = Depends(get_current_user),
 ) -> dict:
     from app.clients.minio_client import get_minio_client, md5_hex
+    from app.config import get_settings
+    from app.services.mlops_dataset_service import DatasetService
 
     parsed = json.loads(metadata) if metadata else {}
     now = datetime.now(timezone.utc)
@@ -499,7 +684,7 @@ async def upload_dataset(
         label_status=parsed.get("label_status") or "processing",
         tags=parsed.get("tags") or [],
         storage_path=storage_path,
-        created_by=str(getattr(_user, "user_id", "upload-user")),
+        created_by=str(getattr(current_user, "user_id", "upload-user")),
         source_payload={
             "class_count": parsed.get("class_count"),
             "minio_object": object_name,
@@ -511,4 +696,39 @@ async def upload_dataset(
     db.add(payload)
     await db.commit()
     await db.refresh(payload)
-    return _to_payload(payload)
+
+    payload_id = payload.id
+    payload_name = payload.name
+    existing_mlops_dataset = (
+        await db.execute(select(MLDataset).where(MLDataset.name == payload_name))
+    ).scalar_one_or_none()
+    mlops_dataset: MLDataset | None = None
+    try:
+        mlops_dataset = await _resolve_mlops_dataset(db, payload.id, current_user)
+        version = await DatasetService(db).track_new_version(
+            dataset=mlops_dataset,
+            file_bytes=raw,
+            filename=safe_filename,
+            version=parsed.get("version") if parsed.get("version") is not None else None,
+            commit_message=str(parsed.get("commit_message") or f"chore(data): track {payload_name}"),
+            changelog=str(parsed.get("changelog") or "Initial upload"),
+            item_count=int(payload.item_count or 0),
+            version_status=str(parsed.get("version_status") or parsed.get("status") or "draft"),
+            split_info=parsed.get("split_info") if isinstance(parsed.get("split_info"), dict) else None,
+            schema_snapshot=parsed.get("schema_snapshot") if isinstance(parsed.get("schema_snapshot"), dict) else None,
+            user=current_user,
+            dvc_repo_path=get_settings().DVC_REPO_PATH,
+            dvc_remote_name=get_settings().DVC_REMOTE_NAME,
+        )
+    except Exception:
+        await db.rollback()
+        await minio.delete_object(object_name)
+        await db.execute(delete(Dataset).where(Dataset.id == payload_id))
+        if existing_mlops_dataset is None and mlops_dataset is not None:
+            await db.execute(delete(MLDataset).where(MLDataset.id == mlops_dataset.id))
+        await db.commit()
+        raise
+
+    response = _to_payload(payload)
+    response["latest_version"] = _version_payload(version)
+    return response

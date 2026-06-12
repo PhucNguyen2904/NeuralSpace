@@ -155,6 +155,19 @@ class MinIOClient:
 
         await asyncio.to_thread(_remove)
 
+    async def delete_prefix(self, prefix: str, bucket: str | None = None) -> int:
+        """Delete every object under a prefix and return the delete count."""
+        target = bucket or self._bucket
+
+        def _remove_prefix() -> int:
+            count = 0
+            for item in self._client.list_objects(target, prefix=prefix, recursive=True):
+                self._client.remove_object(target, item.object_name)
+                count += 1
+            return count
+
+        return await asyncio.to_thread(_remove_prefix)
+
     # ------------------------------------------------------------------
     # Stat / exists
     # ------------------------------------------------------------------

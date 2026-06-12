@@ -43,6 +43,10 @@ export async function getRunById(runId: string): Promise<Run> {
   return response.data;
 }
 
+export async function deleteRun(runId: string): Promise<void> {
+  await apiClient.delete(`/mlflow/runs/${runId}`);
+}
+
 export async function getModelVersions(params: ModelVersionListParams = {}): Promise<PaginatedResponse<ModelVersion>> {
   const response = await apiClient.get<PaginatedResponse<ModelVersion>>("/mlflow/model-versions", { params });
   return response.data;

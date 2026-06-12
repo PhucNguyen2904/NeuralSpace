@@ -138,8 +138,11 @@ services:
       COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: "10"
       COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: "480"
       COLAB_DATA_URL_EXPIRE_SECONDS: "900"
+      DVC_REPO_PATH: "/srv/dvc-repo"
+      DVC_REMOTE_NAME: "minio"
     volumes:
       - .:/app
+      - ./dvc-repo:/srv/dvc-repo
     ports:
       - "8000:8000"
     depends_on:

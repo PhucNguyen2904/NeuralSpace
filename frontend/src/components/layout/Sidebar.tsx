@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils/cn";
-import { Avatar } from "@/components/ui/Avatar";
-import { useAuth } from "@/lib/hooks/useAuth";
 import {
   Box,
   ChevronLeft,
@@ -54,12 +52,9 @@ function NeuralIcon() {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
-  const { user } = useAuth();
   const [isLight, setIsLight] = useState(false);
   const [mounted, setMounted] = useState(false);
   const isRouteActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
-  const displayName = user?.name?.trim() || "Alex Nguyen";
-  const displayEmail = user?.email?.trim() || "alex@neuralspace.dev";
   const themeIsLight = mounted && isLight;
 
   useEffect(() => {
@@ -139,13 +134,6 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
         </div>
 
         <div className="border-t border-border pt-3">
-          <div className={cn("mb-2 flex items-center gap-2 rounded-lg border border-border bg-bg-elevated/60 p-2", collapsed && "justify-center border-transparent bg-transparent p-0")}>
-            <Avatar name={displayName} className="h-8 w-8 shrink-0 border border-border bg-brand-50 text-[11px]" />
-            <div className={cn("min-w-0", collapsed && "hidden")}>
-              <p className="truncate text-xs font-semibold text-text-primary">{displayName}</p>
-              <p className="truncate text-[11px] text-text-tertiary">{displayEmail}</p>
-            </div>
-          </div>
           <button
             type="button"
             onClick={toggleTheme}

@@ -22,6 +22,7 @@ export interface Model {
   primary_metric_value: number;
   all_metrics: Record<string, number>;
   tags: string[];
+  custom_metadata?: Record<string, string>;
   dataset_id?: string;
   created_by: string;
   created_at: string;
@@ -73,8 +74,12 @@ export interface ModelListParams {
 
 export interface UpdateModelPayload {
   description?: string;
+  architecture?: string;
+  framework?: ModelFramework;
+  task_type?: TaskType;
   tags?: string[];
   status?: ModelStatus;
+  parameter_count?: number;
   primary_metric_name?: string;
   primary_metric_value?: number;
   metrics?: Record<string, number>;
@@ -82,6 +87,9 @@ export interface UpdateModelPayload {
   framework_version?: string;
   input_shape?: string;
   output_shape?: string;
+  dataset_id?: string;
+  training_duration_seconds?: number;
+  custom_metadata?: Record<string, string>;
 }
 
 export interface UploadModelVersionMetadata {

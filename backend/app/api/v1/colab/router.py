@@ -27,9 +27,11 @@ from app.schemas.colab import (
     ColabModelPayload,
     RuntimeHeartbeatResponse,
     RuntimeLogRequest,
+    RuntimeRunAssetRequest,
     RuntimeModelVersionRequest,
     RuntimeModelVersionResponse,
     RuntimeRunCreateRequest,
+    RuntimeRunFinishRequest,
     RuntimeRunResponse,
     RuntimeSessionResponse,
     RuntimeValuesRequest,
@@ -302,6 +304,36 @@ async def _runtime_experiment(db: AsyncSession, identity: RuntimeIdentity) -> Ex
     return experiment
 
 
+def _runtime_asset_payload(payload: RuntimeRunAssetRequest) -> dict[str, str]:
+    return {
+        "asset_type": payload.asset_type,
+        "asset_id": payload.asset_id,
+        "role": payload.role,
+    }
+
+
+def _append_runtime_asset(run: Run, direction: str, payload: RuntimeRunAssetRequest) -> dict:
+    tags = dict(run.tags_snapshot or {})
+    lineage = dict(tags.get("colab_lineage") or {})
+    assets = list(lineage.get(direction) or [])
+    asset = _runtime_asset_payload(payload)
+    if asset not in assets:
+        assets.append(asset)
+    lineage[direction] = assets
+    tags["colab_lineage"] = lineage
+    run.tags_snapshot = tags
+    return asset
+
+
+def _runtime_run_status(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized == "SUCCESS":
+        return "FINISHED"
+    if normalized in {"FINISHED", "FAILED", "KILLED", "RUNNING"}:
+        return normalized
+    return "FAILED"
+
+
 def _session_response(identity: RuntimeIdentity) -> RuntimeSessionResponse:
     session = identity.session
     return RuntimeSessionResponse(
@@ -369,6 +401,10 @@ async def create_runtime_run(
         tags_snapshot={"runtime_session_id": identity.session.id},
     )
     db.add(run)
+    for item in payload.inputs:
+        _append_runtime_asset(run, "inputs", item)
+    for item in payload.outputs:
+        _append_runtime_asset(run, "outputs", item)
     await db.commit()
     await db.refresh(run)
     audit_event(
@@ -380,6 +416,50 @@ async def create_runtime_run(
         run_id=run.id,
     )
     return RuntimeRunResponse(run_id=run.id, status=run.status, started_at=run.start_time or now)
+
+
+@router.patch("/runtime/runs/{run_id}")
+async def finish_runtime_run(
+    run_id: str,
+    payload: RuntimeRunFinishRequest,
+    identity: RuntimeIdentity = Depends(_runtime_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_capability(identity, "run:write")
+    run = await _owned_run(db, run_id, identity)
+    run.status = _runtime_run_status(payload.status)
+    if run.status in {"FINISHED", "FAILED", "KILLED"} and run.end_time is None:
+        run.end_time = datetime.utcnow()
+    await db.commit()
+    return {"run_id": run.id, "status": run.status, "ended_at": run.end_time}
+
+
+@router.post("/runtime/runs/{run_id}/inputs", status_code=status.HTTP_201_CREATED)
+async def log_runtime_input(
+    run_id: str,
+    payload: RuntimeRunAssetRequest,
+    identity: RuntimeIdentity = Depends(_runtime_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_capability(identity, "run:write")
+    run = await _owned_run(db, run_id, identity)
+    asset = _append_runtime_asset(run, "inputs", payload)
+    await db.commit()
+    return {"run_id": run.id, "input": asset, "lineage": (run.tags_snapshot or {}).get("colab_lineage", {})}
+
+
+@router.post("/runtime/runs/{run_id}/outputs", status_code=status.HTTP_201_CREATED)
+async def log_runtime_output(
+    run_id: str,
+    payload: RuntimeRunAssetRequest,
+    identity: RuntimeIdentity = Depends(_runtime_identity),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_capability(identity, "run:write")
+    run = await _owned_run(db, run_id, identity)
+    asset = _append_runtime_asset(run, "outputs", payload)
+    await db.commit()
+    return {"run_id": run.id, "output": asset, "lineage": (run.tags_snapshot or {}).get("colab_lineage", {})}
 
 
 @router.post("/runtime/runs/{run_id}/metrics")
@@ -486,6 +566,16 @@ async def register_runtime_model_version(
         created_by=identity.user_id,
     )
     db.add(model_version)
+    await db.flush()
+    _append_runtime_asset(
+        run,
+        "outputs",
+        RuntimeRunAssetRequest(
+            asset_type="model",
+            asset_id=model_version.id,
+            role="trained_model",
+        ),
+    )
     await db.commit()
     await db.refresh(model_version)
     return RuntimeModelVersionResponse(

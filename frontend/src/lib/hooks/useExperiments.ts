@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getExperiments, getRunById, getRuns } from "@/lib/api/mlflow";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { deleteRun, getExperiments, getRunById, getRuns } from "@/lib/api/mlflow";
 import type { Experiment, Run, RunStatus } from "@/types/mlflow";
 
 export interface ExperimentSummary extends Experiment {
@@ -229,6 +229,25 @@ export function useRunDetail(runId: string) {
       } catch {
         throw new Error("Run not found");
       }
+    }
+  });
+}
+
+export function useDeleteRun() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (runId: string) => deleteRun(runId),
+    onSuccess: async (_data, runId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["runs-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["experiments-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["run-detail", runId] }),
+        queryClient.invalidateQueries({ queryKey: ["lineage-graph"] }),
+        queryClient.invalidateQueries({ queryKey: ["lineage-impact-analysis"] }),
+        queryClient.invalidateQueries({ queryKey: ["registry-model-versions"] }),
+        queryClient.invalidateQueries({ queryKey: ["models"] })
+      ]);
     }
   });
 }

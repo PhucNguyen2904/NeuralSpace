@@ -15,9 +15,9 @@ const mapping: Record<
     pulse: false
   },
   PROVISIONING: {
-    label: "Provisioning",
-    className: "bg-warning-50 text-warning-500",
-    pulse: true
+    label: "Ready",
+    className: "bg-success-50 text-success-500",
+    pulse: false
   },
   RUNNING: {
     label: "Running",
@@ -25,13 +25,13 @@ const mapping: Record<
     pulse: true
   },
   STOPPING: {
-    label: "Stopping",
-    className: "bg-warning-50 text-warning-500",
-    pulse: true
+    label: "Ready",
+    className: "bg-success-50 text-success-500",
+    pulse: false
   },
   STOPPED: {
-    label: "Stopped",
-    className: "bg-bg-elevated text-text-secondary",
+    label: "Ready",
+    className: "bg-success-50 text-success-500",
     pulse: false
   },
   ERROR: {
@@ -43,10 +43,11 @@ const mapping: Record<
 
 export function StatusBadge({ status }: { status: WorkspaceStatus }) {
   const item = mapping[status];
+  const displayStatus = item.label.toUpperCase();
 
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", item.className)}>
-      <span className={cn("h-1.5 w-1.5 rounded-full", status === "ERROR" ? "bg-error-500" : status === "RUNNING" || status === "READY" ? "bg-success-500" : status === "STOPPED" ? "bg-text-tertiary" : "bg-warning-500", item.pulse && "status-pulse")} />
+      <span className={cn("h-1.5 w-1.5 rounded-full", displayStatus === "ERROR" ? "bg-error-500" : "bg-success-500", item.pulse && "status-pulse")} />
       {item.label}
     </span>
   );

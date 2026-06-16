@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Background, Controls, MiniMap, ReactFlow, type Edge, type Node } from "@xyflow/react";
 import { useRouter } from "next/navigation";
 import { DatasetNode } from "@/components/lineage/nodes/DatasetNode";
 import { ModelNode } from "@/components/lineage/nodes/ModelNode";
 import { RunNode } from "@/components/lineage/nodes/RunNode";
-import type { LineageNodeData } from "@/lib/lineage/transform";
+import type { DatasetNodeData, LineageNodeData } from "@/lib/lineage/transform";
 import { cn } from "@/lib/utils/cn";
 import "@xyflow/react/dist/style.css";
 
@@ -15,6 +15,10 @@ const nodeTypes = {
   run: RunNode,
   model: ModelNode
 };
+
+const MENU_WIDTH = 150;
+const MENU_HEIGHT = 88;
+const MENU_MARGIN = 8;
 
 function collectConnected(
   nodeId: string,
@@ -47,6 +51,20 @@ function collectConnected(
   return { nodeIds: visited, edgeIds: visitedEdges };
 }
 
+function collectDirectNeighbors(nodeId: string, edges: Edge[]) {
+  const nodeIds = new Set<string>([nodeId]);
+  const edgeIds = new Set<string>();
+
+  edges.forEach((edge) => {
+    if (edge.source !== nodeId && edge.target !== nodeId) return;
+    edgeIds.add(edge.id);
+    nodeIds.add(edge.source);
+    nodeIds.add(edge.target);
+  });
+
+  return { nodeIds, edgeIds };
+}
+
 export function LineageGraph({
   rawNodes,
   rawEdges,
@@ -55,7 +73,8 @@ export function LineageGraph({
   graphKey,
   onSelectNode,
   highlightPath,
-  impactedModelIds
+  impactedModelIds,
+  onOpenDatasetDetail
 }: {
   rawNodes: Node<LineageNodeData>[];
   rawEdges: Edge[];
@@ -65,8 +84,10 @@ export function LineageGraph({
   onSelectNode: (nodeId: string) => void;
   highlightPath: boolean;
   impactedModelIds: string[];
+  onOpenDatasetDetail?: (datasetId: string) => void;
 }) {
   const router = useRouter();
+  const graphRef = useRef<HTMLDivElement | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; node: Node<LineageNodeData> } | null>(null);
   const highlightAnchorId = useMemo(() => {
     if (rawNodes.some((node) => node.id === selectedNodeId)) return selectedNodeId;
@@ -75,24 +96,30 @@ export function LineageGraph({
   }, [rawNodes, selectedNodeId, rootNodeId]);
   const hasHighlightAnchor = Boolean(highlightAnchorId);
 
+  const anchorNode = useMemo(
+    () => rawNodes.find((node) => node.id === highlightAnchorId),
+    [highlightAnchorId, rawNodes]
+  );
+
   // Determine traversal direction based on the anchor node type:
   //   model   → backward only  (model ← run ← dataset)
   //   dataset → forward only   (dataset → run → model)
-  //   run     → both directions (middle of the graph)
+  //   run     → direct neighbors only, handled separately below
   const anchorDirection = useMemo((): "forward" | "backward" | "both" => {
     if (!highlightAnchorId) return "both";
-    const anchor = rawNodes.find((n) => n.id === highlightAnchorId);
-    if (anchor?.type === "model") return "backward";
-    if (anchor?.type === "dataset") return "forward";
+    if (anchorNode?.type === "model") return "backward";
+    if (anchorNode?.type === "dataset") return "forward";
     return "both";
-  }, [highlightAnchorId, rawNodes]);
+  }, [highlightAnchorId, anchorNode?.type]);
 
   const connected = useMemo(
     () =>
       hasHighlightAnchor
-        ? collectConnected(highlightAnchorId, rawNodes, rawEdges, anchorDirection)
+        ? anchorNode?.type === "run"
+          ? collectDirectNeighbors(highlightAnchorId, rawEdges)
+          : collectConnected(highlightAnchorId, rawNodes, rawEdges, anchorDirection)
         : { nodeIds: new Set<string>(), edgeIds: new Set<string>() },
-    [hasHighlightAnchor, highlightAnchorId, rawNodes, rawEdges, anchorDirection]
+    [hasHighlightAnchor, highlightAnchorId, rawNodes, rawEdges, anchorDirection, anchorNode?.type]
   );
 
   const nodes = useMemo(
@@ -123,22 +150,66 @@ export function LineageGraph({
     [rawEdges, highlightPath, selectedNodeId, connected.edgeIds]
   );
 
+  const openNodeDetail = (node: Node<LineageNodeData>) => {
+    onSelectNode(node.id);
+    setMenu(null);
+
+    if (node.type === "dataset") {
+      const data = node.data as DatasetNodeData;
+      const datasetId = data.datasetId ?? node.id;
+      if (onOpenDatasetDetail) {
+        onOpenDatasetDetail(datasetId);
+      } else {
+        const versionQuery = data.versionId ? `?version=${encodeURIComponent(data.versionId)}` : "";
+        router.push(`/datasets/${encodeURIComponent(datasetId)}${versionQuery}`);
+      }
+      return;
+    }
+
+    if (node.type === "run") {
+      router.push("/experiments");
+      return;
+    }
+
+    if (node.type === "model") {
+      router.push(`/models/${encodeURIComponent(String(node.data.name))}`);
+    }
+  };
+
   return (
-    <div className="relative h-[680px] w-full overflow-hidden rounded-xl border border-border bg-white" onClick={() => setMenu(null)}>
+    <div ref={graphRef} className="relative h-[680px] w-full overflow-hidden rounded-xl border border-border bg-white" onClick={() => setMenu(null)}>
       <ReactFlow
         key={graphKey}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodeClick={(_, node) => onSelectNode(node.id)}
-        onNodeDoubleClick={(_, node) => {
-          if (node.type === "dataset") router.push(`/datasets/${node.id}`);
-          if (node.type === "run") router.push("/experiments");
-          if (node.type === "model") router.push(`/models/${node.data.name}`);
+        onPaneClick={() => {
+          onSelectNode("");
+          setMenu(null);
         }}
+        onNodeDoubleClick={(_, node) => openNodeDetail(node)}
         onNodeContextMenu={(event, node) => {
           event.preventDefault();
-          setMenu({ x: event.clientX, y: event.clientY, node });
+          event.stopPropagation();
+          onSelectNode(node.id);
+
+          const bounds = graphRef.current?.getBoundingClientRect();
+          if (!bounds) {
+            setMenu({ x: event.clientX, y: event.clientY, node });
+            return;
+          }
+
+          const x = Math.min(
+            Math.max(event.clientX - bounds.left, MENU_MARGIN),
+            bounds.width - MENU_WIDTH - MENU_MARGIN
+          );
+          const y = Math.min(
+            Math.max(event.clientY - bounds.top, MENU_MARGIN),
+            bounds.height - MENU_HEIGHT - MENU_MARGIN
+          );
+
+          setMenu({ x, y, node });
         }}
         fitView
       >
@@ -147,12 +218,15 @@ export function LineageGraph({
         <MiniMap pannable zoomable position="bottom-left" />
       </ReactFlow>
       {menu ? (
-        <div className="absolute z-20 min-w-[150px] rounded-md border border-border bg-white p-1 shadow-lg" style={{ top: menu.y - 120, left: menu.x - 220 }}>
+        <div
+          className="absolute z-20 min-w-[150px] rounded-md border border-border bg-white p-1 shadow-lg"
+          style={{ top: menu.y, left: menu.x }}
+          onClick={(event) => event.stopPropagation()}
+        >
           <button
             className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-slate-100"
             onClick={() => {
-              onSelectNode(menu.node.id);
-              setMenu(null);
+              openNodeDetail(menu.node);
             }}
           >
             View detail

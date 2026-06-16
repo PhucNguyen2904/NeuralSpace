@@ -11,20 +11,17 @@ import { Button } from "@/components/ui";
 import { useDeleteWorkspace, useWorkspaces } from "@/lib/hooks/useWorkspace";
 import type { Workspace, WorkspaceStatus } from "@/types/workspace";
 
-type StatusFilter = "All" | "READY" | "RUNNING" | "PROVISIONING" | "STOPPING" | "STOPPED" | "ERROR";
+type StatusFilter = "All" | "READY" | "RUNNING" | "ERROR";
 type SortMode = "Newest" | "Oldest" | "Name A-Z";
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
   All: "All",
   READY: "Ready",
   RUNNING: "Running",
-  PROVISIONING: "Provisioning",
-  STOPPING: "Stopping",
-  STOPPED: "Stopped",
   ERROR: "Error",
 };
 
-const ALL_STATUSES: StatusFilter[] = ["All", "READY", "RUNNING", "PROVISIONING", "STOPPING", "STOPPED", "ERROR"];
+const ALL_STATUSES: StatusFilter[] = ["All", "READY", "RUNNING", "ERROR"];
 
 function SkeletonRows() {
   return (

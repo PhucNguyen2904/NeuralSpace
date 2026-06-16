@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, Eye, FileText, GitBranch, Layers, LoaderCircle, Package, PenTool, ScanSearch, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils/cn";
@@ -38,13 +37,13 @@ export function ModelCard({
   const Icon = taskIcon[model.task_type as keyof typeof taskIcon] ?? Layers ?? Package;
   const metrics = getDisplayMetrics(model);
   return (
-    <article className={cn("group flex h-full flex-col rounded-lg border border-border bg-bg-surface p-4 transition-all hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md", model.status === "failed" && "border-red-200")}>
-      <div className="mb-3 flex items-start justify-between gap-2">
+    <article className={cn("group flex h-full min-h-[255px] flex-col rounded-xl border border-border bg-bg-surface p-3.5 transition-all hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-md", model.status === "failed" && "border-red-200")}>
+      <div className="mb-2.5 flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <div className="shrink-0 rounded-md bg-violet-50 p-2 text-violet-600"><Icon size={18} /></div>
           <div className="min-w-0 flex-1">
-            <p className="h-11 overflow-hidden text-sm font-semibold leading-5 text-text-primary">{model.name}</p>
-            <p className="h-8 overflow-hidden text-xs leading-4 text-text-secondary">{prettyTask(model.task_type)}</p>
+            <p className="h-10 overflow-hidden text-sm font-semibold leading-5 text-text-primary">{model.name}</p>
+            <p className="h-5 overflow-hidden text-xs leading-5 text-text-secondary">{prettyTask(model.task_type)}</p>
           </div>
         </div>
         <StatusBadge status={model.status} />
@@ -55,13 +54,12 @@ export function ModelCard({
         ))}
       </div>
       <div className="mt-auto">
-        <div className="my-3 h-px bg-border" />
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+        <div className="my-2.5 h-px bg-border" />
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
           <span className="whitespace-nowrap">🔥 {prettyFramework(model.framework)}</span>
           <span className="inline-flex items-center gap-1 whitespace-nowrap"><PackageIcon size={12} />{formatSize(model.size_bytes)}</span>
-          <span className="whitespace-nowrap">{formatDistanceToNow(new Date(model.updated_at), { addSuffix: true })}</span>
         </div>
-        <div className="mb-2 min-h-[18px]">
+        <div className="mb-2">
           {model.status === "failed" ? (
             <p className="inline-flex items-center gap-1 text-xs text-red-600"><StatusFailedIcon size={13} />Training failed</p>
           ) : null}

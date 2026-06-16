@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import { AlertTriangle, Link2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
@@ -208,7 +209,19 @@ export function ModelDetailDrawer({
           </div>
         </div>
         <div className="h-[calc(100%-120px)] overflow-y-auto px-5 py-4">
-          {tab === "overview" ? <div className="grid grid-cols-2 gap-3 text-sm"><Info label="Task" value={model.task_type.replaceAll("_", " ")} /><Info label="Framework" value={model.framework_version} /><Info label="Input" value={model.input_shape} /><Info label="Output" value={model.output_shape} /><Info label="Parameters" value={`${(model.parameter_count / 1_000_000).toFixed(1)}M`} /><Info label="Model size" value={`${(model.size_bytes / 1024 ** 2).toFixed(1)} MB`} /><Info label="Dataset" value={model.dataset_id ?? "ImageNet 2017"} /><Info label="Trained by" value={model.created_by} /></div> : null}
+          {tab === "overview" ? (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <Info label="Task" value={model.task_type.replaceAll("_", " ")} />
+              <Info label="Framework" value={model.framework_version} />
+              <Info label="Input" value={model.input_shape} />
+              <Info label="Output" value={model.output_shape} />
+              <Info label="Parameters" value={`${(model.parameter_count / 1_000_000).toFixed(1)}M`} />
+              <Info label="Model size" value={`${(model.size_bytes / 1024 ** 2).toFixed(1)} MB`} />
+              <Info label="Dataset" value={model.dataset_id ?? "ImageNet 2017"} />
+              <Info label="Trained by" value={model.created_by} />
+              <Info label="Last updated" value={formatDistanceToNow(new Date(model.updated_at), { addSuffix: true })} />
+            </div>
+          ) : null}
           {tab === "metrics" ? <div className="space-y-4"><div className="grid grid-cols-3 gap-2">{Object.entries(metrics.data?.final_metrics ?? {}).slice(0, 3).map(([k, v]) => <div key={k} className="rounded-lg border border-border p-3 text-center"><p className="text-xl font-semibold text-violet-700">{v.toFixed(1)}%</p><p className="text-xs text-text-secondary">{k}</p></div>)}</div><MetricsChart data={metrics.data?.training_history ?? []} /></div> : null}
           {tab === "files" ? <div className="space-y-2">{model.files.map((f) => <div key={f.name} className="flex items-center justify-between rounded-md border border-border p-2 text-sm"><span>{f.name}</span><span className="text-text-secondary">{f.size} · {f.type}</span><Button size="sm" variant="ghost">Download</Button></div>)}</div> : null}
           {tab === "usage" ? <div className="space-y-2"><div className="flex items-center justify-between"><p className="text-sm font-medium">Python</p><Button size="sm" variant="ghost"><Link2 size={14} />Copy</Button></div><pre className="overflow-x-auto rounded-md bg-bg-elevated p-3 font-mono text-xs">{code}</pre></div> : null}

@@ -21,7 +21,7 @@ export const useWorkspaces = () =>
     staleTime: 30_000,
     refetchInterval: (query) => {
       const data = query.state.data as Workspace[] | undefined;
-      return data?.some((workspace) => workspace.status === "PROVISIONING") ? 10_000 : false;
+      return data?.some((workspace) => workspace.status === "RUNNING") ? 10_000 : false;
     }
   });
 

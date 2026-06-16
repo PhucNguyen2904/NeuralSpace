@@ -258,6 +258,8 @@ class LineageService:
             nodes[dataset_node_id] = {
                 "id": dataset_node_id,
                 "type": "dataset",
+                "dataset_id": dataset.id,
+                "version_id": dataset_version.id,
                 "name": dataset.name,
                 "version": dataset_version.version,
                 "status": dataset_version.status,
@@ -278,6 +280,8 @@ class LineageService:
             nodes[model_node_id] = {
                 "id": model_node_id,
                 "type": "model",
+                "model_version_id": model_version.id,
+                "model_id": (model_version.tags or {}).get("model_registry_id"),
                 "name": model_version.mlflow_name,
                 "version": _model_display_version(model_version),
                 "stage": model_version.stage,
@@ -403,6 +407,7 @@ class LineageService:
                     nodes[asset_id] = {
                         "id": asset_id,
                         "type": "dataset",
+                        "dataset_id": asset_id,
                         "name": dataset.name if dataset else asset_id,
                         "version": "workspace",
                         "status": "validated",
@@ -416,6 +421,7 @@ class LineageService:
                     nodes[asset_id] = {
                         "id": asset_id,
                         "type": "model",
+                        "model_id": asset_id,
                         "name": model.name if model else asset_id,
                         "version": model.version or "workspace" if model else "workspace",
                         "stage": "None",
@@ -431,6 +437,8 @@ class LineageService:
                 nodes[model_node_id] = {
                     "id": model_node_id,
                     "type": "model",
+                    "model_version_id": model_version.id,
+                    "model_id": (model_version.tags or {}).get("model_registry_id"),
                     "name": model_version.mlflow_name,
                     "version": _model_display_version(model_version),
                     "stage": model_version.stage,
@@ -454,6 +462,7 @@ class LineageService:
                 nodes[asset_id] = {
                     "id": asset_id,
                     "type": "model",
+                    "model_id": asset_id,
                     "name": model.name if model else asset_id,
                     "version": model.version or "workspace" if model else "workspace",
                     "stage": "None",

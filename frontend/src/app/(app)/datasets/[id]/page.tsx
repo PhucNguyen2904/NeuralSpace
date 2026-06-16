@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { VersionDetail } from "@/components/datasets/versions/VersionDetail";
 import { VersionList } from "@/components/datasets/versions/VersionList";
 import { TrackVersionModal } from "@/components/datasets/versions/TrackVersionModal";
@@ -13,7 +13,9 @@ import { useTrackVersion, useVersionDetail, useVersionDiff, useVersionList } fro
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const datasetId = params?.id ?? "";
+  const versionIdFromUrl = searchParams.get("version");
   const [search, setSearch] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [trackModalOpen, setTrackModalOpen] = useState(false);
@@ -26,7 +28,7 @@ export default function DatasetDetailPage() {
     [versions, search]
   );
 
-  const activeVersionId = selectedVersionId ?? filteredVersions[0]?.id ?? "";
+  const activeVersionId = selectedVersionId ?? versionIdFromUrl ?? filteredVersions[0]?.id ?? "";
   const detailQuery = useVersionDetail(datasetId, activeVersionId);
   const diffState = useVersionDiff(datasetId, activeVersionId);
   const tracker = useTrackVersion();
@@ -34,7 +36,7 @@ export default function DatasetDetailPage() {
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="outline" onClick={() => router.push("/datasets")}>
+        <Button size="sm" variant="outline" onClick={() => router.back()}>
           <ArrowLeft size={14} /> Back
         </Button>
         <div>

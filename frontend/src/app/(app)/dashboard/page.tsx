@@ -10,6 +10,10 @@ import {
   SquareTerminal
 } from "lucide-react";
 import { useMemo, type ComponentType, type CSSProperties } from "react";
+import { defaultDatasetFilters, useDatasets } from "@/lib/hooks/useDatasets";
+import { useExperimentList } from "@/lib/hooks/useExperiments";
+import { useLineageGraph } from "@/lib/hooks/useLineageGraph";
+import { defaultModelFilters, useModels } from "@/lib/hooks/useModels";
 import { useWorkspaces } from "@/lib/hooks/useWorkspace";
 import { useAuthStore } from "@/lib/stores/authStore";
 import type { Workspace, WorkspaceStatus } from "@/types/workspace";
@@ -26,9 +30,12 @@ type DisplayProject = {
 
 type StatCardProps = {
   icon: ComponentType<{ size?: string | number; className?: string }>;
+  title: string;
   value: string;
-  label: string;
-  trend?: string;
+  subtitle: string;
+  badge: string;
+  accentColor: "blue" | "indigo" | "violet" | "cyan";
+  footerText: string;
   index: number;
 };
 
@@ -47,27 +54,70 @@ const statusCopy: Record<ProjectStatus, string> = {
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const { data: projects = [] } = useWorkspaces();
+  const datasetsQuery = useDatasets(defaultDatasetFilters);
+  const modelsQuery = useModels(defaultModelFilters);
+  const experimentsQuery = useExperimentList();
+  const lineageQuery = useLineageGraph("dataset", "", 4);
   const displayName = user?.name?.split(" ")[0] || "Alex";
+  const datasetTotal = datasetsQuery.data?.total ?? 0;
+  const modelTotal = modelsQuery.data?.total ?? 0;
+  const experiments = experimentsQuery.data ?? [];
+  const runTotal = experiments.reduce((total, experiment) => total + (experiment.run_count ?? 0), 0);
+  const lineageNodeTotal = lineageQuery.data?.nodes.length ?? 0;
+  const lineageEdgeTotal = lineageQuery.data?.edges.length ?? 0;
+  const runningProjectTotal = projects.filter((project) => project.status === "RUNNING").length;
 
   const rows = useMemo(() => {
     const liveProjects = projects.slice(0, 5).map(toDisplayProject);
     return liveProjects.length > 0 ? liveProjects : sampleProjects;
   }, [projects]);
 
-  const stats = [
-    { icon: SquareTerminal, value: String(projects.length || 3), label: "Colab Projects", trend: "External runtimes" },
-    { icon: Database, value: "Registry", label: "12 Datasets", trend: "Versioned assets" },
-    { icon: FlaskConical, value: "Tracked", label: "48 Experiments", trend: "MLflow sync" },
-    { icon: GitBranch, value: "Connected", label: "Lineage", trend: "Graph healthy" }
+  const stats: Array<Omit<StatCardProps, "index">> = [
+    {
+      icon: SquareTerminal,
+      title: "Colab Projects",
+      value: String(projects.length),
+      subtitle: "External runtime workspaces",
+      badge: "External runtimes",
+      accentColor: "blue",
+      footerText: runningProjectTotal > 0 ? `${runningProjectTotal} running now` : "Ready to launch"
+    },
+    {
+      icon: Database,
+      title: "Assets",
+      value: String(datasetTotal + modelTotal),
+      subtitle: "Registry inventory",
+      badge: "Versioned assets",
+      accentColor: "indigo",
+      footerText: `${datasetTotal} Datasets · ${modelTotal} Models`
+    },
+    {
+      icon: FlaskConical,
+      title: "Experiments",
+      value: String(experiments.length),
+      subtitle: "Tracked MLflow groups",
+      badge: `${runTotal} Runs`,
+      accentColor: "violet",
+      footerText: runTotal > 0 ? "Runs synced from MLflow" : "No runs recorded yet"
+    },
+    {
+      icon: GitBranch,
+      title: "Lineage",
+      value: String(lineageEdgeTotal),
+      subtitle: "Graph connectivity",
+      badge: lineageEdgeTotal > 0 ? "Graph healthy" : "Awaiting links",
+      accentColor: "cyan",
+      footerText: `${lineageNodeTotal} Nodes · ${lineageEdgeTotal} Edges`
+    }
   ];
 
   return (
     <div className="dashboard-industrial space-y-6">
       <HeroBanner username={displayName} />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Workspace metrics">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4" aria-label="Workspace metrics">
         {stats.map((stat, index) => (
-          <StatCard key={stat.label} {...stat} index={index} />
+          <StatCard key={stat.title} {...stat} index={index} />
         ))}
       </section>
 
@@ -115,9 +165,7 @@ export default function DashboardPage() {
         }
 
         .stat-card:hover {
-          border-color: var(--color-brand-500);
-          box-shadow: var(--shadow-sm), 0 0 20px var(--color-accent-glow);
-          transform: translateY(-1px);
+          transform: translateY(-3px);
         }
 
         .project-row .project-action {
@@ -212,20 +260,69 @@ function NeuralSketch() {
   );
 }
 
-function StatCard({ icon: Icon, value, label, trend, index }: StatCardProps) {
+const statAccentStyles: Record<StatCardProps["accentColor"], {
+  card: string;
+  glow: string;
+  icon: string;
+  badge: string;
+  footerDot: string;
+}> = {
+  blue: {
+    card: "border-blue-100/80 bg-gradient-to-br from-white via-blue-50/35 to-bg-surface hover:border-blue-300/80 hover:shadow-blue-100/80",
+    glow: "bg-blue-400/10",
+    icon: "border-blue-100 bg-blue-50 text-blue-600",
+    badge: "border-blue-100 bg-blue-50 text-blue-700",
+    footerDot: "bg-blue-500"
+  },
+  indigo: {
+    card: "border-indigo-100/80 bg-gradient-to-br from-white via-indigo-50/35 to-bg-surface hover:border-indigo-300/80 hover:shadow-indigo-100/80",
+    glow: "bg-indigo-400/10",
+    icon: "border-indigo-100 bg-indigo-50 text-indigo-600",
+    badge: "border-indigo-100 bg-indigo-50 text-indigo-700",
+    footerDot: "bg-indigo-500"
+  },
+  violet: {
+    card: "border-violet-100/80 bg-gradient-to-br from-white via-violet-50/35 to-bg-surface hover:border-violet-300/80 hover:shadow-violet-100/80",
+    glow: "bg-violet-400/10",
+    icon: "border-violet-100 bg-violet-50 text-violet-600",
+    badge: "border-violet-100 bg-violet-50 text-violet-700",
+    footerDot: "bg-violet-500"
+  },
+  cyan: {
+    card: "border-cyan-100/80 bg-gradient-to-br from-white via-cyan-50/35 to-emerald-50/20 hover:border-cyan-300/80 hover:shadow-cyan-100/80",
+    glow: "bg-cyan-400/10",
+    icon: "border-cyan-100 bg-cyan-50 text-cyan-700",
+    badge: "border-emerald-100 bg-emerald-50 text-emerald-700",
+    footerDot: "bg-emerald-500"
+  }
+};
+
+function StatCard({ icon: Icon, title, value, subtitle, badge, accentColor, footerText, index }: StatCardProps) {
+  const accent = statAccentStyles[accentColor];
+
   return (
     <article
-      className="stat-card rounded-lg border border-border bg-bg-surface p-5 shadow-sm transition duration-150 ease-out"
+      className={`stat-card group relative overflow-hidden rounded-2xl border p-5 shadow-sm transition duration-200 ease-out hover:shadow-lg ${accent.card}`}
       style={{ "--stat-index": index } as CSSProperties}
     >
-      <div className="flex items-center justify-between">
-        <span className="grid h-9 w-9 place-items-center rounded-md border border-border bg-brand-50 text-brand-500">
-          <Icon size={20} />
+      <div className={`pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full blur-2xl transition-opacity duration-200 group-hover:opacity-100 ${accent.glow}`} />
+      <div className="relative flex items-start justify-between gap-3">
+        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border shadow-sm ${accent.icon}`}>
+          <Icon size={21} />
         </span>
-        {trend ? <span className="rounded-sm border border-border bg-bg-elevated px-2 py-1 font-mono text-[11px] font-medium text-text-tertiary">{trend}</span> : null}
+        <span className={`max-w-[9.5rem] truncate rounded-full border px-2.5 py-1 text-[11px] font-semibold leading-none ${accent.badge}`}>
+          {badge}
+        </span>
       </div>
-      <p className="mt-4 text-[28px] font-bold leading-none text-text-primary">{value}</p>
-      <p className="mt-2 text-sm text-text-secondary">{label}</p>
+      <div className="relative mt-5">
+        <p className="text-[12px] font-semibold uppercase text-text-tertiary">{title}</p>
+        <p className="mt-2 truncate text-[34px] font-bold leading-none text-text-primary">{value}</p>
+        <p className="mt-2 text-sm font-medium text-text-secondary">{subtitle}</p>
+      </div>
+      <div className="relative mt-5 flex items-center gap-2 border-t border-border/60 pt-3 text-xs font-medium text-text-tertiary">
+        <span className={`h-1.5 w-1.5 rounded-full ${accent.footerDot}`} />
+        <span className="truncate">{footerText}</span>
+      </div>
     </article>
   );
 }
@@ -275,7 +372,7 @@ function toDisplayProject(project: Workspace): DisplayProject {
 }
 
 function normalizeStatus(status: WorkspaceStatus): ProjectStatus {
-  if (status === "RUNNING" || status === "PROVISIONING") return "running";
+  if (status === "RUNNING") return "running";
   if (status === "READY") return "ready";
   return "idle";
 }

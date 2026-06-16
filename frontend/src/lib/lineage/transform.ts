@@ -5,6 +5,8 @@ export type LineageNodeType = "dataset" | "run" | "model";
 
 export interface DatasetNodeData extends Record<string, unknown> {
   id: string;
+  datasetId?: string;
+  versionId?: string;
   name: string;
   version: string;
   dvcMd5?: string;
@@ -29,6 +31,8 @@ export interface RunNodeData extends Record<string, unknown> {
 
 export interface ModelNodeData extends Record<string, unknown> {
   id: string;
+  modelId?: string;
+  modelVersionId?: string;
   name: string;
   version: string;
   stage: Stage;
@@ -44,6 +48,10 @@ export interface LineageApiResponse {
   nodes: Array<{
     id: string;
     type: LineageNodeType;
+    dataset_id?: string;
+    version_id?: string;
+    model_id?: string;
+    model_version_id?: string;
     name: string;
     version?: string;
     stage?: Stage;
@@ -78,6 +86,8 @@ export function formatVersionLabel(version: string | number | undefined): string
 function toDatasetData(item: LineageApiResponse["nodes"][number]): DatasetNodeData {
   return {
     id: item.id,
+    datasetId: item.dataset_id,
+    versionId: item.version_id,
     name: item.name,
     version: item.version ?? "v1.0",
     dvcMd5: item.dvcMd5,
@@ -104,6 +114,8 @@ function toRunData(item: LineageApiResponse["nodes"][number]): RunNodeData {
 function toModelData(item: LineageApiResponse["nodes"][number]): ModelNodeData {
   return {
     id: item.id,
+    modelId: item.model_id,
+    modelVersionId: item.model_version_id,
     name: item.name,
     version: item.version ?? "1",
     stage: item.stage ?? "None",

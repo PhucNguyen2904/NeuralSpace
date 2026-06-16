@@ -4,7 +4,11 @@ import { Providers } from "@/app/providers";
 
 export const metadata: Metadata = {
   title: process.env.NEXT_PUBLIC_APP_NAME ?? "NeuralSpace",
-  description: "Cloud IDE platform"
+  description: "Cloud IDE platform",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg"
+  }
 };
 
 const themeInitScript = `

@@ -10,8 +10,8 @@ export function getLayoutedElements(nodes: Node<LineageNodeData>[], edges: Edge[
   graph.setDefaultEdgeLabel(() => ({}));
   graph.setGraph({
     rankdir: "LR",
-    ranksep: 80,
-    nodesep: 40,
+    ranksep: 150,
+    nodesep: 64,
     marginx: 40,
     marginy: 40
   });

@@ -69,6 +69,26 @@ def _to_payload(row: Dataset) -> dict:
     }
 
 
+def _mlops_to_payload(row: MLDataset) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "description": row.description or "",
+        "type": row.type,
+        "label_status": "labeled" if row.status == "active" else "processing",
+        "size_bytes": 0,
+        "item_count": 0,
+        "class_count": None,
+        "custom_metadata": {},
+        "tags": row.tags or [],
+        "created_by": row.owner_id or "system",
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+        "thumbnail_url": None,
+        "storage_path": row.storage_path or "",
+    }
+
+
 def _version_payload(row: DatasetVersion, linked_models: list[dict] | None = None) -> dict:
     return {
         "id": row.id,
@@ -212,9 +232,19 @@ async def list_datasets(
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
     row = await db.get(Dataset, dataset_id)
-    if row is None:
+    if row is not None:
+        return _to_payload(row)
+
+    mlops_row = None
+    if re.fullmatch(r"[0-9a-fA-F-]{36}", dataset_id):
+        mlops_row = await db.get(MLDataset, dataset_id)
+    if mlops_row is None:
+        mlops_row = (
+            await db.execute(select(MLDataset).where(MLDataset.name == dataset_id))
+        ).scalar_one_or_none()
+    if mlops_row is None:
         return {}
-    return _to_payload(row)
+    return _mlops_to_payload(mlops_row)
 
 
 @router.patch("/{dataset_id}")

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Target } from "lucide-react";
+import { DatasetDetailDrawer } from "@/components/datasets/DatasetDetailDrawer";
 import { LineageGraph } from "@/components/lineage/LineageGraph";
 import { LineageToolbar } from "@/components/lineage/LineageToolbar";
 import { NodeInfoPanel } from "@/components/lineage/NodeInfoPanel";
-import { useImpactAnalysis, useLineageGraph } from "@/hooks/useLineageGraph";
+import { useLineageGraph } from "@/hooks/useLineageGraph";
 import { getLayoutedElements } from "@/lib/lineage/layout";
 import type { LineageNodeData } from "@/lib/lineage/transform";
 import type { Edge, Node } from "@xyflow/react";
@@ -42,6 +43,31 @@ function parseNodeNameVersion(rawName: string, rawVersion: string): { name: stri
   return { name, version };
 }
 
+function collectDownstreamModelIds(datasetId: string, nodes: Node<LineageNodeData>[], edges: Edge[]): string[] {
+  if (!datasetId) return [];
+
+  const nodeTypeById = new Map(nodes.map((node) => [node.id, node.type]));
+  const queue = [datasetId];
+  const visited = new Set<string>([datasetId]);
+  const modelIds = new Set<string>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    edges.forEach((edge) => {
+      if (edge.source !== current || visited.has(edge.target)) return;
+
+      visited.add(edge.target);
+      queue.push(edge.target);
+
+      if (nodeTypeById.get(edge.target) === "model") {
+        modelIds.add(edge.target);
+      }
+    });
+  }
+
+  return [...modelIds];
+}
+
 export default function LineagePage() {
   const [rootType, setRootType] = useState<"dataset" | "model">("dataset");
   const [rootId, setRootId] = useState("");
@@ -49,13 +75,13 @@ export default function LineagePage() {
   const [highlightPath, setHighlightPath] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState("");
   const [impactMode, setImpactMode] = useState(false);
+  const [drawerDatasetId, setDrawerDatasetId] = useState<string | null>(null);
   // Client-side filter state lifted from toolbar
   const [filterModelName, setFilterModelName] = useState("");
   const [filterVersion, setFilterVersion] = useState("");
 
   const graph = useLineageGraph(rootType, rootId, depth);
   const selectorGraph = useLineageGraph(rootType, "", 4);
-  const impact = useImpactAnalysis(impactMode ? rootId : "");
 
   // Structured node options — parse name/version consistently regardless of API format
   const nodeOptions = useMemo(
@@ -77,6 +103,13 @@ export default function LineagePage() {
   );
 
   const selectedNode = useMemo(() => (graph.data?.nodes ?? []).find((node) => node.id === selectedNodeId) ?? null, [graph.data?.nodes, selectedNodeId]);
+  const selectedDatasetId = selectedNode?.type === "dataset" ? selectedNode.id : "";
+  const impactDatasetId = impactMode ? (rootType === "dataset" && rootId ? rootId : selectedDatasetId) : "";
+  const canRunImpact = Boolean((rootType === "dataset" && rootId) || selectedDatasetId);
+  const impactTargetLabel =
+    impactDatasetId && selectedNode?.id === impactDatasetId
+      ? String(selectedNode.data.name ?? impactDatasetId)
+      : impactDatasetId || "No dataset selected";
 
   // ── Client-side subgraph extraction ──────────────────────────────────────
   const filteredGraphData = useMemo(() => {
@@ -158,6 +191,12 @@ export default function LineagePage() {
     return `${nodeIds}::${edgeIds}`;
   }, [filteredGraphData.nodes, filteredGraphData.edges]);
 
+  const graphImpactedModelIds = useMemo(
+    () => collectDownstreamModelIds(impactDatasetId, filteredGraphData.nodes, filteredGraphData.edges),
+    [impactDatasetId, filteredGraphData.nodes, filteredGraphData.edges]
+  );
+  const impactedModelCount = graphImpactedModelIds.length;
+
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-semibold">Lineage Graph</h1>
@@ -207,24 +246,67 @@ export default function LineagePage() {
             </ul>
           </div>
 
-          <div className="rounded-xl border border-border bg-white p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Impact Analysis</p>
-              <button
-                type="button"
-                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-slate-50"
-                onClick={() => setImpactMode((prev) => !prev)}
-              >
-                {impactMode ? "Disable" : "Enable"}
-              </button>
-            </div>
-            <p className="text-xs text-slate-600">Enable this mode to highlight downstream models impacted by the selected dataset.</p>
-            {impactMode && impact.hasImpact ? (
-              <p className="mt-2 flex items-center gap-1 text-xs text-red-700">
-                <AlertTriangle size={14} />
-                {impact.data?.message}
+          <div className="overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-white via-white to-cyan-50/60 shadow-sm">
+            <div className="border-b border-indigo-100/80 p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <Target size={16} />
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Impact Analysis</p>
+                    <p className="text-[11px] text-slate-500">Downstream model risk</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={!impactMode && !canRunImpact}
+                  className="rounded-md border border-indigo-200 bg-white px-2 py-1 text-xs font-medium text-indigo-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                  onClick={() => setImpactMode((prev) => !prev)}
+                >
+                  {impactMode ? "Disable" : "Enable"}
+                </button>
+              </div>
+              <p className="text-xs leading-5 text-slate-600">
+                Highlight models that may be affected when a dataset changes. Select a dataset root or click a dataset node, then enable analysis.
               </p>
-            ) : null}
+            </div>
+
+            <div className="space-y-2 p-3">
+              <div className="rounded-lg border border-slate-200 bg-white/80 p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Dataset</p>
+                <p className="mt-1 truncate text-sm font-medium text-slate-800" title={impactTargetLabel}>
+                  {impactTargetLabel}
+                </p>
+              </div>
+
+              {!canRunImpact ? (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                  <Info className="mt-0.5 shrink-0" size={14} />
+                  Select a dataset in the toolbar or click a dataset node to run impact analysis.
+                </div>
+              ) : !impactMode ? (
+                <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600">
+                  <Info className="mt-0.5 shrink-0" size={14} />
+                  Analysis is off. Enable it to show impacted downstream models on the graph.
+                </div>
+              ) : impactedModelCount > 0 ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2">
+                  <p className="flex items-center gap-2 text-xs font-semibold text-red-700">
+                    <AlertTriangle size={14} />
+                    {impactedModelCount} impacted {impactedModelCount === 1 ? "model" : "models"}
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-red-700">
+                    These downstream models are connected to the selected dataset in the current lineage graph.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700">
+                  <CheckCircle2 className="mt-0.5 shrink-0" size={14} />
+                  No downstream models are impacted by this dataset.
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
@@ -246,10 +328,16 @@ export default function LineagePage() {
             graphKey={graphKey}
             onSelectNode={setSelectedNodeId}
             highlightPath={highlightPath}
-            impactedModelIds={impactMode ? impact.data?.affectedModelIds ?? [] : []}
+            impactedModelIds={impactMode ? graphImpactedModelIds : []}
+            onOpenDatasetDetail={(datasetId) => setDrawerDatasetId(datasetId)}
           />
         </main>
       </div>
+      <DatasetDetailDrawer
+        datasetId={drawerDatasetId}
+        open={drawerDatasetId !== null}
+        onClose={() => setDrawerDatasetId(null)}
+      />
     </div>
   );
 }

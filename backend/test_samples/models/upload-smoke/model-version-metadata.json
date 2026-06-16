@@ -1,0 +1,13 @@
+{
+  "version": "v1.1",
+  "changelog": "Smoke-test version upload with slightly improved metrics.",
+  "framework_version": "opset-17",
+  "primary_metric_name": "accuracy",
+  "primary_metric_value": 0.927,
+  "metrics": {
+    "accuracy": 0.927,
+    "f1": 0.919,
+    "precision": 0.925,
+    "recall": 0.912
+  }
+}

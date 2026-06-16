@@ -58,7 +58,7 @@ export function DatasetCard({
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button size="sm" variant="outline" className="text-text-secondary" onClick={() => onViewDetails(dataset)}>
-          <Eye size={14} /> Chi tiết
+          <Eye size={14} /> Details
         </Button>
         <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={() => onViewVersions(dataset)}>
           <GitBranch size={14} /> Versions

@@ -40,12 +40,36 @@ function toParams(filters: ModelFilters): ModelListParams {
 
 export function useModels(filters: ModelFilters) {
   const params = useMemo(() => toParams(filters), [filters]);
-  return useQuery({ queryKey: ["models", params], queryFn: () => getModels(params), staleTime: 60_000, placeholderData: (p) => p });
+  return useQuery({
+    queryKey: ["models", params],
+    queryFn: () => getModels(params),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 5_000,
+    placeholderData: (p) => p
+  });
 }
 
 export function useModelDetail(id: string) {
-  const detail = useQuery({ queryKey: ["model-detail", id], queryFn: () => getModelById(id), enabled: Boolean(id) });
-  const metrics = useQuery({ queryKey: ["model-metrics", id], queryFn: () => getModelMetrics(id), enabled: Boolean(id) });
+  const detail = useQuery({
+    queryKey: ["model-detail", id],
+    queryFn: () => getModelById(id),
+    enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 5_000
+  });
+  const metrics = useQuery({
+    queryKey: ["model-metrics", id],
+    queryFn: () => getModelMetrics(id),
+    enabled: Boolean(id),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 5_000
+  });
   const versions = useQuery({ queryKey: ["model-versions", id], queryFn: () => getModelVersions(id), enabled: Boolean(id) });
   return { detail, metrics, versions };
 }

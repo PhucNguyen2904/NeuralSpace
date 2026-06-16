@@ -36,11 +36,11 @@ export function FilterPanel({
         <p className="mb-2 text-sm font-semibold text-text-primary">Search</p>
         <div className="relative">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
-          <Input value={searchValue} onChange={(e) => onSearchChange(e.target.value)} placeholder="Tìm dataset..." className="pl-9" />
+          <Input value={searchValue} onChange={(e) => onSearchChange(e.target.value)} placeholder="Search datasets..." className="pl-9" />
         </div>
       </div>
       <div>
-        <p className="mb-2 text-sm font-semibold text-text-primary">Loại dữ liệu {activeFilterCount > 0 ? <span className="rounded-full bg-[#ECFDF5] px-2 py-0.5 text-xs text-emerald-700">Bộ lọc ({activeFilterCount})</span> : null}</p>
+        <p className="mb-2 text-sm font-semibold text-text-primary">Data type {activeFilterCount > 0 ? <span className="rounded-full bg-[#ECFDF5] px-2 py-0.5 text-xs text-emerald-700">Filters ({activeFilterCount})</span> : null}</p>
         <div className="space-y-2">
           {typeItems.map((item) => (
             <label key={item.key} className="flex cursor-pointer items-center justify-between text-sm">
@@ -51,30 +51,30 @@ export function FilterPanel({
         </div>
       </div>
       <div>
-        <p className="mb-2 text-sm font-semibold text-text-primary">Trạng thái</p>
+        <p className="mb-2 text-sm font-semibold text-text-primary">Status</p>
         <div className="space-y-2 text-sm text-text-secondary">
           {(["all", "labeled", "unlabeled", "processing"] as const).map((status) => (
             <label key={status} className="flex cursor-pointer items-center gap-2">
               <input type="radio" name="status" checked={filters.status === status} onChange={() => onChange({ status })} />
-              {status === "all" ? "Tất cả" : status === "labeled" ? "Đã gán nhãn" : status === "unlabeled" ? "Chưa gán nhãn" : "Đang xử lý"}
+              {status === "all" ? "All" : status === "labeled" ? "Labeled" : status === "unlabeled" ? "Unlabeled" : "Processing"}
             </label>
           ))}
         </div>
       </div>
       <div>
-        <p className="mb-2 text-sm font-semibold text-text-primary">Kích thước</p>
+        <p className="mb-2 text-sm font-semibold text-text-primary">Size</p>
         <input type="range" min={0} max={50 * 1024} value={Math.round(filters.sizeMin / (1024 * 1024))} onChange={(event) => onChange({ sizeMin: Number(event.target.value) * 1024 * 1024 })} className="w-full accent-emerald-500" />
         <input type="range" min={0} max={50 * 1024} value={Math.round(filters.sizeMax / (1024 * 1024))} onChange={(event) => onChange({ sizeMax: Number(event.target.value) * 1024 * 1024 })} className="mt-2 w-full accent-emerald-500" />
         <p className="mt-1 text-xs text-text-secondary">{humanSize(filters.sizeMin)} - {humanSize(filters.sizeMax)}</p>
       </div>
       <div>
-        <p className="mb-2 text-sm font-semibold text-text-primary">Thời gian tạo</p>
+        <p className="mb-2 text-sm font-semibold text-text-primary">Created date</p>
         <select value={filters.createdWithin} onChange={(e) => onChange({ createdWithin: e.target.value as DatasetFilters["createdWithin"] })} className="h-9 w-full rounded-md border border-border bg-bg-surface px-3 text-sm">
-          <option value="all">Tất cả thời gian</option>
-          <option value="today">Hôm nay</option>
-          <option value="7d">7 ngày</option>
-          <option value="30d">30 ngày</option>
-          <option value="3m">3 tháng</option>
+          <option value="all">All time</option>
+          <option value="today">Today</option>
+          <option value="7d">7 days</option>
+          <option value="30d">30 days</option>
+          <option value="3m">3 months</option>
         </select>
       </div>
       <div>
@@ -92,7 +92,7 @@ export function FilterPanel({
       </div>
       {activeFilterCount > 0 ? (
         <button className="text-sm text-brand-600 hover:underline" onClick={onReset}>
-          Xóa tất cả bộ lọc
+          Clear all filters
         </button>
       ) : null}
     </aside>

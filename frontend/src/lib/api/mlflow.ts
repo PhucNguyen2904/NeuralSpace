@@ -33,6 +33,10 @@ export async function getExperimentById(experimentId: string): Promise<Experimen
   return response.data;
 }
 
+export async function deleteExperiment(experimentId: string): Promise<void> {
+  await apiClient.delete(`/mlflow/experiments/${experimentId}`);
+}
+
 export async function getRuns(params: RunListParams = {}): Promise<PaginatedResponse<Run>> {
   const response = await apiClient.get<PaginatedResponse<Run>>("/mlflow/runs", { params });
   return response.data;

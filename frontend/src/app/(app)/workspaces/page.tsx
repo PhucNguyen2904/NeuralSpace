@@ -16,12 +16,12 @@ type SortMode = "Newest" | "Oldest" | "Name A-Z";
 
 const STATUS_LABELS: Record<StatusFilter, string> = {
   All: "All",
-  READY: "Sẵn sàng",
-  RUNNING: "Đang chạy",
-  PROVISIONING: "Đang khởi động",
-  STOPPING: "Đang dừng",
-  STOPPED: "Đã dừng",
-  ERROR: "Lỗi",
+  READY: "Ready",
+  RUNNING: "Running",
+  PROVISIONING: "Provisioning",
+  STOPPING: "Stopping",
+  STOPPED: "Stopped",
+  ERROR: "Error",
 };
 
 const ALL_STATUSES: StatusFilter[] = ["All", "READY", "RUNNING", "PROVISIONING", "STOPPING", "STOPPED", "ERROR"];
@@ -99,7 +99,7 @@ export default function WorkspacesPage() {
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <label className="relative min-w-56 flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm theo tên..." className="h-10 w-full rounded-md border border-border bg-bg-sunken pl-9 pr-3 text-sm outline-none focus:border-brand-500" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name..." className="h-10 w-full rounded-md border border-border bg-bg-sunken pl-9 pr-3 text-sm outline-none focus:border-brand-500" />
           </label>
 
           <div className="flex flex-wrap rounded-md bg-bg-elevated p-1 gap-0.5">

@@ -99,9 +99,9 @@ services:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
     command: >
-      sh -c "pip install --no-cache-dir psycopg2-binary==2.9.9 &&
-      mlflow server
-      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow
+      sh -c "python -m pip install --no-cache-dir psycopg2-binary==2.9.9 boto3==1.34.131 &&
+      python -m mlflow server
+      --backend-store-uri postgresql://postgres:postgres@postgres:5432/cloud_ide
       --default-artifact-root s3://mlflow-artifacts
       --host 0.0.0.0
       --port 5000"
@@ -134,8 +134,10 @@ services:
       AWS_SECRET_ACCESS_KEY: "minioadmin"
       CORS_ORIGINS: "http://localhost,http://localhost:80,http://localhost:3000"
       PUBLIC_API_BASE_URL: "${PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}"
-      COLAB_NOTEBOOK_GITHUB_URL: "PhucNguyen2904/CollabClone/blob/master/notebooks/templates/colab_workspace_bootstrap.ipynb"
-      COLAB_LAUNCH_TOKEN_EXPIRE_MINUTES: "10"
+      COLAB_TEMPLATE_ORGANIZATION: "neuralspace-ai"
+      COLAB_TEMPLATE_REPOSITORY: "colab-templates"
+      COLAB_TEMPLATE_REF: "f1523cfbecb0807e3da9850f98bb800ddbe4ce14"
+      COLAB_TEMPLATE_NOTEBOOK_PATH: "notebooks/bootstrap.ipynb"
       COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: "480"
       COLAB_DATA_URL_EXPIRE_SECONDS: "900"
       DVC_REPO_PATH: "/srv/dvc-repo"

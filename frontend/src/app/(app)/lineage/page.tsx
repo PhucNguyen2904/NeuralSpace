@@ -152,6 +152,12 @@ export default function LineagePage() {
     if (!exists) setSelectedNodeId("");
   }, [filteredGraphData.nodes, selectedNodeId]);
 
+  const graphKey = useMemo(() => {
+    const nodeIds = filteredGraphData.nodes.map((node) => node.id).sort().join("|");
+    const edgeIds = filteredGraphData.edges.map((edge) => `${edge.source}>${edge.target}:${edge.id}`).sort().join("|");
+    return `${nodeIds}::${edgeIds}`;
+  }, [filteredGraphData.nodes, filteredGraphData.edges]);
+
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-semibold">Lineage Graph</h1>
@@ -212,7 +218,7 @@ export default function LineagePage() {
                 {impactMode ? "Disable" : "Enable"}
               </button>
             </div>
-            <p className="text-xs text-slate-600">Bật chế độ này để highlight model downstream bị ảnh hưởng từ dataset đã chọn.</p>
+            <p className="text-xs text-slate-600">Enable this mode to highlight downstream models impacted by the selected dataset.</p>
             {impactMode && impact.hasImpact ? (
               <p className="mt-2 flex items-center gap-1 text-xs text-red-700">
                 <AlertTriangle size={14} />
@@ -237,6 +243,7 @@ export default function LineagePage() {
             // as anchor would animate every edge. Highlight path should only activate
             // from user-clicked nodes (selectedNodeId) in that context.
             rootNodeId={filterModelName ? "" : rootId}
+            graphKey={graphKey}
             onSelectNode={setSelectedNodeId}
             highlightPath={highlightPath}
             impactedModelIds={impactMode ? impact.data?.affectedModelIds ?? [] : []}

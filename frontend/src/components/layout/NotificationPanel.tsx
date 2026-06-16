@@ -33,7 +33,7 @@ export function NotificationPanel({ open, onClose }: { open: boolean; onClose: (
       return (
         <div className="flex h-full flex-col items-center justify-center text-center text-text-secondary">
           <div className="mb-3 text-3xl">🔔</div>
-          <p className="text-sm">Không có thông báo nào</p>
+          <p className="text-sm">No notifications</p>
         </div>
       );
     }
@@ -76,11 +76,11 @@ export function NotificationPanel({ open, onClose }: { open: boolean; onClose: (
       className="fixed right-0 top-0 z-[90] h-screen w-[400px] border-l border-border bg-bg-surface shadow-lg"
     >
       <div className="flex h-14 items-center justify-between border-b border-border px-4">
-        <p className="font-semibold text-text-primary">Thông báo</p>
+        <p className="font-semibold text-text-primary">Notifications</p>
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={markAllRead}>Đánh dấu tất cả đã đọc</Button>
-          <Button size="sm" variant="ghost" onClick={clearAll}>Xóa tất cả</Button>
-          <Button size="sm" variant="ghost" onClick={onClose}>Đóng</Button>
+          <Button size="sm" variant="ghost" onClick={markAllRead}>Mark all as read</Button>
+          <Button size="sm" variant="ghost" onClick={clearAll}>Clear all</Button>
+          <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
         </div>
       </div>
       <div className="h-[calc(100vh-56px)] overflow-auto">{content}</div>

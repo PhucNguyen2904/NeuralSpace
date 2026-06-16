@@ -27,14 +27,14 @@ import { defaultModelFilters, useModels } from "@/lib/hooks/useModels";
 import { cn } from "@/lib/utils/cn";
 
 const schema = z.object({
-  name: z.string().trim().min(3, "Tên project tối thiểu 3 ký tự").max(255),
+  name: z.string().trim().min(3, "Project name must be at least 3 characters").max(255),
   pythonVersion: z.enum(["3.10", "3.11", "3.12"]),
   packages: z.array(z.string()),
-  datasets: z.array(z.string()).max(10, "Tối đa 10 datasets"),
-  models: z.array(z.string()).max(10, "Tối đa 10 models"),
+  datasets: z.array(z.string()).max(10, "Maximum 10 datasets"),
+  models: z.array(z.string()).max(10, "Maximum 10 models"),
 });
 
-const steps = ["Project", "Assets", "Xác nhận"] as const;
+const steps = ["Project", "Assets", "Confirm"] as const;
 
 function StepIndicator({ currentStep }: { currentStep: 1 | 2 | 3 }) {
   return (
@@ -112,15 +112,15 @@ function AssetSelector({
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder={`Tìm ${title.toLowerCase()}...`}
+          placeholder={`Search ${title.toLowerCase()}...`}
           className="h-9 w-full rounded-md border border-border bg-bg-surface pl-9 pr-3 text-sm outline-none focus:border-brand-500"
         />
       </div>
 
       <div className="max-h-56 space-y-2 overflow-auto">
-        {loading ? <p className="py-6 text-center text-xs text-text-tertiary">Đang tải assets…</p> : null}
+        {loading ? <p className="py-6 text-center text-xs text-text-tertiary">Loading assets...</p> : null}
         {!loading && filtered.length === 0 ? (
-          <p className="py-6 text-center text-xs text-text-tertiary">Không có asset phù hợp.</p>
+          <p className="py-6 text-center text-xs text-text-tertiary">No matching assets.</p>
         ) : null}
         {filtered.map((option) => {
           const checked = selected.includes(option.id);
@@ -193,13 +193,13 @@ export default function NewWorkspacePage() {
     <div className="mx-auto w-full max-w-5xl px-4 py-6 lg:py-8">
       <div className="mb-5">
         <Link href="/workspaces" className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
-          <ChevronLeft size={14} /> Quay lại Projects
+          <ChevronLeft size={14} /> Back to Projects
         </Link>
         <div className="mt-3 flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold text-text-primary">Tạo Colab project</h1>
+            <h1 className="text-2xl font-semibold text-text-primary">Create Colab project</h1>
             <p className="mt-1 max-w-2xl text-sm text-text-secondary">
-              Project lưu ngữ cảnh, assets và phiên runtime. Compute thực tế được cung cấp bởi Google Colab.
+              Projects store context, assets, and runtime sessions. Compute is provided by Google Colab.
             </p>
           </div>
           <div className="hidden rounded-xl border border-brand-500/20 bg-brand-50 p-3 text-brand-600 sm:block">
@@ -225,21 +225,21 @@ export default function NewWorkspacePage() {
               <div className="space-y-5">
                 <div>
                   <Input
-                    label="Tên project"
-                    placeholder="Ví dụ: Customer churn experiment"
+                    label="Project name"
+                    placeholder="Example: Customer churn experiment"
                     error={errors.name?.message}
                     autoFocus
                     {...register("name")}
                   />
-                  <p className="mt-1.5 text-xs text-text-tertiary">Tên dùng để nhận diện project và các runtime session liên quan.</p>
+                  <p className="mt-1.5 text-xs text-text-tertiary">Name used to identify the project and related runtime sessions.</p>
                 </div>
                 <div className="rounded-xl border border-border bg-bg-base p-4">
                   <div className="flex items-start gap-3">
                     <Sparkles className="mt-0.5 text-brand-500" size={18} />
                     <div>
-                      <p className="text-sm font-medium text-text-primary">Runtime được quản lý bên ngoài</p>
+                      <p className="text-sm font-medium text-text-primary">Externally managed runtime</p>
                       <p className="mt-1 text-xs leading-5 text-text-secondary">
-                        NeuralSpace không provision CPU/GPU riêng. Khi mở project, hệ thống tạo một token ngắn hạn để kết nối notebook Colab với datasets và tracking API.
+                        NeuralSpace does not provision dedicated CPU/GPU resources. When opening a project, the system creates a short-lived token to connect a Colab notebook to datasets and the tracking API.
                       </p>
                     </div>
                   </div>
@@ -247,9 +247,9 @@ export default function NewWorkspacePage() {
               </div>
               <div className="space-y-3">
                 {[
-                  [Cloud, "Google Colab", "CPU/GPU/RAM do Colab quản lý"],
-                  [LockKeyhole, "Scoped token", "Chỉ truy cập project và assets đã chọn"],
-                  [Boxes, "Reusable context", "Có thể tạo nhiều runtime session"],
+                  [Cloud, "Google Colab", "CPU/GPU/RAM managed by Colab"],
+                  [LockKeyhole, "Scoped token", "Only access the selected project and assets"],
+                  [Boxes, "Reusable context", "Can create multiple runtime sessions"],
                 ].map(([Icon, title, subtitle]) => (
                   <div key={String(title)} className="flex gap-3 rounded-xl border border-border bg-bg-base p-3">
                     <Icon size={16} className="mt-0.5 text-brand-500" />
@@ -266,13 +266,13 @@ export default function NewWorkspacePage() {
           {currentStep === 2 ? (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-text-primary">Chọn assets được phép truy cập</h2>
-                <p className="text-xs text-text-tertiary">Có thể bỏ qua và gắn assets sau. Chỉ ID thật từ hệ thống được lưu.</p>
+                <h2 className="text-base font-semibold text-text-primary">Select accessible assets</h2>
+                <p className="text-xs text-text-tertiary">You can skip this and attach assets later. Only real system IDs are stored.</p>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
                 <AssetSelector
                   title="Datasets"
-                  description="Được cấp signed URL khi Colab kết nối"
+                  description="Signed URLs are issued when Colab connects"
                   icon={<Database size={17} />}
                   options={datasetOptions}
                   selected={values.datasets}
@@ -281,7 +281,7 @@ export default function NewWorkspacePage() {
                 />
                 <AssetSelector
                   title="Models"
-                  description="Được gắn vào project để theo dõi và tái sử dụng"
+                  description="Attached to the project for tracking and reuse"
                   icon={<Package size={17} />}
                   options={modelOptions}
                   selected={values.models}
@@ -291,10 +291,10 @@ export default function NewWorkspacePage() {
               </div>
               <div className="flex justify-end gap-3 text-xs">
                 <Link href="/datasets" className="inline-flex items-center gap-1 text-brand-600 hover:underline">
-                  Quản lý datasets <ExternalLink size={11} />
+                  Manage datasets <ExternalLink size={11} />
                 </Link>
                 <Link href="/models" className="inline-flex items-center gap-1 text-brand-600 hover:underline">
-                  Quản lý models <ExternalLink size={11} />
+                  Manage models <ExternalLink size={11} />
                 </Link>
               </div>
             </div>
@@ -303,9 +303,9 @@ export default function NewWorkspacePage() {
           {currentStep === 3 ? (
             <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
               <div className="rounded-xl border border-border bg-bg-base p-5">
-                <h2 className="mb-4 text-base font-semibold text-text-primary">Xác nhận project</h2>
+                <h2 className="mb-4 text-base font-semibold text-text-primary">Confirm project</h2>
                 <dl className="space-y-3 text-sm">
-                  <div className="flex justify-between gap-4"><dt className="text-text-tertiary">Tên</dt><dd className="font-medium text-text-primary">{values.name}</dd></div>
+                  <div className="flex justify-between gap-4"><dt className="text-text-tertiary">Name</dt><dd className="font-medium text-text-primary">{values.name}</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-text-tertiary">Runtime</dt><dd className="text-text-primary">Google Colab external</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-text-tertiary">Datasets</dt><dd className="text-text-primary">{values.datasets.length}</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-text-tertiary">Models</dt><dd className="text-text-primary">{values.models.length}</dd></div>
@@ -316,16 +316,16 @@ export default function NewWorkspacePage() {
                   <div className="flex gap-3">
                     <CheckCircle2 size={18} className="text-success-500" />
                     <div>
-                      <p className="text-sm font-medium text-text-primary">Sẵn sàng tạo</p>
+                      <p className="text-sm font-medium text-text-primary">Ready to create</p>
                       <p className="mt-1 text-xs leading-5 text-text-secondary">
-                        Project được tạo ở trạng thái READY. Khi mở project, bạn sẽ nhận link Colab và một runtime session mới.
+                        The project will be created in READY state. When opened, you will receive a Colab link and a new runtime session.
                       </p>
                     </div>
                   </div>
                 </div>
                 {error ? <p className="rounded-lg bg-error-50 p-3 text-xs text-error-500">{error}</p> : null}
                 <Button type="button" size="lg" className="h-11 w-full" onClick={submit} loading={isSubmitting}>
-                  Tạo project
+                  Create project
                 </Button>
               </div>
             </div>
@@ -334,11 +334,11 @@ export default function NewWorkspacePage() {
 
         <div className="flex items-center justify-between border-t border-border px-4 py-3 sm:px-6">
           <Button type="button" variant="ghost" onClick={prevStep} disabled={currentStep === 1} iconLeft={<ChevronLeft size={15} />}>
-            Quay lại
+            Back
           </Button>
           {currentStep < 3 ? (
             <Button type="button" onClick={nextStep} iconRight={<ChevronRight size={15} />}>
-              Tiếp theo
+              Next
             </Button>
           ) : null}
         </div>

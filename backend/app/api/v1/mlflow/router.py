@@ -12,6 +12,17 @@ from app.models.mlops_tracking import ApprovalRequest, Experiment, ModelDatasetL
 router = APIRouter(prefix="/mlflow", tags=["mlflow"])
 
 
+def _object_from_storage_path(storage_path: str | None) -> tuple[str | None, str] | None:
+    if not storage_path:
+        return None
+    if storage_path.startswith("s3://"):
+        _, rest = storage_path.split("s3://", 1)
+        bucket, _, object_name = rest.partition("/")
+        return (bucket or None, object_name) if object_name else None
+    normalized = storage_path.replace("\\", "/").lstrip("/")
+    return (None, normalized) if normalized else None
+
+
 def _run_payload(row: Run) -> dict:
     metrics = [
         {"key": key, "value": value, "step": 0}
@@ -51,7 +62,7 @@ def _model_version_payload(row: ModelVersion) -> dict:
     return {
         "id": row.id,
         "name": row.mlflow_name,
-        "version": f"v{row.mlflow_version}",
+        "version": _model_display_version(row),
         "stage": row.stage,
         "source": row.source,
         "run_id": row.run_id,
@@ -61,6 +72,10 @@ def _model_version_payload(row: ModelVersion) -> dict:
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
+
+
+def _model_display_version(row: ModelVersion) -> str:
+    return f"v{row.mlflow_version}"
 
 
 async def _experiment_payload(db: AsyncSession, row: Experiment) -> dict:
@@ -132,6 +147,73 @@ async def get_experiment(
     if row is None or row.owner_id != current_user.user_id:
         return {}
     return await _experiment_payload(db, row)
+
+
+@router.delete("/experiments/{experiment_id}")
+async def delete_experiment(
+    experiment_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.clients.minio_client import get_minio_client
+
+    row = await db.get(Experiment, experiment_id)
+    if row is None or row.owner_id != current_user.user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    runs = list(
+        (
+            await db.execute(select(Run).where(Run.experiment_id == row.id))
+        ).scalars().all()
+    )
+    run_ids = [item.id for item in runs]
+    model_versions = []
+    if run_ids:
+        model_versions = list(
+            (
+                await db.execute(select(ModelVersion).where(ModelVersion.run_id.in_(run_ids)))
+            ).scalars().all()
+        )
+    model_version_ids = [item.id for item in model_versions]
+
+    refs: set[tuple[str | None, str]] = set()
+    ref = _object_from_storage_path(row.artifact_location)
+    if ref:
+        refs.add(ref)
+    for run in runs:
+        ref = _object_from_storage_path(run.artifact_uri)
+        if ref:
+            refs.add(ref)
+    for version in model_versions:
+        ref = _object_from_storage_path(version.source)
+        if ref:
+            refs.add(ref)
+
+    minio = get_minio_client()
+    deleted_objects = 0
+    for bucket, object_name in refs:
+        deleted_objects += await minio.delete_prefix(f"{object_name.rstrip('/')}/", bucket=bucket)
+        if await minio.object_exists(object_name, bucket=bucket):
+            await minio.delete_object(object_name, bucket=bucket)
+            deleted_objects += 1
+
+    if model_version_ids:
+        await db.execute(delete(ApprovalRequest).where(ApprovalRequest.model_version_id.in_(model_version_ids)))
+        await db.execute(delete(ModelDatasetLink).where(ModelDatasetLink.model_version_id.in_(model_version_ids)))
+        await db.execute(delete(ModelVersion).where(ModelVersion.id.in_(model_version_ids)))
+    if run_ids:
+        await db.execute(delete(RunLog).where(RunLog.run_id.in_(run_ids)))
+        await db.execute(delete(Run).where(Run.id.in_(run_ids)))
+
+    await db.delete(row)
+    await db.commit()
+    return {
+        "deleted": True,
+        "experiment_id": experiment_id,
+        "deleted_runs": len(run_ids),
+        "deleted_model_versions": len(model_version_ids),
+        "deleted_objects": deleted_objects,
+    }
 
 
 @router.get("/runs")

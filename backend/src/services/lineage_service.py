@@ -279,7 +279,7 @@ class LineageService:
                 "id": model_node_id,
                 "type": "model",
                 "name": model_version.mlflow_name,
-                "version": str(model_version.mlflow_version),
+                "version": _model_display_version(model_version),
                 "stage": model_version.stage,
                 "status": model_version.status,
                 "metrics": model_version.metrics or run.metrics_snapshot or {},
@@ -432,7 +432,7 @@ class LineageService:
                     "id": model_node_id,
                     "type": "model",
                     "name": model_version.mlflow_name,
-                    "version": str(model_version.mlflow_version),
+                    "version": _model_display_version(model_version),
                     "stage": model_version.stage,
                     "status": model_version.status,
                     "metrics": model_version.metrics or run.metrics_snapshot or {},
@@ -446,6 +446,8 @@ class LineageService:
                 if not asset_id or item.get("asset_type") != "model":
                     continue
                 if nodes.get(asset_id, {}).get("type") == "model":
+                    if run.metrics_snapshot:
+                        nodes[asset_id]["metrics"] = run.metrics_snapshot
                     add_edge(run_node_id, asset_id, "produced")
                     continue
                 model = models_by_id.get(asset_id)
@@ -456,7 +458,7 @@ class LineageService:
                     "version": model.version or "workspace" if model else "workspace",
                     "stage": "None",
                     "status": model.status if model else "ready",
-                    "metrics": model.all_metrics if model else {},
+                    "metrics": run.metrics_snapshot or (model.all_metrics if model else {}),
                     "created_at": model.created_at.isoformat() if model and model.created_at else None,
                     "user": str(model.created_by) if model and model.created_by else None,
                 }
@@ -476,7 +478,7 @@ class LineageService:
         return {
             "affected_model_ids": model_ids,
             "affected_production_count": len(model_ids),
-            "message": f"{len(model_ids)} Production model bị ảnh hưởng",
+            "message": f"{len(model_ids)} Production models impacted",
         }
 
     async def find_impacted_models(self, dataset_version_id: str, production_only: bool = True) -> list[ImpactedModel]:
@@ -637,6 +639,10 @@ def _format_size(size_bytes: int | None) -> str | None:
         value /= 1024
         unit_index += 1
     return f"{value:.1f} {units[unit_index]}"
+
+
+def _model_display_version(model_version: ModelVersion) -> str:
+    return f"v{model_version.mlflow_version}"
 
 
 def _collect_lineage_ids(root_id: str, nodes: dict[str, dict], edges: list[dict], depth: int) -> set[str]:

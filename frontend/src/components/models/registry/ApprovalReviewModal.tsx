@@ -71,7 +71,7 @@ export function ApprovalReviewModal({ open, onClose, request }: ApprovalReviewMo
             rows={3}
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            placeholder={decision === "reject" ? "Note bắt buộc khi reject" : "Optional note"}
+            placeholder={decision === "reject" ? "Note is required when rejecting" : "Optional note"}
             className="w-full rounded-md border border-border px-3 py-2"
           />
         </div>

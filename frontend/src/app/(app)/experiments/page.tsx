@@ -1,13 +1,47 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { CompareRunsView } from "@/components/experiments/CompareRunsView";
 import { ExperimentSidebar } from "@/components/experiments/ExperimentSidebar";
 import { RunDetailDrawer } from "@/components/experiments/RunDetailDrawer";
 import { RunsTable } from "@/components/experiments/RunsTable";
 import { Button, Modal } from "@/components/ui";
-import { useDeleteRun, useExperimentList, useRunDetail, useRunList, type RunDetailData, type RunFilters } from "@/lib/hooks/useExperiments";
+import { useDeleteExperiment, useDeleteRun, useExperimentList, useRunDetail, useRunList, type RunDetailData, type RunFilters } from "@/lib/hooks/useExperiments";
+
+function ExperimentSidebarSkeleton() {
+  return (
+    <aside className="w-full space-y-1.5 rounded-lg border border-border bg-bg-surface p-4 md:w-56">
+      <div className="skeleton-shimmer mb-3 h-4 w-24 rounded" />
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="skeleton-shimmer h-9 rounded-md" />
+      ))}
+    </aside>
+  );
+}
+
+function RunsTableSkeleton() {
+  return (
+    <div className="rounded-lg border border-border bg-bg-surface">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="skeleton-shimmer h-9 w-56 rounded-md" />
+        <div className="skeleton-shimmer h-9 w-24 rounded-md" />
+      </div>
+      <div className="p-4 space-y-2">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="grid grid-cols-[24px_2fr_1fr_1fr_1fr_1fr] gap-3 items-center rounded-md border border-border p-3">
+            <div className="skeleton-shimmer h-4 w-4 rounded" />
+            <div className="skeleton-shimmer h-4 rounded" />
+            <div className="skeleton-shimmer h-5 w-16 rounded-full" />
+            <div className="skeleton-shimmer h-4 rounded" />
+            <div className="skeleton-shimmer h-4 rounded" />
+            <div className="skeleton-shimmer h-4 rounded" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ExperimentsPage() {
   const experimentsQuery = useExperimentList();
@@ -22,9 +56,12 @@ export default function ExperimentsPage() {
   const [compareMode, setCompareMode] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RunDetailData | null>(null);
   const [deleteConfirmed, setDeleteConfirmed] = useState(false);
+  const [deleteExperimentOpen, setDeleteExperimentOpen] = useState(false);
+  const [deleteExperimentConfirmed, setDeleteExperimentConfirmed] = useState(false);
 
   const runsQuery = useRunList(resolvedExperimentId, filters);
   const deleteRunMutation = useDeleteRun();
+  const deleteExperimentMutation = useDeleteExperiment();
   const runs = runsQuery.data ?? [];
   const runDetail = useRunDetail(openRunId);
   const compareRuns = useMemo(
@@ -62,17 +99,41 @@ export default function ExperimentsPage() {
     });
   };
 
+  const closeDeleteExperimentModal = () => {
+    if (deleteExperimentMutation.isPending) return;
+    setDeleteExperimentOpen(false);
+    setDeleteExperimentConfirmed(false);
+  };
+
+  const confirmDeleteExperiment = () => {
+    if (!activeExperiment) return;
+    deleteExperimentMutation.mutate(activeExperiment.experiment_id, {
+      onSuccess: () => {
+        setSelectedRunIds([]);
+        setOpenRunId("");
+        setCompareMode(false);
+        setActiveExperimentId("");
+        setDeleteExperimentOpen(false);
+        setDeleteExperimentConfirmed(false);
+      }
+    });
+  };
+
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
-      <ExperimentSidebar
-        experiments={experiments}
-        activeExperimentId={resolvedExperimentId}
-        onSelect={(id) => {
-          setActiveExperimentId(id);
-          setSelectedRunIds([]);
-          setCompareMode(false);
-        }}
-      />
+      {experimentsQuery.isLoading ? (
+        <ExperimentSidebarSkeleton />
+      ) : (
+        <ExperimentSidebar
+          experiments={experiments}
+          activeExperimentId={resolvedExperimentId}
+          onSelect={(id) => {
+            setActiveExperimentId(id);
+            setSelectedRunIds([]);
+            setCompareMode(false);
+          }}
+        />
+      )}
 
       <main className="min-w-0 flex-1 space-y-3">
         <header className="rounded-lg border border-border bg-bg-surface p-4">
@@ -83,14 +144,31 @@ export default function ExperimentsPage() {
                 Track runs, metrics, params, artifacts, dataset versions, and output model versions.
               </p>
             </div>
-            <span className="rounded-full bg-brand-50 px-2 py-1 text-xs text-brand-600">
-              {activeExperiment?.run_count ?? runs.length} runs
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-brand-50 px-2 py-1 text-xs text-brand-600">
+                {activeExperiment?.run_count ?? runs.length} runs
+              </span>
+              {activeExperiment ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-error-600 hover:text-error-700"
+                  onClick={() => {
+                    setDeleteExperimentOpen(true);
+                    setDeleteExperimentConfirmed(false);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              ) : null}
+            </div>
           </div>
         </header>
 
         {compareMode ? (
           <CompareRunsView runs={compareRuns} onBack={() => setCompareMode(false)} />
+        ) : runsQuery.isLoading ? (
+          <RunsTableSkeleton />
         ) : (
           <RunsTable
             runs={runs}
@@ -156,6 +234,39 @@ export default function ExperimentsPage() {
             onChange={(event) => setDeleteConfirmed(event.target.checked)}
           />
           I understand and want to delete this run
+        </label>
+      </Modal>
+
+      <Modal
+        open={deleteExperimentOpen}
+        onClose={closeDeleteExperimentModal}
+        size="sm"
+        title={<span className="flex items-center gap-2"><AlertTriangle className="text-error-500" size={18} /> Delete experiment?</span>}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={closeDeleteExperimentModal} disabled={deleteExperimentMutation.isPending}>Cancel</Button>
+            <Button
+              variant="danger"
+              onClick={confirmDeleteExperiment}
+              disabled={!deleteExperimentConfirmed}
+              loading={deleteExperimentMutation.isPending}
+            >
+              Delete permanently
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-text-secondary">
+          This will delete {activeExperiment?.name ?? "this experiment"}, its runs, linked model versions, and stored artifacts. This action cannot be undone.
+        </p>
+        <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-border"
+            checked={deleteExperimentConfirmed}
+            onChange={(event) => setDeleteExperimentConfirmed(event.target.checked)}
+          />
+          I understand and want to delete this experiment
         </label>
       </Modal>
     </div>

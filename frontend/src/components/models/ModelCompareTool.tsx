@@ -34,9 +34,9 @@ export function ModelCompareTool({
     <div className="fixed inset-x-4 bottom-4 z-40 max-h-[70vh] overflow-y-auto rounded-lg border border-border bg-bg-surface p-4 shadow-lg">
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="min-w-0 truncate text-sm font-medium text-text-primary" title={selected.map((m) => m.name).join(" vs ")}>
-          So sánh {selected.map((m) => m.name).join(" vs ")}
+          Compare {selected.map((m) => m.name).join(" vs ")}
         </p>
-        <Button size="sm" variant="ghost" onClick={onClear}>Xóa tất cả</Button>
+        <Button size="sm" variant="ghost" onClick={onClear}>Clear all</Button>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="overflow-x-auto">

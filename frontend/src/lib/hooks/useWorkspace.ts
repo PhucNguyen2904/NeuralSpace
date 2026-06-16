@@ -29,7 +29,8 @@ export const useWorkspaceDetail = (id: string) =>
   useQuery({
     queryKey: ["workspace", id],
     queryFn: () => getWorkspaceById(id),
-    enabled: Boolean(id)
+    enabled: Boolean(id),
+    staleTime: 60_000,
   });
 
 export const useCreateWorkspaceMutation = () => {
@@ -81,12 +82,13 @@ export const useUpdateWorkspaceAssets = () => {
   });
 };
 
-/** Polls session + run data every 7 seconds for the Data Dashboard. */
+/** Polls session + run data every 15 seconds for the Data Dashboard. */
 export const useWorkspaceRunData = (id: string) =>
   useQuery({
     queryKey: ["workspace-run-data", id],
     queryFn: () => getWorkspaceRunData(id),
     enabled: Boolean(id),
-    refetchInterval: 7_000,
-    staleTime: 5_000,
+    refetchInterval: (query) =>
+      query.state.data !== null ? 15_000 : false,  // only poll when a session exists
+    staleTime: 10_000,
   });

@@ -31,7 +31,7 @@ export function VersionTimeline({ versions, onViewVersion, onRollback }: Version
               Accuracy: {item.accuracy.toFixed(3)} {item.version === "v1.3" ? "↑+2.1%" : ""}
             </p>
             <p className="text-sm text-text-secondary">Trained on: {item.datasetName} {item.datasetVersion}</p>
-            {item.promotedAgo ? <p className="text-sm text-text-secondary">Promoted: {item.promotedAgo} bởi {item.promotedBy}</p> : null}
+            {item.promotedAgo ? <p className="text-sm text-text-secondary">Promoted: {item.promotedAgo} by {item.promotedBy}</p> : null}
             <div className="mt-2 flex gap-2 text-sm">
               <button className="text-brand-600 hover:underline" onClick={() => onViewVersion(item.version)}>View Details</button>
               {item.stage === "Production" ? <button className="text-amber-700 hover:underline" onClick={() => onRollback(item.version)}>Rollback</button> : null}

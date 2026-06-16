@@ -1,0 +1,6 @@
+NEURALSPACE_FAKE_ONNX_MODEL
+name=vision-smoke-classifier
+version=v1.1
+input=float32[1,3,224,224]
+output=float32[1,5]
+This is a second placeholder artifact for model version upload smoke tests.

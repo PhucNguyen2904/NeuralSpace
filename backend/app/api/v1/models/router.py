@@ -120,6 +120,10 @@ def _format_model_version(version: int | str | None) -> str | None:
     return value if value.startswith("v") else f"v{value}"
 
 
+def _model_version_label(row: ModelVersion) -> str:
+    return _format_model_version(row.mlflow_version) or "v1.0"
+
+
 def _to_payload(row: ModelRegistry, latest_version: int | str | None = None) -> dict:
     source_payload = row.source_payload or {}
     return {
@@ -403,7 +407,7 @@ async def get_model_versions(model_id: str, db: AsyncSession = Depends(get_db), 
     return [
         {
             "id": item.id,
-            "version": _format_model_version(item.mlflow_version),
+            "version": _model_version_label(item),
             "note": item.description or item.stage,
             "created_at": item.created_at.isoformat(),
             "current": item.mlflow_version == latest_version,

@@ -48,7 +48,7 @@ export function PromoteModal({ open, onClose, modelName, version, accuracy, loss
     >
       <div className="space-y-4">
         <div>
-          <p className="mb-1 text-sm font-medium">Step 1 — Chọn target stage</p>
+          <p className="mb-1 text-sm font-medium">Step 1 - Select target stage</p>
           <div className="flex gap-4 text-sm">
             <label><input type="radio" checked={target === "Staging"} onChange={() => setTarget("Staging")} /> Staging</label>
             <label><input type="radio" checked={target === "Production"} onChange={() => setTarget("Production")} /> Production</label>
@@ -66,7 +66,7 @@ export function PromoteModal({ open, onClose, modelName, version, accuracy, loss
             rows={3}
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            placeholder="Model đã pass evaluation với COCO test set"
+            placeholder="Model passed evaluation on the COCO test set"
             className="mb-2 w-full rounded-md border border-border px-3 py-2 text-sm"
           />
           <input

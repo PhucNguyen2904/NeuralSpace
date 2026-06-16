@@ -52,6 +52,7 @@ export function LineageGraph({
   rawEdges,
   selectedNodeId,
   rootNodeId,
+  graphKey,
   onSelectNode,
   highlightPath,
   impactedModelIds
@@ -60,6 +61,7 @@ export function LineageGraph({
   rawEdges: Edge[];
   selectedNodeId: string;
   rootNodeId: string;
+  graphKey: string;
   onSelectNode: (nodeId: string) => void;
   highlightPath: boolean;
   impactedModelIds: string[];
@@ -124,6 +126,7 @@ export function LineageGraph({
   return (
     <div className="relative h-[680px] w-full overflow-hidden rounded-xl border border-border bg-white" onClick={() => setMenu(null)}>
       <ReactFlow
+        key={graphKey}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -170,7 +173,7 @@ export function LineageGraph({
       </div>
       {impactedModelIds.length > 0 ? (
         <div className={cn("absolute left-1/2 top-3 -translate-x-1/2 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs text-red-700")}>
-          {impactedModelIds.length} models bị ảnh hưởng downstream
+          {impactedModelIds.length} downstream models impacted
         </div>
       ) : null}
     </div>

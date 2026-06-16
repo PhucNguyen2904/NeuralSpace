@@ -214,15 +214,15 @@ export function useTrackVersion(): UseTrackVersionReturn {
     },
     onSuccess: async (_, variables) => {
       const steps: TrackProgressStep[] = [
-        { key: "dvc_add", label: "Đang lưu DVC metadata...", status: "running" },
-        { key: "push_minio", label: "Đang đồng bộ storage reference...", status: "pending" },
-        { key: "save_metadata", label: "Metadata đã được lưu", status: "pending" }
+        { key: "dvc_add", label: "Saving DVC metadata...", status: "running" },
+        { key: "push_minio", label: "Syncing storage reference...", status: "pending" },
+        { key: "save_metadata", label: "Metadata saved", status: "pending" }
       ];
       setProgressSteps(steps);
 
       await new Promise<void>((resolve) => {
         window.setTimeout(() => {
-          setProgressSteps((prev) => prev.map((step) => (step.key === "dvc_add" ? { ...step, status: "done", label: "DVC metadata đã sẵn sàng" } : step)));
+          setProgressSteps((prev) => prev.map((step) => (step.key === "dvc_add" ? { ...step, status: "done", label: "DVC metadata is ready" } : step)));
         }, 800);
         window.setTimeout(() => {
           setProgressSteps((prev) =>
@@ -233,7 +233,7 @@ export function useTrackVersion(): UseTrackVersionReturn {
           );
         }, 1000);
         window.setTimeout(() => {
-          setProgressSteps((prev) => prev.map((step) => (step.key === "push_minio" ? { ...step, status: "done", label: "Storage reference đã đồng bộ" } : step)));
+          setProgressSteps((prev) => prev.map((step) => (step.key === "push_minio" ? { ...step, status: "done", label: "Storage reference synced" } : step)));
         }, 1800);
         window.setTimeout(() => {
           setProgressSteps((prev) =>

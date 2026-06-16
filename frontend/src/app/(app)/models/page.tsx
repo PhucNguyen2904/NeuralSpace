@@ -116,8 +116,8 @@ export default function ModelsPage() {
   }, [filters]);
 
   const metricLabel = filters.taskTypes.length === 1
-    ? (filters.taskTypes[0] === "object_detection" ? "mAP tối thiểu" : filters.taskTypes[0].includes("classification") ? "Accuracy tối thiểu" : "Metric tối thiểu")
-    : "Chọn task type để lọc theo metric";
+    ? (filters.taskTypes[0] === "object_detection" ? "Minimum mAP" : filters.taskTypes[0].includes("classification") ? "Minimum accuracy" : "Minimum metric")
+    : "Select a task type to filter by metric";
 
   const allMetricsPreview = useMemo(() => {
     const metrics: Array<{ name: string; value: number }> = [];
@@ -141,7 +141,7 @@ export default function ModelsPage() {
   }, [metricInputs]);
 
   const onLoad = (model: Model, workspaceId = "ws_resnet", mountPath = `/workspace/models/${model.name.toLowerCase().replaceAll(" ", "")}`) => {
-    loadMutation.mutate({ modelId: model.id, workspaceId, mountPath }, { onSuccess: () => toast.success(`Model ${model.name} đã được load`) });
+    loadMutation.mutate({ modelId: model.id, workspaceId, mountPath }, { onSuccess: () => toast.success(`Model ${model.name} was loaded`) });
   };
 
   const handleUploadModelFiles = async (files: FileList | null) => {
@@ -151,7 +151,7 @@ export default function ModelsPage() {
       return lower.endsWith(".onnx") || lower.endsWith(".pt") || lower.endsWith(".pth") || lower.endsWith(".h5") || lower.endsWith(".safetensors");
     });
     if (accepted.length === 0) {
-      toast.warning("File không hợp lệ", { description: "Hỗ trợ: .onnx, .pt, .pth, .h5, .safetensors" });
+      toast.warning("Invalid file", { description: "Supported: .onnx, .pt, .pth, .h5, .safetensors" });
       return;
     }
     setPendingUploadFiles(accepted);
@@ -186,7 +186,7 @@ export default function ModelsPage() {
         await uploadModel(file, metadata);
         successCount += 1;
       } catch {
-        toast.error(`Upload thất bại: ${file.name}`);
+        toast.error(`Upload failed: ${file.name}`);
       }
     }
 
@@ -195,7 +195,7 @@ export default function ModelsPage() {
     setPendingUploadFiles([]);
 
     if (successCount > 0) {
-      toast.success(`Đã upload ${successCount}/${pendingUploadFiles.length} model`);
+      toast.success(`Uploaded ${successCount}/${pendingUploadFiles.length} model`);
       await queryClient.invalidateQueries({ queryKey: ["models"] });
       router.refresh();
     }
@@ -207,7 +207,7 @@ export default function ModelsPage() {
       const raw = await file.text();
       const parsed = JSON.parse(raw) as Record<string, unknown>;
       if (!parsed || typeof parsed !== "object") {
-        throw new Error("Metadata phải là JSON object");
+        throw new Error("Metadata must be a JSON object");
       }
 
       setUploadMeta((prev) => ({
@@ -232,9 +232,9 @@ export default function ModelsPage() {
         setMetricInputs([{ name: parsed.primary_metric_name, value: String(parsed.primary_metric_value) }]);
       }
       setMetadataFileName(file.name);
-      toast.success("Đã import metadata JSON");
+      toast.success("Imported metadata JSON");
     } catch {
-      toast.error("Metadata JSON không hợp lệ");
+      toast.error("Invalid metadata JSON");
     }
   };
 
@@ -246,7 +246,7 @@ export default function ModelsPage() {
             <h1 className="text-2xl font-semibold">Models</h1>
             <span className="rounded-full bg-violet-50 px-2 py-1 text-xs text-violet-700">{total} models</span>
           </div>
-          <p className="mt-1 text-sm text-text-secondary">Chọn model để inference hoặc fine-tuning trong workspace</p>
+          <p className="mt-1 text-sm text-text-secondary">Select a model for inference or fine-tuning in the workspace</p>
         </div>
         <input
           ref={uploadInputRef}
@@ -270,10 +270,10 @@ export default function ModelsPage() {
         <aside className="sticky top-4 h-fit w-full space-y-4 rounded-lg border border-border bg-bg-surface p-4 md:w-[280px]">
           <div>
             <p className="mb-2 text-sm font-semibold">Search</p>
-            <Input placeholder="Tìm model..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
+            <Input placeholder="Search models..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
           </div>
           <div>
-            <p className="mb-2 text-sm font-semibold">Framework {activeCount ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">Bộ lọc ({activeCount})</span> : null}</p>
+            <p className="mb-2 text-sm font-semibold">Framework {activeCount ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">Filters ({activeCount})</span> : null}</p>
             <div className="space-y-1.5">
               {frameworkOptions.map((o) => <label key={o.key} className="flex items-center justify-between text-sm text-text-secondary"><span><input type="checkbox" checked={filters.frameworks.includes(o.key)} onChange={(e) => setFilters({ frameworks: e.target.checked ? [...filters.frameworks, o.key] : filters.frameworks.filter((f) => f !== o.key) })} className="mr-2" />{o.label}</span><span>{o.count}</span></label>)}
             </div>
@@ -285,9 +285,9 @@ export default function ModelsPage() {
             </div>
           </div>
           <div>
-            <p className="mb-2 text-sm font-semibold">Trạng thái</p>
+            <p className="mb-2 text-sm font-semibold">Status</p>
             {([
-              { value: "all", label: "Tất cả" },
+              { value: "all", label: "All" },
               { value: "ready", label: "Ready" },
               { value: "training", label: "Training" },
               { value: "trained", label: "Trained" },
@@ -310,13 +310,13 @@ export default function ModelsPage() {
             <input disabled={filters.taskTypes.length !== 1} type="range" min={0} max={100} value={filters.minMetric ?? 0} onChange={(e) => setFilters({ minMetric: Number(e.target.value) })} className="w-full accent-violet-500 disabled:cursor-not-allowed" />
           </div>
           <div>
-            <p className="mb-2 text-sm font-semibold">Kích thước model</p>
-            <div className="flex flex-wrap gap-2">{(["all", "small", "medium", "large"] as const).map((s) => <button key={s} onClick={() => setFilters({ sizeCategory: s })} className={filters.sizeCategory === s ? "rounded-full bg-violet-500 px-3 py-1 text-xs text-white" : "rounded-full border border-border px-3 py-1 text-xs text-text-secondary hover:bg-violet-50"}>{s === "all" ? "Tất cả" : s === "small" ? "< 100MB" : s === "medium" ? "100MB-1GB" : "> 1GB"}</button>)}</div>
+            <p className="mb-2 text-sm font-semibold">Size model</p>
+            <div className="flex flex-wrap gap-2">{(["all", "small", "medium", "large"] as const).map((s) => <button key={s} onClick={() => setFilters({ sizeCategory: s })} className={filters.sizeCategory === s ? "rounded-full bg-violet-500 px-3 py-1 text-xs text-white" : "rounded-full border border-border px-3 py-1 text-xs text-text-secondary hover:bg-violet-50"}>{s === "all" ? "All" : s === "small" ? "< 100MB" : s === "medium" ? "100MB-1GB" : "> 1GB"}</button>)}</div>
           </div>
-          {activeCount > 0 ? <button className="text-sm text-brand-600 hover:underline" onClick={resetFilters}>Xóa tất cả bộ lọc</button> : null}
+          {activeCount > 0 ? <button className="text-sm text-brand-600 hover:underline" onClick={resetFilters}>Clear all filters</button> : null}
         </aside>
         <ResourceBrowser
-          resultLabel={activeCount ? `Hiển thị ${models.length} / ${total} models` : `Hiển thị ${total} kết quả`}
+          resultLabel={activeCount ? `Showing ${models.length} / ${total} models` : `Showing ${total} results`}
           sort={filters.sort}
           onSortChange={(value) => setFilters({ sort: value as ModelFilters["sort"] })}
           view={filters.view}
@@ -329,7 +329,7 @@ export default function ModelsPage() {
           listContent={<div className="space-y-1"><div className="grid grid-cols-[30px_1.7fr_1.2fr_0.8fr_0.7fr_0.8fr_0.7fr] gap-2 border-b border-border px-3 pb-2 text-xs uppercase tracking-wide text-text-tertiary"><span></span><span>Name</span><span>Task</span><span>Framework</span><span>Size</span><span>Metric</span><span>Status</span></div>{models.map((m) => <ModelRow key={m.id} model={m} checked={compareIds.includes(m.id)} onCheck={(id, v) => setCompareIds((prev) => v ? [...new Set([...prev, id])] : prev.filter((x) => x !== id))} onDetail={setSelectedModel} onLoad={onLoad} />)}</div>}
         />
       </div>
-      {!isLoading && models.length === 0 ? <div className="rounded-lg border border-border bg-bg-surface p-6 text-center"><BrainCircuit className="mx-auto mb-2 text-text-tertiary" /><p className="font-medium">Chưa có model nào</p><p className="text-sm text-text-secondary">Train model đầu tiên của bạn trên Upstream module</p></div> : null}
+      {!isLoading && models.length === 0 ? <div className="rounded-lg border border-border bg-bg-surface p-6 text-center"><BrainCircuit className="mx-auto mb-2 text-text-tertiary" /><p className="font-medium">No models yet</p><p className="text-sm text-text-secondary">Train your first model in the upstream module</p></div> : null}
       <ModelDetailDrawer modelId={selectedModel?.id ?? null} open={Boolean(selectedModel)} onClose={() => setSelectedModel(null)} />
       <ModelCompareTool selected={compareModels} onClear={() => setCompareIds([])} />
       <Modal
@@ -365,10 +365,10 @@ export default function ModelsPage() {
               disabled={uploading}
               className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-[13px] font-medium text-[#475569] transition-colors hover:bg-[#F1F5F9] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Hủy
+              Cancel
             </button>
             <Button className="px-5 py-2 text-[13px] font-medium text-white shadow-sm shadow-indigo-200 bg-[#6366F1] hover:bg-[#4F46E5]" onClick={() => void submitModelUpload()} disabled={uploading}>
-              {uploading ? "Đang upload..." : "Upload"}
+              {uploading ? "Uploading..." : "Upload"}
             </Button>
           </div>
         }
@@ -387,7 +387,7 @@ export default function ModelsPage() {
           <div className="flex items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
             <div className="min-w-0 text-[12px] text-[#64748B]">
               <p className="font-medium text-[#334155]">Metadata JSON</p>
-              <p className="truncate">{metadataFileName || "Chưa chọn file metadata"}</p>
+              <p className="truncate">{metadataFileName || "No metadata file selected"}</p>
               {allMetricsPreview.length > 0 ? (
                 <p className="mt-0.5 truncate text-[#6366F1]">
                   Loaded {allMetricsPreview.length} metrics
@@ -402,8 +402,8 @@ export default function ModelsPage() {
               Import .json
             </button>
           </div>
-          {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Tên model sẽ lấy theo từng tên file khi upload nhiều file.</p> : null}
-          <Field label="Tên model" hint="(tùy chọn)">
+          {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Model names will be inferred from each file name when uploading multiple files.</p> : null}
+          <Field label="Model name" hint="(optional)">
             <input className={inputCls()} value={uploadMeta.name} onChange={(e) => setUploadMeta((p) => ({ ...p, name: e.target.value }))} placeholder="vd: ResNet-50 Custom" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -427,7 +427,7 @@ export default function ModelsPage() {
               </select>
             </Field>
           </div>
-          <Field label="Architecture" hint="(tùy chọn)">
+          <Field label="Architecture" hint="(optional)">
             <input className={inputCls()} value={uploadMeta.architecture} onChange={(e) => setUploadMeta((p) => ({ ...p, architecture: e.target.value }))} placeholder="vd: ResNet-50, BERT-base, YOLOv8..." />
           </Field>
           <Field label="Metrics">
@@ -458,7 +458,7 @@ export default function ModelsPage() {
                     className="rounded-lg border border-[#E2E8F0] px-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]"
                     onClick={() => setMetricInputs((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))}
                   >
-                    Xóa
+                    Delete
                   </button>
                 </div>
               ))}
@@ -467,15 +467,15 @@ export default function ModelsPage() {
                 className="rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-[12px] font-medium text-[#475569] hover:bg-[#F1F5F9]"
                 onClick={() => setMetricInputs((prev) => [...prev, { name: "", value: "" }])}
               >
-                + Thêm Metric
+                + Add metric
               </button>
             </div>
           </Field>
-          <Field label="Tags" hint="(phân cách bằng dấu phẩy)">
+          <Field label="Tags" hint="(comma-separated)">
             <input className={inputCls()} value={uploadMeta.tags} onChange={(e) => setUploadMeta((p) => ({ ...p, tags: e.target.value }))} placeholder="classification, production, v2..." />
           </Field>
-          <Field label="Mô tả" hint="(tùy chọn)">
-            <textarea rows={3} className={cn(inputCls(), "resize-none")} value={uploadMeta.description} onChange={(e) => setUploadMeta((p) => ({ ...p, description: e.target.value }))} placeholder="Mô tả ngắn về model, dataset đã dùng, kết quả..." />
+          <Field label="Description" hint="(optional)">
+            <textarea rows={3} className={cn(inputCls(), "resize-none")} value={uploadMeta.description} onChange={(e) => setUploadMeta((p) => ({ ...p, description: e.target.value }))} placeholder="Briefly describe the model, dataset used, and results..." />
           </Field>
         </div>
       </Modal>

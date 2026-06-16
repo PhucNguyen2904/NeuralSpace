@@ -10,11 +10,11 @@ export default function GlobalError({ error }: { error: Error & { digest?: strin
         <div className="flex min-h-screen items-center justify-center bg-bg-base p-6">
           <div className="w-full max-w-md rounded-xl border border-border bg-bg-surface p-6 text-center">
             <div className="mb-3 text-4xl" aria-hidden>🛠</div>
-            <h1 className="text-xl font-semibold text-text-primary">Đã có lỗi bất ngờ</h1>
-            <p className="mt-2 text-sm text-text-secondary">Hệ thống đã ghi nhận lỗi này.</p>
+            <h1 className="text-xl font-semibold text-text-primary">An unexpected error occurred</h1>
+            <p className="mt-2 text-sm text-text-secondary">The system has recorded this error.</p>
             <div className="mt-4 flex justify-center gap-2">
-              <Button variant="secondary" onClick={() => window.open("mailto:support@neuralspace.dev")} aria-label="Báo cáo lỗi">Báo cáo lỗi</Button>
-              <Button onClick={() => window.location.reload()} aria-label="Tải lại trang">Tải lại trang</Button>
+              <Button variant="secondary" onClick={() => window.open("mailto:support@neuralspace.dev")} aria-label="Report issue">Report issue</Button>
+              <Button onClick={() => window.location.reload()} aria-label="Reload page">Reload page</Button>
             </div>
           </div>
         </div>

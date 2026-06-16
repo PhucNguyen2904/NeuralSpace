@@ -49,7 +49,7 @@ export default function ModelRegistryDetailPage() {
           onRollback={() => {}}
         />
       ) : null}
-      {tab === "experiments" ? <Placeholder text="Experiments list liên kết MLflow runs cho model này." /> : null}
+      {tab === "experiments" ? <Placeholder text="Experiments list linked to MLflow runs for this model." /> : null}
       {tab === "settings" ? <Placeholder text="Registry settings: tags, ownership, retention policy." /> : null}
     </div>
   );

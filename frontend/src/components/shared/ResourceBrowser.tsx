@@ -34,11 +34,11 @@ export function ResourceBrowser({
         <p className="text-sm text-text-secondary">{resultLabel}</p>
         <div className="flex items-center gap-2">
           <select value={sort} onChange={(e) => onSortChange(e.target.value)} className="h-9 rounded-md border border-border px-3 text-sm">
-            <option value="newest">Mới nhất</option>
-            <option value="oldest">Cũ nhất</option>
-            <option value="name">Tên A-Z</option>
-            <option value="accuracy">Metric cao nhất</option>
-            <option value="size">Lớn nhất</option>
+            <option value="newest">Newest</option>
+            <option value="oldest">Oldest</option>
+            <option value="name">Name A-Z</option>
+            <option value="accuracy">Highest metric</option>
+            <option value="size">Largest</option>
           </select>
           <div className="flex rounded-md border border-border p-1">
             <button onClick={() => onViewChange("grid")} className={view === "grid" ? "rounded bg-bg-elevated p-1 text-text-primary" : "rounded p-1 text-text-secondary"}><Grid2X2 size={15} /></button>
@@ -50,8 +50,8 @@ export function ResourceBrowser({
       {!loading && isEmpty ? (
         <div className="flex min-h-72 flex-col items-center justify-center text-center">
           <SearchX className="mb-3 text-text-tertiary" />
-          <p className="text-base font-medium">Không tìm thấy kết quả phù hợp</p>
-          <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={onClearFilters}>Xóa tất cả bộ lọc</button>
+          <p className="text-base font-medium">No matching results found</p>
+          <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={onClearFilters}>Clear all filters</button>
         </div>
       ) : null}
       {!loading && !isEmpty && view === "grid" ? gridContent : null}

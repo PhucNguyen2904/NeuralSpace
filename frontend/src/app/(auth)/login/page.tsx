@@ -11,8 +11,8 @@ import { useRedirectIfAuthed } from "@/lib/hooks/useAuth";
 import { useAuthStore } from "@/lib/stores/authStore";
 
 const schema = z.object({
-  email: z.string().email("Email không hợp lệ"),
-  password: z.string().min(8, "Mật khẩu cần ít nhất 8 ký tự"),
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
   rememberMe: z.boolean()
 });
 
@@ -66,14 +66,14 @@ export default function LoginPage() {
       });
 
       if (response.status === 401) {
-        setToast({ type: "error", message: "Email hoặc mật khẩu không đúng" });
+        setToast({ type: "error", message: "Email or password is incorrect" });
         setShake(true);
         setTimeout(() => setShake(false), 350);
         return;
       }
 
       if (response.status === 429) {
-        setToast({ type: "error", message: "Thử lại sau 30 giây" });
+        setToast({ type: "error", message: "Try again in 30 seconds" });
         return;
       }
 
@@ -94,7 +94,7 @@ export default function LoginPage() {
         window.location.assign("/dashboard");
       }, 300);
     } catch {
-      setToast({ type: "error", message: "Email hoặc mật khẩu không đúng" });
+      setToast({ type: "error", message: "Email or password is incorrect" });
       setShake(true);
       setTimeout(() => setShake(false), 350);
     }
@@ -109,7 +109,7 @@ export default function LoginPage() {
       ) : null}
 
       <form className={`space-y-4 rounded-xl border border-border bg-bg-surface p-6 shadow-sm ${shake ? "auth-shake" : ""}`} onSubmit={handleSubmit(onSubmit)}>
-        <h1 className="text-2xl font-semibold">Đăng nhập</h1>
+        <h1 className="text-2xl font-semibold">Sign in</h1>
 
         <Input label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
         <Input
@@ -139,7 +139,7 @@ export default function LoginPage() {
 
         <div className="flex items-center gap-3 text-xs text-text-tertiary">
           <span className="h-px flex-1 bg-border" />
-          hoặc tiếp tục với
+          or continue with
           <span className="h-px flex-1 bg-border" />
         </div>
 
@@ -152,7 +152,7 @@ export default function LoginPage() {
       </form>
 
       <p className="mt-4 text-center text-sm text-text-secondary">
-        Chưa có tài khoản? <Link href="/register" className="text-brand-600 hover:underline">Đăng ký ngay</Link>
+        No account yet? <Link href="/register" className="text-brand-600 hover:underline">Sign up now</Link>
       </p>
     </div>
   );

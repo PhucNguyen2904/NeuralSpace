@@ -9,7 +9,7 @@ export function middleware(request: NextRequest) {
   const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 
   if (!token && !isPublicRoute) {
-    // Tạm thời tắt chuyển hướng để test các giao diện khác
+    // Temporarily disable redirects to test other screens
     const url = new URL("/login", request.url);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);

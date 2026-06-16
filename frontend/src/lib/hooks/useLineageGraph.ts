@@ -16,6 +16,10 @@ type RootType = "dataset" | "model";
 export function useLineageGraph(rootType: RootType, rootId: string, depth: number) {
   return useQuery({
     queryKey: ["lineage-graph", rootType, rootId, depth],
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: 5_000,
     queryFn: async (): Promise<UseLineageGraphResult> => {
       const response = await apiClient.get<LineageApiResponse>("/lineage/graph", {
         params: { root_type: rootType, root_id: rootId || undefined, depth }

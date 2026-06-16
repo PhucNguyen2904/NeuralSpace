@@ -181,7 +181,7 @@ async def test_ui_lineage_graph_includes_colab_run_assets() -> None:
         "name": "Output model",
         "version": "2",
         "status": "ready",
-        "all_metrics": {"accuracy": 0.91},
+        "all_metrics": {"accuracy": 0.81},
         "created_at": datetime.now(timezone.utc),
         "created_by": "user-1",
     })
@@ -197,3 +197,5 @@ async def test_ui_lineage_graph_includes_colab_run_assets() -> None:
     assert {"ds1", "base1", "r1", "out1"}.issubset(node_ids)
     assert {"source": "ds1", "target": "r1", "relation": "used_for_training"}.items() <= out["edges"][0].items()
     assert any(edge["source"] == "r1" and edge["target"] == "out1" and edge["relation"] == "produced" for edge in out["edges"])
+    output_node = next(node for node in out["nodes"] if node["id"] == "out1")
+    assert output_node["metrics"]["accuracy"] == 0.91

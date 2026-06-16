@@ -63,19 +63,19 @@ export function ModelCard({
         </div>
         <div className="mb-2 min-h-[18px]">
           {model.status === "failed" ? (
-            <p className="inline-flex items-center gap-1 text-xs text-red-600"><StatusFailedIcon size={13} />Training thất bại</p>
+            <p className="inline-flex items-center gap-1 text-xs text-red-600"><StatusFailedIcon size={13} />Training failed</p>
           ) : null}
         </div>
         <div className="mb-2 flex items-center justify-between">
           <label className="inline-flex items-center gap-1.5 text-xs leading-none text-text-secondary">
             <input type="checkbox" checked={checked} onChange={(e) => onCheck(model.id, e.target.checked)} className="h-4 w-4 shrink-0 rounded border-border" />
-            <span>So sánh</span>
+            <span>Compare</span>
           </label>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Button size="sm" variant="outline" className="text-text-secondary" onClick={() => onDetail(model)}>
-          <Eye size={14} /> Chi tiết
+          <Eye size={14} /> Details
         </Button>
         <Link
           href={`/models/${encodeURIComponent(model.name)}`}

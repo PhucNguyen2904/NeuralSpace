@@ -23,13 +23,13 @@ export function VersionDiff({ currentVersion, versions, diff, loading = false, o
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-text-secondary">Compare với:</label>
+        <label className="text-sm text-text-secondary">Compare with:</label>
         <select
           value={againstVersionId}
           onChange={(event) => setAgainstVersionId(event.target.value)}
           className="h-9 min-w-[160px] rounded-md border border-border bg-bg-surface px-3 text-sm"
         >
-          <option value="">Chọn version</option>
+          <option value="">Select version</option>
           {compareTargets.map((item) => (
             <option key={item.id} value={item.id}>
               {item.version}
@@ -69,7 +69,7 @@ export function VersionDiff({ currentVersion, versions, diff, loading = false, o
             onClick={() => setExpanded((prev) => !prev)}
           >
             {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            Chi tiết samples thay đổi
+            Changed sample details
           </button>
           {expanded ? (
             <ul className="mt-2 space-y-1 text-xs text-text-secondary">

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { X, Link2, Pencil, Plus, Trash2, UploadCloud } from "lucide-react";
+import { AlertTriangle, Link2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { MetricsChart } from "@/components/models/MetricsChart";
 import { VersionTimeline } from "@/components/models/VersionTimeline";
@@ -96,11 +96,11 @@ export function ModelDetailDrawer({
     const parameterCount = Number(metadataForm.parameterCount);
     const metricValue = Number(metadataForm.primaryMetricValue);
     if (!Number.isInteger(parameterCount) || parameterCount < 0) {
-      toast.warning("Parameter count phải là số nguyên không âm");
+      toast.warning("Parameter count must be a non-negative integer");
       return;
     }
     if (!Number.isFinite(metricValue)) {
-      toast.warning("Metric value phải là số hợp lệ");
+      toast.warning("Metric value must be a valid number");
       return;
     }
     try {
@@ -124,16 +124,16 @@ export function ModelDetailDrawer({
           tags: metadataForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
         }
       });
-      toast.success("Đã cập nhật metadata model");
+      toast.success("Model metadata updated");
       setMetadataModalOpen(false);
     } catch {
-      toast.error("Cập nhật metadata model thất bại");
+      toast.error("Failed to update model metadata");
     }
   };
 
   const submitVersionUpload = async () => {
     if (!versionFile) {
-      toast.warning("Chọn file model mới trước khi upload");
+      toast.warning("Select a new model file before uploading");
       return;
     }
     const metricValue = Number(versionForm.primaryMetricValue);
@@ -151,25 +151,25 @@ export function ModelDetailDrawer({
           metrics: hasMetric ? { [versionForm.primaryMetricName.trim()]: metricValue } : undefined
         }
       });
-      toast.success("Đã upload phiên bản model mới");
+      toast.success("New model version uploaded");
       setVersionFile(null);
       setVersionForm((prev) => ({ ...prev, version: "", changelog: "" }));
       setVersionModalOpen(false);
       setTab("versions");
     } catch {
-      toast.error("Upload version thất bại");
+      toast.error("Failed to upload version");
     }
   };
 
   const confirmDelete = async () => {
     try {
       await deleteModel.mutateAsync(model.id);
-      toast.success("Đã xóa model");
+      toast.success("Model deleted");
       setDeleteModalOpen(false);
       setDeleteConfirmed(false);
       onClose();
     } catch {
-      toast.error("Xóa model thất bại");
+      toast.error("Failed to delete model");
     }
   };
 
@@ -224,9 +224,9 @@ export function ModelDetailDrawer({
         closeOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setVersionModalOpen(false)} disabled={uploadVersion.isPending}>Hủy</Button>
+            <Button variant="outline" onClick={() => setVersionModalOpen(false)} disabled={uploadVersion.isPending}>Cancel</Button>
             <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void submitVersionUpload()} disabled={uploadVersion.isPending}>
-              {uploadVersion.isPending ? "Đang upload..." : "Upload version"}
+              {uploadVersion.isPending ? "Uploading..." : "Upload version"}
             </Button>
           </div>
         }
@@ -234,7 +234,7 @@ export function ModelDetailDrawer({
         <div className="space-y-3">
           <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-bg-elevated/40 px-3 py-3 text-sm hover:bg-bg-elevated">
             <span className="min-w-0">
-              <span className="block font-medium text-text-primary">{versionFile?.name ?? "Chọn artifact model mới"}</span>
+              <span className="block font-medium text-text-primary">{versionFile?.name ?? "Select a new model artifact"}</span>
               <span className="block truncate text-xs text-text-secondary">.onnx, .pt, .pth, .h5, .safetensors</span>
             </span>
             <UploadCloud size={18} className="shrink-0 text-violet-600" />
@@ -262,7 +262,7 @@ export function ModelDetailDrawer({
             </VersionField>
           </div>
           <VersionField label="Changelog">
-            <textarea className={cn(versionInputCls(), "min-h-20 resize-none")} value={versionForm.changelog} onChange={(e) => setVersionForm((p) => ({ ...p, changelog: e.target.value }))} placeholder="Điểm thay đổi chính của phiên bản này" />
+            <textarea className={cn(versionInputCls(), "min-h-20 resize-none")} value={versionForm.changelog} onChange={(e) => setVersionForm((p) => ({ ...p, changelog: e.target.value }))} placeholder="Key changes in this version" />
           </VersionField>
         </div>
       </Modal>
@@ -275,9 +275,9 @@ export function ModelDetailDrawer({
         closeOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setMetadataModalOpen(false)} disabled={updateModel.isPending}>Hủy</Button>
+            <Button variant="outline" onClick={() => setMetadataModalOpen(false)} disabled={updateModel.isPending}>Cancel</Button>
             <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void submitMetadata()} disabled={updateModel.isPending}>
-              {updateModel.isPending ? "Đang lưu..." : "Lưu metadata"}
+              {updateModel.isPending ? "Saving..." : "Save metadata"}
             </Button>
           </div>
         }
@@ -392,24 +392,39 @@ export function ModelDetailDrawer({
       <Modal
         open={deleteModalOpen}
         onClose={() => !deleteModel.isPending && setDeleteModalOpen(false)}
-        title="Xóa model?"
+        title={
+          <div className="flex items-center gap-2 text-error-600">
+            <AlertTriangle size={18} />
+            <span>Delete model permanently?</span>
+          </div>
+        }
         size="sm"
         showCloseButton
         closeOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteModalOpen(false)} disabled={deleteModel.isPending}>Hủy</Button>
+            <Button variant="outline" onClick={() => setDeleteModalOpen(false)} disabled={deleteModel.isPending}>Cancel</Button>
             <Button variant="danger" onClick={() => void confirmDelete()} disabled={!deleteConfirmed || deleteModel.isPending}>
-              {deleteModel.isPending ? "Đang xóa..." : "Xóa vĩnh viễn"}
+              {deleteModel.isPending ? "Deleting..." : "Delete permanently"}
             </Button>
           </div>
         }
       >
-        <p className="text-sm text-text-secondary">Metadata, version metadata và artifact lưu trên MinIO của model này sẽ bị xóa.</p>
-        <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary">
-          <input type="checkbox" className="h-4 w-4 rounded border-border" checked={deleteConfirmed} onChange={(event) => setDeleteConfirmed(event.target.checked)} />
-          Tôi hiểu và muốn xóa
-        </label>
+        <div className="space-y-4">
+          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-sm text-error-800">
+            <p className="font-semibold">Warning: This action cannot be undone.</p>
+            <p className="mt-1">All data, training history, and versions for model <strong className="font-semibold">{model.name}</strong> will be permanently deleted from the system.</p>
+          </div>
+          <label className="inline-flex cursor-pointer items-start gap-2.5 text-sm text-text-secondary transition-colors hover:text-text-primary">
+            <input 
+              type="checkbox" 
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border text-error-600 transition-colors focus:ring-error-500" 
+              checked={deleteConfirmed} 
+              onChange={(event) => setDeleteConfirmed(event.target.checked)} 
+            />
+            <span className="leading-tight">I understand this data will be lost and cannot be restored, and I confirm deletion.</span>
+          </label>
+        </div>
       </Modal>
     </div>
   );

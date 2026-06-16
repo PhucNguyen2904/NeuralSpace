@@ -3,6 +3,7 @@
 import { Handle, Position } from "@xyflow/react";
 import { AlertTriangle } from "lucide-react";
 import { StageBadge } from "@/components/shared/StageBadge";
+import { formatVersionLabel } from "@/lib/lineage/transform";
 import { cn } from "@/lib/utils/cn";
 import type { ModelNodeData } from "@/lib/lineage/transform";
 
@@ -28,7 +29,7 @@ export function ModelNode({ data }: { data: ModelNodeData }) {
         <StageBadge stage={data.stage} size="sm" />
       </div>
       <p className="truncate text-[12px] font-medium text-slate-900">{data.name}</p>
-      <p className="mt-0.5 text-[11px] text-slate-500">v{data.version}</p>
+      <p className="mt-0.5 text-[11px] text-slate-500">{formatVersionLabel(data.version)}</p>
       {data.impacted ? (
         <p className="mt-1 flex items-center gap-1 text-[11px] text-red-600">
           <AlertTriangle size={12} />
@@ -36,6 +37,7 @@ export function ModelNode({ data }: { data: ModelNodeData }) {
         </p>
       ) : null}
       <Handle type="target" position={Position.Left} />
+      <Handle type="source" position={Position.Right} />
     </div>
   );
 }

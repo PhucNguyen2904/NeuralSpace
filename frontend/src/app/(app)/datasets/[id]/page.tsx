@@ -39,7 +39,7 @@ export default function DatasetDetailPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-semibold">{datasetDetail.detail.data?.name ?? "Dataset Versions"}</h1>
-          <p className="text-sm text-text-secondary">Quản lý versions, DVC metadata, integrity và lineage của dataset.</p>
+          <p className="text-sm text-text-secondary">Manage versions, DVC metadata, integrity, and lineage for the dataset.</p>
         </div>
       </header>
 

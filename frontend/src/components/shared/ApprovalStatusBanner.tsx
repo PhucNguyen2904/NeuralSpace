@@ -26,26 +26,26 @@ const STATUS_CONFIG: Record<
     root: "bg-amber-50 border-amber-200 text-amber-800",
     iconClass: "text-amber-600",
     buildMessage: ({ reviewer, remaining }) =>
-      `Đang chờ phê duyệt${reviewer ? ` từ @${reviewer}` : ""}${remaining ? ` · ${remaining} còn lại` : ""}`
+      `Pending approval${reviewer ? ` from @${reviewer}` : ""}${remaining ? ` · ${remaining} remaining` : ""}`
   },
   APPROVED: {
     icon: CheckCircle2,
     root: "bg-emerald-50 border-emerald-200 text-emerald-800",
     iconClass: "text-emerald-600",
     buildMessage: ({ reviewer, approvedAgo }) =>
-      `Đã được phê duyệt${reviewer ? ` bởi @${reviewer}` : ""}${approvedAgo ? ` · ${approvedAgo}` : ""}`
+      `Approved${reviewer ? ` by @${reviewer}` : ""}${approvedAgo ? ` · ${approvedAgo}` : ""}`
   },
   REJECTED: {
     icon: XCircle,
     root: "bg-red-50 border-red-200 text-red-800",
     iconClass: "text-red-600",
-    buildMessage: ({ reason }) => `Bị từ chối${reason ? `: "${reason}"` : ""}`
+    buildMessage: ({ reason }) => `Rejected${reason ? `: "${reason}"` : ""}`
   },
   EXPIRED: {
     icon: AlertTriangle,
     root: "bg-slate-100 border-slate-200 text-slate-700",
     iconClass: "text-slate-500",
-    buildMessage: () => "Request đã hết hạn · Tạo request mới"
+    buildMessage: () => "Request expired · Create a new request"
   }
 };
 

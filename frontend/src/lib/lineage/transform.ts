@@ -69,6 +69,12 @@ export interface LineageGraphData {
   edges: Edge[];
 }
 
+export function formatVersionLabel(version: string | number | undefined): string {
+  if (version === undefined || version === null || version === "") return "v1";
+  const value = String(version);
+  return value.toLowerCase().startsWith("v") ? value : `v${value}`;
+}
+
 function toDatasetData(item: LineageApiResponse["nodes"][number]): DatasetNodeData {
   return {
     id: item.id,

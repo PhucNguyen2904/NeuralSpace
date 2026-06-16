@@ -281,7 +281,7 @@ export function TrackVersionModal({
               value={changelog}
               onChange={(e) => setChangelog(e.target.value)}
               disabled={isActive}
-              placeholder="Mô tả thay đổi so với version trước..."
+              placeholder="Describe changes from the previous version..."
               className="w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
             />
           </div>

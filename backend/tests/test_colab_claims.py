@@ -10,12 +10,20 @@ import pytest
 from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 
-from app.api.v1.colab.router import _append_runtime_asset, _owned_run, _runtime_run_status, create_colab_claim
+from app.api.v1.colab.router import (
+    _append_runtime_asset,
+    _owned_run,
+    _runtime_run_status,
+    _sync_runtime_output_models,
+    create_colab_claim,
+)
 from app.config import Settings
 from app.core.security import create_access_token
 from app.dependencies import UserContext
 from app.main import create_app
 from app.models.runtime_session import RuntimeSessionStatus
+from app.models.model_registry import ModelRegistry
+from app.models.workspace_assets import WorkspaceModel
 from app.schemas.colab import RuntimeRunAssetRequest
 from app.services.colab_claim_service import ColabClaimService
 from app.services.runtime_session_service import RuntimeSessionService
@@ -177,6 +185,61 @@ def test_runtime_run_status_maps_colab_helper_values() -> None:
     assert _runtime_run_status("success") == "FINISHED"
     assert _runtime_run_status("FAILED") == "FAILED"
     assert _runtime_run_status("unexpected") == "FAILED"
+
+
+@pytest.mark.asyncio
+async def test_runtime_output_model_syncs_registry_metrics() -> None:
+    class Result:
+        def scalar_one_or_none(self):
+            return None
+
+    class FakeDB:
+        def __init__(self):
+            self.models = {}
+            self.workspace_links = []
+
+        async def get(self, model, key):
+            if model is ModelRegistry:
+                return self.models.get(key)
+            return None
+
+        async def execute(self, _statement):
+            return Result()
+
+        def add(self, row):
+            if isinstance(row, ModelRegistry):
+                self.models[row.id] = row
+            elif isinstance(row, WorkspaceModel):
+                self.workspace_links.append(row)
+
+    db = FakeDB()
+    run = SimpleNamespace(
+        id="run-1",
+        name="Colab run",
+        status="FINISHED",
+        metrics_snapshot={"accuracy": 0.92, "loss": 0.2, "debug": True},
+        tags_snapshot={
+            "colab_lineage": {
+                "outputs": [{"asset_type": "model", "asset_id": "colab-output-run-1", "role": "fine_tuned_model"}]
+            }
+        },
+    )
+    identity = SimpleNamespace(
+        user_id="user-1",
+        session=SimpleNamespace(id="session-1", workspace_id="ws_12345678"),
+    )
+
+    await _sync_runtime_output_models(db, run, identity)
+
+    row = db.models["colab-output-run-1"]
+    assert row.primary_metric_name == "accuracy"
+    assert row.primary_metric_value == 0.92
+    assert row.all_metrics == {"accuracy": 0.92, "loss": 0.2}
+    assert row.status == "trained"
+    assert row.source_payload["last_colab_run_id"] == "run-1"
+    assert row.source_payload["metrics"] == {"accuracy": 0.92, "loss": 0.2}
+    assert row.source_payload["colab_runs"][0]["metrics"] == {"accuracy": 0.92, "loss": 0.2}
+    assert db.workspace_links[0].model_id == "colab-output-run-1"
 
 
 @pytest.mark.asyncio

@@ -38,16 +38,16 @@ const tabs: Array<{ key: TabKey; label: string; icon: ComponentType<{ size?: str
 ];
 
 const profileSchema = z.object({
-  fullName: z.string().min(2, "Tên tối thiểu 2 ký tự")
+  fullName: z.string().min(2, "Name must be at least 2 characters")
 });
 
 const passwordSchema = z
   .object({
-    currentPassword: z.string().min(6, "Mật khẩu hiện tại tối thiểu 6 ký tự"),
-    newPassword: z.string().min(8, "Mật khẩu mới tối thiểu 8 ký tự"),
-    confirmPassword: z.string().min(8, "Xác nhận mật khẩu")
+    currentPassword: z.string().min(6, "Current password must be at least 6 characters"),
+    newPassword: z.string().min(8, "New password must be at least 8 characters"),
+    confirmPassword: z.string().min(8, "Confirm password")
   })
-  .refine((v) => v.newPassword === v.confirmPassword, { path: ["confirmPassword"], message: "Mật khẩu xác nhận chưa khớp" });
+  .refine((v) => v.newPassword === v.confirmPassword, { path: ["confirmPassword"], message: "Password confirmation does not match" });
 
 
 function Field({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
@@ -118,7 +118,7 @@ export default function SettingsPage() {
     setThemePreference(value);
     window.localStorage.setItem("ui-theme", value);
     applyTheme(value);
-    setToastMsg("Đã cập nhật giao diện");
+    setToastMsg("Appearance updated");
   };
 
   if (!settings) {
@@ -127,7 +127,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-10">
-      <PageHeader title="Settings" description="Quản lý preferences và tài khoản." />
+      <PageHeader title="Settings" description="Manage preferences and account settings." />
 
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="rounded-xl border border-border bg-bg-surface p-3">
@@ -166,8 +166,8 @@ export default function SettingsPage() {
                   />
                 </button>
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-text-primary">Ảnh đại diện</p>
-                  <p className="text-xs text-text-secondary">Nhấn vào ảnh để cập nhật (Tối đa 5MB)</p>
+                  <p className="text-sm font-medium text-text-primary">Avatar</p>
+                  <p className="text-xs text-text-secondary">Click the image to update it (max 5MB)</p>
                 </div>
                 <input
                   ref={avatarInputRef}
@@ -182,11 +182,11 @@ export default function SettingsPage() {
                     const isImage = file.type.startsWith("image/");
                     const maxSize = 5 * 1024 * 1024;
                     if (!isImage) {
-                      setToastMsg("Vui lòng chọn file ảnh.");
+                      setToastMsg("Please select an image file.");
                       return;
                     }
                     if (file.size > maxSize) {
-                      setToastMsg("Ảnh phải nhỏ hơn 5MB.");
+                      setToastMsg("Image must be smaller than 5MB.");
                       return;
                     }
 
@@ -198,7 +198,7 @@ export default function SettingsPage() {
                     });
 
                     updateProfile.mutate({ avatarUrl: dataUrl });
-                    setToastMsg("Đã cập nhật ảnh đại diện");
+                    setToastMsg("Avatar updated");
                   }}
                 />
               </div>
@@ -210,13 +210,13 @@ export default function SettingsPage() {
                   updateUser({ name: values.fullName });
                 })}
               >
-                <Field label="Tên hiển thị" error={profileForm.formState.errors.fullName?.message}>
+                <Field label="Display name" error={profileForm.formState.errors.fullName?.message}>
                   <input {...profileForm.register("fullName")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                 </Field>
                 <Field label="Email">
                   <input value={user?.email || settings.profile.email} readOnly className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm text-text-tertiary cursor-not-allowed" />
                 </Field>
-                <div className="pt-2"><Button size="sm" loading={updateProfile.isPending} type="submit">Lưu thông tin</Button></div>
+                <div className="pt-2"><Button size="sm" loading={updateProfile.isPending} type="submit">Save information</Button></div>
               </form>
             </div>
           ) : null}
@@ -226,7 +226,7 @@ export default function SettingsPage() {
               <h3 className="text-base font-semibold text-text-primary">Workspace Defaults</h3>
 
               <div className="max-w-md">
-                <Field label="Phiên bản Python mặc định">
+                <Field label="Default Python version">
                   <Select value={settings.defaults.pythonVersion} onChange={(e) => updateDefaults.mutate({ pythonVersion: e.target.value as "3.10" | "3.11" | "3.12" })}>
                     <option value="3.10">Python 3.10</option>
                     <option value="3.11">Python 3.11</option>
@@ -236,7 +236,7 @@ export default function SettingsPage() {
               </div>
 
               <div className="max-w-md space-y-2">
-                <p className="text-sm text-text-primary font-medium">Tự động đóng (Idle timeout): <span className="text-text-secondary font-normal">{settings.defaults.idleTimeoutMinutes} phút</span></p>
+                <p className="text-sm text-text-primary font-medium">Auto close (idle timeout): <span className="text-text-secondary font-normal">{settings.defaults.idleTimeoutMinutes} minutes</span></p>
                 <input
                   type="range"
                   min={15}
@@ -251,7 +251,7 @@ export default function SettingsPage() {
 
               <div className="max-w-md rounded-lg border border-border bg-bg-elevated p-4">
                 <label className="flex items-center justify-between text-sm cursor-pointer">
-                  <span className="font-medium text-text-primary">Tự động lưu (Auto-save)</span>
+                  <span className="font-medium text-text-primary">Auto-save</span>
                   <input
                     type="checkbox"
                     checked={settings.defaults.autoSaveEnabled}
@@ -260,7 +260,7 @@ export default function SettingsPage() {
                   />
                 </label>
                 <div className={cn("mt-3 flex items-center gap-2", !settings.defaults.autoSaveEnabled && "opacity-50 pointer-events-none")}>
-                  <span className="text-sm text-text-secondary">Lưu mỗi</span>
+                  <span className="text-sm text-text-secondary">Save every</span>
                   <input
                     type="number"
                     min={1}
@@ -270,7 +270,7 @@ export default function SettingsPage() {
                     className="h-8 w-20 rounded-md border border-border bg-bg-surface px-2 text-sm focus:border-brand-500 focus:outline-none"
                     disabled={!settings.defaults.autoSaveEnabled}
                   />
-                  <span className="text-sm text-text-secondary">phút</span>
+                  <span className="text-sm text-text-secondary">minutes</span>
                 </div>
               </div>
             </div>
@@ -288,7 +288,7 @@ export default function SettingsPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-text-primary">Colab Connection Token</p>
-                      <p className="text-xs text-text-secondary">Token dùng để kết nối Google Colab với NeuralSpace</p>
+                      <p className="text-xs text-text-secondary">Token used to connect Google Colab with NeuralSpace</p>
                     </div>
                   </div>
                   <div className="mt-4 flex gap-2">
@@ -301,7 +301,7 @@ export default function SettingsPage() {
                     <Button 
                       size="sm" 
                       variant="outline" 
-                      onClick={() => setToastMsg("Tính năng xem token đang được phát triển")}
+                      onClick={() => setToastMsg("Token viewing is under development")}
                     >
                       Reveal
                     </Button>
@@ -310,16 +310,16 @@ export default function SettingsPage() {
 
                 <Card className="p-4 border-border">
                   <h4 className="text-sm font-medium text-text-primary mb-1">Session Settings</h4>
-                  <p className="text-xs text-text-secondary mb-4">Các cấu hình runtime được áp dụng tự động cho mỗi phiên làm việc</p>
+                  <p className="text-xs text-text-secondary mb-4">Runtime settings are applied automatically to each session</p>
                   
                   <div className="space-y-3">
                     <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-sm text-text-secondary">Session TTL mặc định</span>
-                      <span className="text-sm font-medium">24 giờ</span>
+                      <span className="text-sm text-text-secondary">Default session TTL</span>
+                      <span className="text-sm font-medium">24 hours</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-sm text-text-secondary">Cập nhật dependencies tự động</span>
-                      <span className="text-sm font-medium">Đã bật</span>
+                      <span className="text-sm text-text-secondary">Automatic dependency updates</span>
+                      <span className="text-sm font-medium">Enabled</span>
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-sm text-text-secondary">Network Access</span>
@@ -333,16 +333,16 @@ export default function SettingsPage() {
 
           {activeTab === "notifications" ? (
             <div className="max-w-xl space-y-4">
-              <h3 className="text-base font-semibold text-text-primary">Tùy chọn thông báo</h3>
-              <p className="text-sm text-text-secondary mb-4">Quản lý cách hệ thống gửi thông báo cho bạn</p>
+              <h3 className="text-base font-semibold text-text-primary">Notification options</h3>
+              <p className="text-sm text-text-secondary mb-4">Manage how the system sends notifications to you</p>
               
               <div className="space-y-2">
                 {[
-                  { key: "workspaceReady", label: "Workspace sẵn sàng", desc: "Nhận thông báo khi workspace đã khởi động và sẵn sàng kết nối." },
-                  { key: "idleWarning", label: "Cảnh báo Idle", desc: "Cảnh báo 5 phút trước khi hệ thống tự động đóng workspace đang nhàn rỗi." },
-                  { key: "autoStopped", label: "Workspace tự động đóng", desc: "Thông báo sau khi workspace của bạn bị hệ thống đóng để tiết kiệm tài nguyên." },
-                  { key: "weeklyUsage", label: "Báo cáo sử dụng hàng tuần", desc: "Gửi báo cáo tổng hợp thời gian và tài nguyên bạn đã sử dụng." },
-                  { key: "platformUpdates", label: "Cập nhật nền tảng", desc: "Nhận tin tức về các tính năng mới và bảo trì hệ thống." }
+                  { key: "workspaceReady", label: "Workspace ready", desc: "Receive notifications when a workspace has started and is ready to connect." },
+                  { key: "idleWarning", label: "Idle warning", desc: "Warn 5 minutes before the system automatically closes an idle workspace." },
+                  { key: "autoStopped", label: "Workspace auto-stop", desc: "Notify after your workspace is closed to save resources." },
+                  { key: "weeklyUsage", label: "Weekly usage report", desc: "Send a summary report of the time and resources you used." },
+                  { key: "platformUpdates", label: "Platform updates", desc: "Receive news about new features and system maintenance." }
                 ].map((item) => (
                   <label key={item.key} className="flex items-start justify-between rounded-lg border border-border p-4 hover:bg-bg-elevated transition-colors cursor-pointer">
                     <div className="flex items-start gap-3 pr-4">
@@ -368,7 +368,7 @@ export default function SettingsPage() {
 
           {activeTab === "appearance" ? (
             <div className="max-w-xl space-y-6">
-              <h3 className="text-base font-semibold text-text-primary">Giao diện</h3>
+              <h3 className="text-base font-semibold text-text-primary">Appearance</h3>
               
               <div className="space-y-3">
                 <p className="text-sm font-medium text-text-primary">Theme mode</p>
@@ -383,8 +383,8 @@ export default function SettingsPage() {
                         : "border-border hover:bg-bg-elevated"
                     )}
                   >
-                    <p className="text-sm font-medium text-text-primary mb-1">Sáng</p>
-                    <p className="text-xs text-text-secondary">Nền sáng, độ tương phản cao</p>
+                    <p className="text-sm font-medium text-text-primary mb-1">Light</p>
+                    <p className="text-xs text-text-secondary">Light background, high contrast</p>
                   </button>
                   <button
                     type="button"
@@ -396,8 +396,8 @@ export default function SettingsPage() {
                         : "border-border hover:bg-bg-elevated"
                     )}
                   >
-                    <p className="text-sm font-medium text-text-primary mb-1">Tối</p>
-                    <p className="text-xs text-text-secondary">Giảm chói khi làm việc đêm</p>
+                    <p className="text-sm font-medium text-text-primary mb-1">Dark</p>
+                    <p className="text-xs text-text-secondary">Reduce glare when working at night</p>
                   </button>
                   <button
                     type="button"
@@ -409,8 +409,8 @@ export default function SettingsPage() {
                         : "border-border hover:bg-bg-elevated"
                     )}
                   >
-                    <p className="text-sm font-medium text-text-primary mb-1">Hệ thống</p>
-                    <p className="text-xs text-text-secondary">Tự động theo hệ điều hành</p>
+                    <p className="text-sm font-medium text-text-primary mb-1">System</p>
+                    <p className="text-xs text-text-secondary">Automatically follow the operating system</p>
                   </button>
                 </div>
               </div>
@@ -420,26 +420,26 @@ export default function SettingsPage() {
           {activeTab === "security" ? (
             <div className="max-w-xl space-y-8">
               <div>
-                <h3 className="text-base font-semibold text-text-primary mb-4">Đổi mật khẩu</h3>
+                <h3 className="text-base font-semibold text-text-primary mb-4">Change password</h3>
                 <form
                   className="grid gap-4 rounded-xl border border-border p-5 bg-bg-elevated"
                   onSubmit={passwordForm.handleSubmit(async (values) => {
                     await changePassword.mutateAsync({ currentPassword: values.currentPassword, newPassword: values.newPassword });
                     passwordForm.reset();
-                    setToastMsg("Đổi mật khẩu thành công");
+                    setToastMsg("Password changed successfully");
                   })}
                 >
-                  <Field label="Mật khẩu hiện tại" error={passwordForm.formState.errors.currentPassword?.message}>
+                  <Field label="Current password" error={passwordForm.formState.errors.currentPassword?.message}>
                     <input type="password" {...passwordForm.register("currentPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
-                  <Field label="Mật khẩu mới" error={passwordForm.formState.errors.newPassword?.message}>
+                  <Field label="New password" error={passwordForm.formState.errors.newPassword?.message}>
                     <input type="password" {...passwordForm.register("newPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
-                  <Field label="Xác nhận mật khẩu" error={passwordForm.formState.errors.confirmPassword?.message}>
+                  <Field label="Confirm password" error={passwordForm.formState.errors.confirmPassword?.message}>
                     <input type="password" {...passwordForm.register("confirmPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
                   <div className="pt-2">
-                    <Button size="sm" loading={changePassword.isPending} type="submit">Cập nhật mật khẩu</Button>
+                    <Button size="sm" loading={changePassword.isPending} type="submit">Update password</Button>
                   </div>
                 </form>
               </div>
@@ -449,11 +449,11 @@ export default function SettingsPage() {
                   <ShieldAlert size={18} /> Danger zone
                 </h3>
                 <Card className="border-error-500/30 bg-error-50/50 dark:bg-error-500/5 p-5">
-                  <h4 className="font-medium text-text-primary">Xóa tài khoản</h4>
+                  <h4 className="font-medium text-text-primary">Delete account</h4>
                   <p className="mt-1 mb-4 text-sm text-text-secondary leading-relaxed">
-                    Xóa tài khoản sẽ gỡ vĩnh viễn toàn bộ workspaces, experiments, dataset versions và dữ liệu lưu trữ liên quan đến tài khoản này. Không thể hoàn tác.
+                    Deleting your account will permanently remove all workspaces, experiments, dataset versions, and stored data related to this account. This cannot be undone.
                   </p>
-                  <Button variant="danger" size="sm" onClick={() => setDeleteModalOpen(true)}>Xóa tài khoản vĩnh viễn</Button>
+                  <Button variant="danger" size="sm" onClick={() => setDeleteModalOpen(true)}>Delete account permanently</Button>
                 </Card>
               </div>
             </div>
@@ -465,15 +465,15 @@ export default function SettingsPage() {
         open={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
         size="sm"
-        title={<span className="inline-flex items-center gap-2"><ShieldAlert size={18} className="text-error-500" /> Xác nhận xóa tài khoản</span>}
+        title={<span className="inline-flex items-center gap-2"><ShieldAlert size={18} className="text-error-500" /> Confirm account deletion</span>}
         footer={
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setDeleteModalOpen(false)}>Hủy</Button>
-            <Button size="sm" variant="danger">Xóa vĩnh viễn</Button>
+            <Button size="sm" variant="ghost" onClick={() => setDeleteModalOpen(false)}>Cancel</Button>
+            <Button size="sm" variant="danger">Delete permanently</Button>
           </div>
         }
       >
-        <p className="text-sm text-text-secondary">Hành động này không thể hoàn tác. Tất cả dữ liệu của bạn sẽ bị xóa ngay lập tức.</p>
+        <p className="text-sm text-text-secondary">This action cannot be undone. All of your data will be deleted immediately.</p>
       </Modal>
 
       {toastMsg ? (

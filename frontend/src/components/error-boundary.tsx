@@ -26,15 +26,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="flex min-h-[50vh] items-center justify-center p-6">
           <div className="w-full max-w-md rounded-lg border border-border bg-bg-elevated p-6 text-center">
-            <h2 className="text-lg font-semibold">Đã xảy ra lỗi giao diện</h2>
+            <h2 className="text-lg font-semibold">A UI error occurred</h2>
             <p className="mt-2 text-sm text-text-secondary">
-              Hệ thống vừa gặp sự cố không mong muốn. Bạn có thể tải lại để tiếp tục.
+              The system encountered an unexpected issue. You can reload to continue.
             </p>
             <button
               className="mt-4 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
               onClick={() => window.location.reload()}
             >
-              Tải lại trang
+              Reload page
             </button>
           </div>
         </div>

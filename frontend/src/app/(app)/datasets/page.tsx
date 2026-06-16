@@ -107,7 +107,7 @@ export default function DatasetsPage() {
       {
         onSuccess: () => {
           setMountedMap((prev) => ({ ...prev, [dataset.id]: workspaceId }));
-          toast.success(`✅ ${dataset.name} đã được gắn vào ${workspaceId}`);
+          toast.success(`✅ ${dataset.name} was mounted to ${workspaceId}`);
         }
       }
     );
@@ -120,7 +120,7 @@ export default function DatasetsPage() {
       return lower.endsWith(".csv") || lower.endsWith(".json") || lower.endsWith(".parquet") || lower.endsWith(".zip");
     });
     if (accepted.length === 0) {
-      toast.warning("File không hợp lệ", { description: "Hỗ trợ: .csv, .json, .parquet, .zip" });
+      toast.warning("Invalid file", { description: "Supported: .csv, .json, .parquet, .zip" });
       return;
     }
     setPendingUploadFiles(accepted);
@@ -149,7 +149,7 @@ export default function DatasetsPage() {
         await uploadDataset(file, metadata);
         successCount += 1;
       } catch {
-        toast.error(`Upload thất bại: ${file.name}`);
+        toast.error(`Upload failed: ${file.name}`);
       }
     }
 
@@ -157,7 +157,7 @@ export default function DatasetsPage() {
     setUploadModalOpen(false);
     setPendingUploadFiles([]);
     if (successCount > 0) {
-      toast.success(`Đã upload ${successCount}/${pendingUploadFiles.length} dataset`);
+      toast.success(`Uploaded ${successCount}/${pendingUploadFiles.length} dataset`);
       await queryClient.invalidateQueries({ queryKey: ["datasets"] });
       router.refresh();
     }
@@ -181,9 +181,9 @@ export default function DatasetsPage() {
         tags: Array.isArray(parsed.tags) ? parsed.tags.map((t) => String(t)).join(", ") : prev.tags
       }));
       setMetadataFileName(file.name);
-      toast.success("Đã import metadata JSON");
+      toast.success("Imported metadata JSON");
     } catch {
-      toast.error("Metadata JSON không hợp lệ");
+      toast.error("Invalid metadata JSON");
     }
   };
 
@@ -195,7 +195,7 @@ export default function DatasetsPage() {
             <h1 className="text-2xl font-semibold">Datasets</h1>
             <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{total} datasets</span>
           </div>
-          <p className="mt-1 text-sm text-text-secondary">Duyệt và chọn datasets để dùng trong workspace của bạn</p>
+          <p className="mt-1 text-sm text-text-secondary">Browse and select datasets to use in your workspace</p>
         </div>
         <input
           ref={uploadInputRef}
@@ -216,13 +216,13 @@ export default function DatasetsPage() {
         <FilterPanel filters={filters} searchValue={searchText} activeFilterCount={activeCount} onSearchChange={setSearchText} onChange={setFilters} onReset={resetFilters} />
         <section className="min-w-0 flex-1 space-y-3 rounded-lg border border-border bg-bg-surface p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-text-secondary">{activeCount > 0 ? `Hiển thị ${datasets.length} / ${total} datasets` : `Hiển thị ${total} kết quả`}</p>
+            <p className="text-sm text-text-secondary">{activeCount > 0 ? `Showing ${datasets.length} / ${total} datasets` : `Showing ${total} results`}</p>
             <div className="flex items-center gap-2">
               <select value={filters.sort} onChange={(e) => setFilters({ sort: e.target.value as DatasetFilters["sort"] })} className="h-9 rounded-md border border-border px-3 text-sm">
-                <option value="newest">Mới nhất</option>
-                <option value="oldest">Cũ nhất</option>
-                <option value="name">Tên A-Z</option>
-                <option value="size">Lớn nhất</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="name">Name A-Z</option>
+                <option value="size">Largest</option>
               </select>
               <div className="flex rounded-md border border-border p-1">
                 <button onClick={() => setFilters({ view: "grid" })} className={filters.view === "grid" ? "rounded bg-[#ECFDF5] p-1 text-emerald-700" : "rounded p-1 text-text-secondary"}><Grid2X2 size={15} /></button>
@@ -234,9 +234,9 @@ export default function DatasetsPage() {
           {!isLoading && datasets.length === 0 ? (
             <div className="flex min-h-72 flex-col items-center justify-center text-center">
               <SearchX className="mb-3 text-text-tertiary" />
-              <p className="text-base font-medium">Không tìm thấy dataset phù hợp</p>
-              <p className="text-sm text-text-secondary">Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm</p>
-              <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={resetFilters}>Xóa tất cả bộ lọc</button>
+              <p className="text-base font-medium">No matching datasets found</p>
+              <p className="text-sm text-text-secondary">Try changing filters or search keywords</p>
+              <button className="mt-2 text-sm text-brand-600 hover:underline" onClick={resetFilters}>Clear all filters</button>
             </div>
           ) : null}
           {!isLoading && datasets.length > 0 && filters.view === "grid" ? (
@@ -299,10 +299,10 @@ export default function DatasetsPage() {
               disabled={uploading}
               className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-[13px] font-medium text-[#475569] transition-colors hover:bg-[#F1F5F9] disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Hủy
+              Cancel
             </button>
             <Button className="bg-emerald-600 px-5 py-2 text-[13px] font-medium text-white hover:bg-emerald-500" onClick={() => void submitDatasetUpload()} disabled={uploading}>
-              {uploading ? "Đang upload..." : "Upload"}
+              {uploading ? "Uploading..." : "Upload"}
             </Button>
           </div>
         }
@@ -321,7 +321,7 @@ export default function DatasetsPage() {
           <div className="flex items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
             <div className="min-w-0 text-[12px] text-[#64748B]">
               <p className="font-medium text-[#334155]">Metadata JSON</p>
-              <p className="truncate">{metadataFileName || "Chưa chọn file metadata"}</p>
+              <p className="truncate">{metadataFileName || "No metadata file selected"}</p>
             </div>
             <button
               type="button"
@@ -331,12 +331,12 @@ export default function DatasetsPage() {
               Import .json
             </button>
           </div>
-          {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Tên dataset sẽ lấy theo từng tên file khi upload nhiều file.</p> : null}
-          <Field label="Tên dataset" hint="(tùy chọn)">
+          {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Dataset names will be inferred from each file name when uploading multiple files.</p> : null}
+          <Field label="Dataset name" hint="(optional)">
             <input className={inputCls()} value={uploadMeta.name} onChange={(e) => setUploadMeta((p) => ({ ...p, name: e.target.value }))} placeholder="vd: Customer Churn 2026" />
           </Field>
-          <Field label="Version" hint="(tùy chọn)">
-            <input className={inputCls()} value={uploadMeta.version} onChange={(e) => setUploadMeta((p) => ({ ...p, version: e.target.value }))} placeholder="v2 hoặc v2.0" />
+          <Field label="Version" hint="(optional)">
+            <input className={inputCls()} value={uploadMeta.version} onChange={(e) => setUploadMeta((p) => ({ ...p, version: e.target.value }))} placeholder="v2 or v2.0" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Type" required>
@@ -360,14 +360,14 @@ export default function DatasetsPage() {
             <Field label="Item Count">
               <input className={inputCls()} type="number" min="0" value={uploadMeta.item_count} onChange={(e) => setUploadMeta((p) => ({ ...p, item_count: e.target.value }))} />
             </Field>
-            <Field label="Class Count" hint="(tùy chọn)">
+            <Field label="Class Count" hint="(optional)">
               <input className={inputCls()} type="number" min="0" value={uploadMeta.class_count} onChange={(e) => setUploadMeta((p) => ({ ...p, class_count: e.target.value }))} />
             </Field>
           </div>
-          <Field label="Tags" hint="(phân cách bằng dấu phẩy)">
+          <Field label="Tags" hint="(comma-separated)">
             <input className={inputCls()} value={uploadMeta.tags} onChange={(e) => setUploadMeta((p) => ({ ...p, tags: e.target.value }))} placeholder="tabular, churn, prod..." />
           </Field>
-          <Field label="Mô tả" hint="(tùy chọn)">
+          <Field label="Description" hint="(optional)">
             <textarea rows={3} className={cn(inputCls(), "resize-none")} value={uploadMeta.description} onChange={(e) => setUploadMeta((p) => ({ ...p, description: e.target.value }))} />
           </Field>
         </div>

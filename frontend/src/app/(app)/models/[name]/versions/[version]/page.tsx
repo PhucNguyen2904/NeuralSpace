@@ -46,7 +46,7 @@ export default function ModelVersionDetailPage() {
           status={current.approvalStatus}
           reviewer={current.approvalReviewer}
           reason={current.approvalReason}
-          approvedAgo={current.approvalStatus === "APPROVED" ? "2h trước" : undefined}
+          approvedAgo={current.approvalStatus === "APPROVED" ? "2h ago" : undefined}
           remaining={current.approvalStatus === "PENDING" ? "23h" : undefined}
         />
       ) : null}
@@ -87,7 +87,7 @@ export default function ModelVersionDetailPage() {
         </div>
       ) : null}
 
-      {tab === "lineage" ? <Placeholder text="Lineage graph preview (UI-05) embedded tại đây." /> : null}
+      {tab === "lineage" ? <Placeholder text="Lineage graph preview (UI-05) embedded here." /> : null}
       {tab === "audit" ? (
         <div className="rounded-md border border-border bg-bg-surface p-4">
           <div className="space-y-2 text-sm">

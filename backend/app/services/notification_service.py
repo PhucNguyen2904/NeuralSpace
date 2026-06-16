@@ -64,7 +64,7 @@ class NotificationService:
             "workspace_id": workspace_id,
             "minutes_left": minutes_left,
             "message": (
-                f"Workspace sẽ bị đóng sau {minutes_left} phút do không hoạt động"
+                f"Workspace will close after {minutes_left} minutes due to inactivity"
             ),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -95,7 +95,7 @@ class NotificationService:
         payload = {
             "type": "WORKSPACE_KILLED",
             "workspace_id": workspace_id,
-            "message": "Workspace đã bị đóng do không hoạt động",
+            "message": "Workspace was closed due to inactivity",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         channel = _channel(workspace_id)
@@ -127,7 +127,7 @@ class NotificationService:
             "type": "WORKSPACE_STARTED",
             "workspace_id": workspace_id,
             "access_url": access_url,
-            "message": "Workspace đã sẵn sàng",
+            "message": "Workspace is ready",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         channel = _channel(workspace_id)

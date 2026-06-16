@@ -316,21 +316,15 @@ function ConnectionStep({
   number,
   title,
   description,
-  complete,
 }: {
   number: number;
   title: string;
   description: string;
-  complete?: boolean;
 }) {
   return (
     <div className="flex gap-3">
-      <div
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-          complete ? "bg-success-500 text-white" : "border border-brand-200 bg-bg-surface text-brand-600"
-        }`}
-      >
-        {complete ? <CheckCircle2 size={15} /> : number}
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-brand-200 bg-bg-surface text-xs font-semibold text-brand-600">
+        {number}
       </div>
       <div>
         <p className="text-sm font-medium text-text-primary">{title}</p>
@@ -493,7 +487,7 @@ export default function WorkspaceDetailPage({ params }: { params: { id: string }
             href="/workspaces"
             className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-text-primary"
           >
-            <ChevronLeft size={15} /> Quay lại Projects
+            <ChevronLeft size={15} /> Back to Projects
           </Link>
           <h1 className="mt-2 text-xl font-semibold text-text-primary">{workspace.name}</h1>
           <p className="text-xs text-text-tertiary">{workspace.id} · Google Colab external runtime</p>
@@ -528,19 +522,16 @@ export default function WorkspaceDetailPage({ params }: { params: { id: string }
                 number={1}
                 title="Generate code"
                 description="Create a short-lived claim for this project."
-                complete={claimIsActive || sessionIsConnected}
               />
               <ConnectionStep
                 number={2}
                 title="Open notebook"
                 description="Launch the preconfigured NeuralSpace notebook."
-                complete={sessionIsConnected}
               />
               <ConnectionStep
                 number={3}
                 title="Run and monitor"
                 description="Metrics and logs appear below automatically."
-                complete={sessionIsConnected}
               />
             </div>
           </div>

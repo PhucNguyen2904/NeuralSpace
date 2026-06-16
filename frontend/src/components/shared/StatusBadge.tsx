@@ -10,32 +10,32 @@ const mapping: Record<
   }
 > = {
   READY: {
-    label: "Sẵn sàng",
+    label: "Ready",
     className: "bg-success-50 text-success-500",
     pulse: false
   },
   PROVISIONING: {
-    label: "Đang khởi động",
+    label: "Provisioning",
     className: "bg-warning-50 text-warning-500",
     pulse: true
   },
   RUNNING: {
-    label: "Đang chạy",
+    label: "Running",
     className: "bg-success-50 text-success-500",
     pulse: true
   },
   STOPPING: {
-    label: "Đang dừng",
+    label: "Stopping",
     className: "bg-warning-50 text-warning-500",
     pulse: true
   },
   STOPPED: {
-    label: "Đã dừng",
+    label: "Stopped",
     className: "bg-bg-elevated text-text-secondary",
     pulse: false
   },
   ERROR: {
-    label: "Lỗi",
+    label: "Error",
     className: "bg-error-50 text-error-500",
     pulse: false
   }

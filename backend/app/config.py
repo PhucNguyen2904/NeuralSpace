@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     PUBLIC_API_BASE_URL: str = "http://localhost:8000/api/v1"
     COLAB_TEMPLATE_ORGANIZATION: str = "neuralspace-ai"
     COLAB_TEMPLATE_REPOSITORY: str = "colab-templates"
-    COLAB_TEMPLATE_REF: str = "main"
+    COLAB_TEMPLATE_REF: str = "f1523cfbecb0807e3da9850f98bb800ddbe4ce14"
     COLAB_TEMPLATE_NOTEBOOK_PATH: str = "notebooks/bootstrap.ipynb"
     COLAB_CLAIM_EXPIRE_SECONDS: int = 120
     COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: int = 480

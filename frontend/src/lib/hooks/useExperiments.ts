@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteRun, getExperiments, getRunById, getRuns } from "@/lib/api/mlflow";
+import { deleteExperiment, deleteRun, getExperiments, getRunById, getRuns } from "@/lib/api/mlflow";
 import type { Experiment, Run, RunStatus } from "@/types/mlflow";
 
 export interface ExperimentSummary extends Experiment {
@@ -130,6 +130,7 @@ function formatDuration(durationMs?: number): string | undefined {
 export function useExperimentList() {
   return useQuery({
     queryKey: ["experiments-list"],
+    staleTime: 2 * 60_000,
     queryFn: async () => {
       try {
         const response = await getExperiments({ limit: 50 });
@@ -145,6 +146,8 @@ export function useRunList(experimentId: string, filters: RunFilters) {
   return useQuery({
     queryKey: ["runs-list", experimentId, filters],
     enabled: Boolean(experimentId),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       let runs: RunDetailData[] = [];
       try {
@@ -243,6 +246,25 @@ export function useDeleteRun() {
         queryClient.invalidateQueries({ queryKey: ["runs-list"] }),
         queryClient.invalidateQueries({ queryKey: ["experiments-list"] }),
         queryClient.invalidateQueries({ queryKey: ["run-detail", runId] }),
+        queryClient.invalidateQueries({ queryKey: ["lineage-graph"] }),
+        queryClient.invalidateQueries({ queryKey: ["lineage-impact-analysis"] }),
+        queryClient.invalidateQueries({ queryKey: ["registry-model-versions"] }),
+        queryClient.invalidateQueries({ queryKey: ["models"] })
+      ]);
+    }
+  });
+}
+
+export function useDeleteExperiment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (experimentId: string) => deleteExperiment(experimentId),
+    onSuccess: async (_data, experimentId) => {
+      queryClient.removeQueries({ queryKey: ["runs-list", experimentId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["experiments-list"] }),
+        queryClient.invalidateQueries({ queryKey: ["runs-list"] }),
         queryClient.invalidateQueries({ queryKey: ["lineage-graph"] }),
         queryClient.invalidateQueries({ queryKey: ["lineage-impact-analysis"] }),
         queryClient.invalidateQueries({ queryKey: ["registry-model-versions"] }),

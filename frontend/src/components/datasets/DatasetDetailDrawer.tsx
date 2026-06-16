@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Download, GitBranch, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Download, GitBranch, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Button, Modal } from "@/components/ui";
@@ -67,7 +67,7 @@ export function DatasetDetailDrawer({
   const submitMetadata = async () => {
     const classCount = metadataForm.classCount.trim() ? Number(metadataForm.classCount) : null;
     if (classCount !== null && (!Number.isInteger(classCount) || classCount < 0)) {
-      toast.warning("Class count phải là số nguyên không âm");
+      toast.warning("Class count must be a non-negative integer");
       return;
     }
     try {
@@ -81,22 +81,22 @@ export function DatasetDetailDrawer({
           tags: metadataForm.tags.split(",").map((tag) => tag.trim()).filter(Boolean)
         }
       });
-      toast.success("Đã cập nhật metadata dataset");
+      toast.success("Dataset metadata updated");
       setMetadataModalOpen(false);
     } catch {
-      toast.error("Cập nhật metadata dataset thất bại");
+      toast.error("Failed to update dataset metadata");
     }
   };
 
   const confirmDelete = async () => {
     try {
       await deleteDataset.mutateAsync(dataset.id);
-      toast.success("Đã xóa dataset");
+      toast.success("Dataset deleted");
       setDeleteModalOpen(false);
       setDeleteConfirmed(false);
       onClose();
     } catch {
-      toast.error("Xóa dataset thất bại");
+      toast.error("Failed to delete dataset");
     }
   };
 
@@ -143,13 +143,13 @@ export function DatasetDetailDrawer({
           {tab === "overview" ? (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-sm">
-                <Info label="Phiên bản" value={dataset.version || "v1.0"} />
-                <Info label="Loại" value={dataset.type} />
-                <Info label="Kích thước" value={formatSize(dataset.size_bytes)} />
-                <Info label="Số items" value={`${dataset.item_count.toLocaleString()} items`} />
+                <Info label="Version" value={dataset.version || "v1.0"} />
+                <Info label="Type" value={dataset.type} />
+                <Info label="Size" value={formatSize(dataset.size_bytes)} />
+                <Info label="Item count" value={`${dataset.item_count.toLocaleString()} items`} />
                 <Info label="Classes" value={dataset.class_count ? `${dataset.class_count} categories` : "-"} />
-                <Info label="Tạo bởi" value={dataset.created_by} />
-                <Info label="Cập nhật" value={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })} />
+                <Info label="Created by" value={dataset.created_by} />
+                <Info label="Updated" value={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })} />
               </div>
               <p className="text-sm text-text-secondary">{dataset.description}</p>
             </div>
@@ -179,8 +179,8 @@ export function DatasetDetailDrawer({
           ) : null}
           {tab === "history" ? (
             <div className="space-y-2 text-sm text-text-secondary">
-              <p>ResNet Training - 3 ngày trước - 2h 15m</p>
-              <p>EDA Session - 1 tuần trước - 45m</p>
+              <p>ResNet Training - 3 days ago - 2h 15m</p>
+              <p>EDA Session - 1 week ago - 45m</p>
             </div>
           ) : null}
         </div>
@@ -194,9 +194,9 @@ export function DatasetDetailDrawer({
         closeOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setMetadataModalOpen(false)} disabled={updateDataset.isPending}>Hủy</Button>
+            <Button variant="outline" onClick={() => setMetadataModalOpen(false)} disabled={updateDataset.isPending}>Cancel</Button>
             <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submitMetadata()} disabled={updateDataset.isPending}>
-              {updateDataset.isPending ? "Đang lưu..." : "Lưu metadata"}
+              {updateDataset.isPending ? "Saving..." : "Save metadata"}
             </Button>
           </div>
         }
@@ -262,24 +262,39 @@ export function DatasetDetailDrawer({
       <Modal
         open={deleteModalOpen}
         onClose={() => !deleteDataset.isPending && setDeleteModalOpen(false)}
-        title="Xóa dataset?"
+        title={
+          <div className="flex items-center gap-2 text-error-600">
+            <AlertTriangle size={18} />
+            <span>Delete dataset permanently?</span>
+          </div>
+        }
         size="sm"
         showCloseButton
         closeOnBackdrop={false}
         footer={
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeleteModalOpen(false)} disabled={deleteDataset.isPending}>Hủy</Button>
+            <Button variant="outline" onClick={() => setDeleteModalOpen(false)} disabled={deleteDataset.isPending}>Cancel</Button>
             <Button variant="danger" onClick={() => void confirmDelete()} disabled={!deleteConfirmed || deleteDataset.isPending}>
-              {deleteDataset.isPending ? "Đang xóa..." : "Xóa vĩnh viễn"}
+              {deleteDataset.isPending ? "Deleting..." : "Delete permanently"}
             </Button>
           </div>
         }
       >
-        <p className="text-sm text-text-secondary">Metadata và object lưu trên MinIO của dataset này sẽ bị xóa.</p>
-        <label className="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary">
-          <input type="checkbox" className="h-4 w-4 rounded border-border" checked={deleteConfirmed} onChange={(event) => setDeleteConfirmed(event.target.checked)} />
-          Tôi hiểu và muốn xóa
-        </label>
+        <div className="space-y-4">
+          <div className="rounded-md border border-error-200 bg-error-50 p-3 text-sm text-error-800">
+            <p className="font-semibold">Warning: This action cannot be undone.</p>
+            <p className="mt-1">All data, history, and versions for dataset <strong className="font-semibold">{dataset.name}</strong> will be permanently deleted from the system.</p>
+          </div>
+          <label className="inline-flex cursor-pointer items-start gap-2.5 text-sm text-text-secondary transition-colors hover:text-text-primary">
+            <input 
+              type="checkbox" 
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border text-error-600 transition-colors focus:ring-error-500" 
+              checked={deleteConfirmed} 
+              onChange={(event) => setDeleteConfirmed(event.target.checked)} 
+            />
+            <span className="leading-tight">I understand this data will be lost and cannot be restored, and I confirm deletion.</span>
+          </label>
+        </div>
       </Modal>
     </div>
   );

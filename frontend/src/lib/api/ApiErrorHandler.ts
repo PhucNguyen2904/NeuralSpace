@@ -11,13 +11,13 @@ let attached = false;
 const toFriendlyMessage = (error: AxiosError<ApiErrorShape>) => {
   const status = error.response?.status;
   const payload = error.response?.data;
-  if (status === 400) return "Dữ liệu không hợp lệ. Kiểm tra lại form.";
-  if (status === 403) return "Bạn không có quyền thực hiện hành động này.";
-  if (status === 404) return "Không tìm thấy tài nguyên.";
-  if (status === 409) return "Thao tác không hợp lệ với trạng thái hiện tại.";
-  if (status === 429) return `Quá nhiều yêu cầu. Thử lại sau ${payload?.retry_after ?? 30} giây.`;
-  if (status && status >= 500) return "Lỗi server. Đội ngũ kỹ thuật đã được thông báo.";
-  return payload?.detail ?? "Đã có lỗi xảy ra. Vui lòng thử lại.";
+  if (status === 400) return "Invalid data. Please check the form.";
+  if (status === 403) return "You do not have permission to perform this action.";
+  if (status === 404) return "Resource not found.";
+  if (status === 409) return "This action is not valid for the current state.";
+  if (status === 429) return `Too many requests. Try again after ${payload?.retry_after ?? 30} seconds.`;
+  if (status && status >= 500) return "Server error. The engineering team has been notified.";
+  return payload?.detail ?? "Something went wrong. Please try again.";
 };
 
 export function setupApiErrorHandler() {

@@ -13,19 +13,19 @@ import { useRedirectIfAuthed } from "@/lib/hooks/useAuth";
 
 const schema = z
   .object({
-    name: z.string().min(2, "Vui lòng nhập họ tên"),
-    email: z.string().email("Email không hợp lệ"),
-    password: z.string().min(8, "Mật khẩu cần ít nhất 8 ký tự"),
+    name: z.string().min(2, "Please enter your full name"),
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
     acceptedTerms: z.boolean()
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ["confirmPassword"],
-    message: "Mật khẩu xác nhận không khớp"
+    message: "Password confirmation does not match"
   })
   .refine((data) => data.acceptedTerms, {
     path: ["acceptedTerms"],
-    message: "Bạn cần đồng ý Terms of Service"
+    message: "You must agree to the Terms of Service"
   });
 
 type FormValues = {
@@ -82,11 +82,11 @@ export default function RegisterPage() {
       }
 
       setSuccess(true);
-      setToast({ type: "success", message: "Đăng ký thành công. Mời bạn đăng nhập." });
+      setToast({ type: "success", message: "Registration successful. Please sign in." });
       setTimeout(() => router.push("/login"), 900);
     } catch {
       setSuccess(false);
-      setToast({ type: "error", message: "Đăng ký thất bại. Vui lòng thử lại." });
+      setToast({ type: "error", message: "Registration failed. Please try again." });
     }
   };
 
@@ -99,7 +99,7 @@ export default function RegisterPage() {
       ) : null}
 
       <form className="space-y-4 rounded-xl border border-border bg-bg-surface p-6 shadow-sm" onSubmit={handleSubmit(onSubmit)}>
-        <h1 className="text-2xl font-semibold">Tạo tài khoản</h1>
+        <h1 className="text-2xl font-semibold">Create account</h1>
 
         <Input label="Full name" autoComplete="name" error={errors.name?.message} {...register("name")} />
         <Input label="Email" type="email" autoComplete="email" error={errors.email?.message} {...register("email")} />
@@ -135,7 +135,7 @@ export default function RegisterPage() {
 
         <label className="inline-flex items-center gap-2 text-sm text-text-secondary">
           <input type="checkbox" className="h-4 w-4 rounded border-border" {...register("acceptedTerms")} />
-          Tôi đồng ý với Terms of Service
+          I agree to the Terms of Service
         </label>
         {errors.acceptedTerms?.message ? <p className="-mt-2 text-xs text-error-500">{errors.acceptedTerms.message}</p> : null}
 
@@ -145,7 +145,7 @@ export default function RegisterPage() {
       </form>
 
       <p className="mt-4 text-center text-sm text-text-secondary">
-        Đã có tài khoản? <Link href="/login" className="text-brand-600 hover:underline">Đăng nhập</Link>
+        Already have an account? <Link href="/login" className="text-brand-600 hover:underline">Sign in</Link>
       </p>
     </div>
   );

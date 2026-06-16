@@ -36,7 +36,7 @@ export function VersionDetail({ version, versions, diffState, onRecheckIntegrity
           <VersionTag version={version.version} isLatest={version.is_latest} status={version.status} />
         </div>
         <p className="text-sm text-text-secondary">
-          Tạo bởi {version.created_by} · {formatRelativeTime(version.created_at)} · {version.dvc_md5}
+          Created by {version.created_by} · {formatRelativeTime(version.created_at)} · {version.dvc_md5}
         </p>
       </header>
 

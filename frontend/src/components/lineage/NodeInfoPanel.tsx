@@ -1,13 +1,14 @@
 "use client";
 
 import type { Node } from "@xyflow/react";
+import { formatVersionLabel } from "@/lib/lineage/transform";
 import type { DatasetNodeData, LineageNodeData, ModelNodeData, RunNodeData } from "@/lib/lineage/transform";
 
 export function NodeInfoPanel({ node }: { node: Node<LineageNodeData> | null }) {
   if (!node) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-bg-surface p-3 text-sm text-slate-500">
-        Chọn một node để xem chi tiết.
+        Select a node to view details.
       </div>
     );
   }
@@ -44,7 +45,7 @@ export function NodeInfoPanel({ node }: { node: Node<LineageNodeData> | null }) 
       <p className="text-xs font-semibold uppercase tracking-wider text-indigo-700">Model</p>
       <p className="font-medium text-slate-900">{data.name}</p>
       <p className="text-slate-600">
-        v{data.version} • {data.stage}
+        {formatVersionLabel(data.version)} • {data.stage}
       </p>
       {typeof data.accuracy === "number" ? <p className="text-slate-600">Accuracy: {data.accuracy.toFixed(3)}</p> : null}
     </div>

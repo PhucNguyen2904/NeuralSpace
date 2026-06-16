@@ -176,7 +176,7 @@ textarea:-webkit-autofill:focus {
   padding-left: 4px !important;
 }
 
-/* Scrollbar mỏng cho modal body */
+/* Thin scrollbar for modal body */
 .scrollbar-thin {
   scrollbar-width: thin;
 }

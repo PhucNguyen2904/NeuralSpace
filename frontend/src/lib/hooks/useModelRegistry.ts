@@ -60,19 +60,19 @@ const MOCK_VERSIONS: RegistryModelVersion[] = [
     datasetName: "COCO 2017 Detection",
     datasetVersion: "v1.3",
     datasetHash: "abc1234",
-    promotedAgo: "2 ngày trước",
+    promotedAgo: "2 days ago",
     promotedBy: "alice",
     size: "245 MB",
     frameworkVersion: "PyTorch 2.3.0",
     gitCommit: "abc1234",
     runId: "run_2024_01_15",
-    registeredAt: "3 ngày trước",
+    registeredAt: "3 days ago",
     approvalStatus: "APPROVED",
     approvalReviewer: "reviewer",
     auditTrail: [
       { at: "2024-01-15 14:32", actor: "alice", action: "Registered v1.3" },
       { at: "2024-01-16 09:00", actor: "alice", action: "Requested promote -> Production" },
-      { at: "2024-01-16 10:23", actor: "reviewer", action: "Approved: Metrics đạt threshold" },
+      { at: "2024-01-16 10:23", actor: "reviewer", action: "Approved: Metrics met the threshold" },
       { at: "2024-01-16 10:23", actor: "system", action: "Promoted -> Production" }
     ]
   },
@@ -87,13 +87,13 @@ const MOCK_VERSIONS: RegistryModelVersion[] = [
     datasetName: "COCO 2017 Detection",
     datasetVersion: "v1.2",
     datasetHash: "def5678",
-    promotedAgo: "1 tuần trước",
+    promotedAgo: "1 week ago",
     promotedBy: "alice",
     size: "242 MB",
     frameworkVersion: "PyTorch 2.3.0",
     gitCommit: "def5678",
     runId: "run_2024_01_14",
-    registeredAt: "1 tuần trước",
+    registeredAt: "1 week ago",
     auditTrail: []
   },
   {
@@ -107,13 +107,13 @@ const MOCK_VERSIONS: RegistryModelVersion[] = [
     datasetName: "COCO 2017 Detection",
     datasetVersion: "v1.1",
     datasetHash: "ghi9012",
-    promotedAgo: "1 tháng trước",
+    promotedAgo: "1 month ago",
     promotedBy: "alice",
     size: "239 MB",
     frameworkVersion: "PyTorch 2.2.1",
     gitCommit: "ghi9012",
     runId: "run_2024_01_12",
-    registeredAt: "1 tháng trước",
+    registeredAt: "1 month ago",
     auditTrail: []
   }
 ];
@@ -126,7 +126,7 @@ const MOCK_APPROVALS: ApprovalRequest[] = [
     targetStage: "Production",
     requestedBy: "alice",
     requestedAgo: "2h ago",
-    reason: "Model đã pass evaluation với COCO test set",
+    reason: "Model passed evaluation on the COCO test set",
     metrics: { accuracyNew: 0.924, accuracyCurrent: 0.903, lossNew: 0.12, lossCurrent: 0.15 },
     dataset: { name: "COCO 2017", version: "v1.3", status: "validated" }
   }
@@ -154,7 +154,7 @@ export function useModelVersions(modelName: string) {
             datasetName: tags.dataset_name ?? "Demo Dataset",
             datasetVersion: tags.dataset_version ?? "v1.0",
             datasetHash: tags.dataset_hash ?? "demo",
-            promotedAgo: item.stage === "Production" ? "1 ngày trước" : undefined,
+            promotedAgo: item.stage === "Production" ? "1 day ago" : undefined,
             promotedBy: item.stage === "Production" ? "demo" : undefined,
             size: "245 MB",
             frameworkVersion: tags.framework_version ?? "unknown",
@@ -232,8 +232,8 @@ export function useRealtimePreflight(targetStage: "Staging" | "Production", metr
     return [
       { key: "ready", label: "Model status: READY", state: tick > 0 ? "pass" : "running" },
       { key: "tags", label: "Required tags: dvc.md5, git.commit", state: tick > 1 ? "pass" : "running" },
-      { key: "metrics", label: "Evaluation metrics đạt threshold", detail: `accuracy ${metrics.accuracy} >= 0.90, loss ${metrics.loss} <= 0.15`, state: tick > 2 ? (accuracyPass && lossPass ? "pass" : "fail") : "running" },
-      { key: "approval", label: targetStage === "Production" ? "Chưa có approval request -> sẽ tạo mới" : "Staging auto-approved", state: targetStage === "Production" ? "warn" : "pass" }
+      { key: "metrics", label: "Evaluation metrics meet the threshold", detail: `accuracy ${metrics.accuracy} >= 0.90, loss ${metrics.loss} <= 0.15`, state: tick > 2 ? (accuracyPass && lossPass ? "pass" : "fail") : "running" },
+      { key: "approval", label: targetStage === "Production" ? "No approval request exists -> one will be created" : "Staging auto-approved", state: targetStage === "Production" ? "warn" : "pass" }
     ];
   }, [metrics.accuracy, metrics.loss, targetStage, tick]);
 

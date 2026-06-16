@@ -138,7 +138,7 @@ export function LineageToolbar({
 
       {/* Version dropdown — disabled when no model is chosen */}
       <div
-        title={versionDisabled ? "Chọn một model để lọc theo version" : undefined}
+        title={versionDisabled ? "Select a model to filter by version" : undefined}
         className="relative"
       >
         <select

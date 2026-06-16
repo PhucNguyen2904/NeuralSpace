@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils/cn";
 import {
   Box,
@@ -17,27 +18,31 @@ import {
   Terminal
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { listWorkspaces } from "@/lib/api/workspaces";
+import { getDatasets } from "@/lib/api/datasets";
+import { getModels } from "@/lib/api/models";
+import { getExperiments } from "@/lib/api/mlflow";
 
 const sections = [
   {
     label: "WORKSPACE",
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/workspaces", label: "Colab Projects", icon: Terminal }
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, prefetchKey: null },
+      { href: "/workspaces", label: "Colab Projects", icon: Terminal, prefetchKey: "workspaces" }
     ]
   },
   {
     label: "RESOURCES",
     items: [
-      { href: "/datasets", label: "Datasets", icon: Database },
-      { href: "/models", label: "Models", icon: Box },
-      { href: "/experiments", label: "Experiments", icon: FlaskConical },
-      { href: "/lineage", label: "Lineage", icon: GitBranch }
+      { href: "/datasets", label: "Datasets", icon: Database, prefetchKey: "datasets" },
+      { href: "/models", label: "Models", icon: Box, prefetchKey: "models" },
+      { href: "/experiments", label: "Experiments", icon: FlaskConical, prefetchKey: "experiments" },
+      { href: "/lineage", label: "Lineage", icon: GitBranch, prefetchKey: null }
     ]
   },
   {
     label: "ACCOUNT",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }]
+    items: [{ href: "/settings", label: "Settings", icon: Settings, prefetchKey: null }]
   }
 ];
 
@@ -52,6 +57,7 @@ function NeuralIcon() {
 
 export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const [isLight, setIsLight] = useState(false);
   const [mounted, setMounted] = useState(false);
   const isRouteActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -78,6 +84,40 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
     document.documentElement.classList.toggle("light", nextTheme === "light");
     document.documentElement.classList.toggle("theme-dark", nextTheme === "dark");
     setIsLight(nextTheme === "light");
+  };
+
+  /** Prefetch data when the user hovers sidebar links */
+  const handlePrefetch = (prefetchKey: string | null) => {
+    if (!prefetchKey) return;
+    const STALE = 2 * 60_000;
+    if (prefetchKey === "workspaces") {
+      queryClient.prefetchQuery({ queryKey: ["workspaces"], queryFn: listWorkspaces, staleTime: STALE });
+    } else if (prefetchKey === "datasets") {
+      queryClient.prefetchQuery({
+        queryKey: ["datasets", { limit: 24, page: 1, sort: "newest" }],
+        queryFn: () => getDatasets({ limit: 24, page: 1, sort: "newest" }),
+        staleTime: STALE
+      });
+    } else if (prefetchKey === "models") {
+      queryClient.prefetchQuery({
+        queryKey: ["models", { limit: 24, page: 1, sort: "newest" }],
+        queryFn: () => getModels({ limit: 24, page: 1, sort: "newest" }),
+        staleTime: STALE
+      });
+    } else if (prefetchKey === "experiments") {
+      queryClient.prefetchQuery({
+        queryKey: ["experiments-list"],
+        queryFn: async () => {
+          try {
+            const response = await getExperiments({ limit: 50 });
+            return response.items.map((exp) => ({ ...exp, run_count: exp.run_count ?? 0 }));
+          } catch {
+            return [];
+          }
+        },
+        staleTime: STALE
+      });
+    }
   };
 
   return (
@@ -122,6 +162,8 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
                       )}
                       aria-label={item.label}
                       title={collapsed ? item.label : undefined}
+                      onMouseEnter={() => handlePrefetch(item.prefetchKey)}
+                      onFocus={() => handlePrefetch(item.prefetchKey)}
                     >
                       <Icon size={16} className={cn("shrink-0", isActive ? "text-brand-500" : "text-text-tertiary group-hover:text-text-primary")} />
                       <span className={cn("truncate", collapsed && "hidden")}>{item.label}</span>
@@ -155,7 +197,13 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
           const Icon = item.icon;
           const isActive = isRouteActive(item.href);
           return (
-            <Link key={item.href} href={item.href} className={cn("flex flex-1 flex-col items-center justify-center rounded-md py-2 text-[11px]", isActive ? "text-brand-600" : "text-text-secondary")} aria-label={item.label}>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn("flex flex-1 flex-col items-center justify-center rounded-md py-2 text-[11px]", isActive ? "text-brand-600" : "text-text-secondary")}
+              aria-label={item.label}
+              onTouchStart={() => handlePrefetch(item.prefetchKey)}
+            >
               <Icon size={16} />
               <span className="mt-1">{item.label.split(" ")[0]}</span>
             </Link>

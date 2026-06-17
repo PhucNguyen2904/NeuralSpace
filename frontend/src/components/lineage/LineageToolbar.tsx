@@ -116,7 +116,7 @@ export function LineageToolbar({
           setSelectedVersion("");
           onFilterChange("", "");
         }}
-        className="h-9 rounded-md border border-border bg-white px-2 text-sm"
+        className="h-9 rounded-md border border-border bg-bg-surface px-2 text-sm text-text-primary"
       >
         <option value="dataset">Dataset</option>
         <option value="model">Model</option>
@@ -126,7 +126,7 @@ export function LineageToolbar({
       <select
         value={selectedModelName}
         onChange={(e) => handleModelNameChange(e.target.value)}
-        className="h-9 min-w-[180px] rounded-md border border-border bg-white px-2 text-sm"
+        className="h-9 min-w-[180px] rounded-md border border-border bg-bg-surface px-2 text-sm text-text-primary"
       >
         <option value="">All {entityLabel}</option>
         {uniqueModelNames.map((name) => (
@@ -146,7 +146,7 @@ export function LineageToolbar({
           onChange={(e) => handleVersionChange(e.target.value)}
           disabled={versionDisabled}
           className={[
-            "h-9 min-w-[130px] rounded-md border border-border bg-white px-2 text-sm transition-opacity",
+            "h-9 min-w-[130px] rounded-md border border-border bg-bg-surface px-2 text-sm text-text-primary transition-opacity",
             versionDisabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"
           ].join(" ")}
         >
@@ -165,7 +165,7 @@ export function LineageToolbar({
       <select
         value={depth}
         onChange={(e) => onDepthChange(Number(e.target.value))}
-        className="h-9 rounded-md border border-border bg-white px-2 text-sm"
+        className="h-9 rounded-md border border-border bg-bg-surface px-2 text-sm text-text-primary"
       >
         {[1, 2, 3, 4].map((value) => (
           <option key={value} value={value}>
@@ -175,7 +175,7 @@ export function LineageToolbar({
       </select>
 
       {/* Highlight path */}
-      <label className="ml-1 flex items-center gap-2 text-sm text-slate-600">
+      <label className="ml-1 flex items-center gap-2 text-sm text-text-secondary">
         <input type="checkbox" checked={highlightPath} onChange={(e) => onToggleHighlightPath(e.target.checked)} />
         Highlight path
       </label>

@@ -1,6 +1,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { GlobalErrorBoundary } from "@/components/error/GlobalErrorBoundary";
 import { ToastProvider } from "@/components/ui/ToastProvider";
@@ -43,12 +44,20 @@ export function Providers({ children }: { children: React.ReactNode }) {
 }
 
 function NotificationEventBridge() {
+  const pathname = usePathname();
   const token = useAuthStore((state) => state.token);
-  const { data: workspaces = [] } = useWorkspaces(Boolean(token));
+  const [hasCookieToken, setHasCookieToken] = useState(false);
+  const isAuthRoute = pathname === "/login" || pathname === "/register" || pathname.startsWith("/login/") || pathname.startsWith("/register/");
+  const enabled = Boolean(token && hasCookieToken && !isAuthRoute);
+  const { data: workspaces = [] } = useWorkspaces(enabled);
   const addNotification = useNotificationStore((state) => state.addNotification);
 
   useEffect(() => {
-    if (!token) return;
+    setHasCookieToken(document.cookie.split("; ").some((entry) => entry.startsWith("auth_token=")));
+  }, [pathname, token]);
+
+  useEffect(() => {
+    if (!enabled) return;
     const cleanups = workspaces.map((workspace) =>
       sseManager.subscribe(workspace.id, {
         onIdleWarning: (event) => {
@@ -82,7 +91,7 @@ function NotificationEventBridge() {
     return () => {
       cleanups.forEach((cleanup) => cleanup());
     };
-  }, [addNotification, token, workspaces]);
+  }, [addNotification, enabled, workspaces]);
 
   return null;
 }

@@ -58,62 +58,121 @@ export function TopBar() {
           </button>
 
           <div className="relative" ref={menuRef}>
+            {/* Account trigger button */}
             <button
               type="button"
               aria-haspopup="menu"
               aria-expanded={openAccountMenu}
+              id="account-menu-trigger"
               onClick={() => setOpenAccountMenu((prev) => !prev)}
-              className="flex h-9 items-center gap-2 rounded-md border border-border bg-bg-surface px-2 transition-colors hover:bg-bg-elevated"
+              className={`group flex h-9 items-center gap-2 rounded-lg border pl-1 pr-2 transition-all duration-200 ${
+                openAccountMenu
+                  ? "border-brand-500/50 bg-bg-elevated shadow-sm shadow-brand-500/10"
+                  : "border-border bg-bg-surface hover:border-brand-500/30 hover:bg-bg-elevated"
+              }`}
             >
-              <Avatar name={displayName} className="h-7 w-7 text-[11px]" />
-              <div className="hidden min-w-0 text-left sm:block">
-                <p className="truncate text-xs font-medium text-text-primary">{displayName}</p>
-                <p className="truncate text-[11px] text-text-tertiary">{displayEmail}</p>
-              </div>
-              <ChevronDown size={14} className={`text-text-secondary transition-transform ${openAccountMenu ? "rotate-180" : ""}`} />
+              {/* Avatar */}
+              <Avatar
+                name={displayName}
+                className="h-7 w-7 shrink-0 text-[11px] font-bold ring-2 ring-bg-surface"
+              />
+
+              {/* Name only — no email to keep it compact */}
+              <span className="hidden max-w-[96px] truncate text-[13px] font-medium text-text-primary sm:block">
+                {displayName.split(" ")[0]}
+              </span>
+
+              <ChevronDown
+                size={12}
+                className={`shrink-0 transition-transform duration-200 ${
+                  openAccountMenu ? "rotate-180 text-brand-500" : "text-text-tertiary group-hover:text-text-secondary"
+                }`}
+              />
             </button>
 
+            {/* Dropdown */}
             {openAccountMenu ? (
-              <div className="absolute right-0 z-40 mt-2 w-56 rounded-md border border-border bg-bg-surface p-1 shadow-lg" role="menu">
-                <div className="border-b border-border px-2 py-2">
-                  <p className="truncate text-xs font-medium text-text-primary">{displayName}</p>
-                  <p className="truncate text-[11px] text-text-tertiary">{displayEmail}</p>
+              <div
+                className="absolute right-0 z-40 mt-2 w-60 overflow-hidden rounded-xl border border-border bg-bg-surface shadow-xl"
+                role="menu"
+                style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 1px 4px rgba(0,0,0,0.10)" }}
+              >
+                {/* Profile header card */}
+                <div className="relative overflow-hidden px-4 py-4" style={{ background: "linear-gradient(135deg, var(--color-bg-elevated) 0%, var(--color-bg-surface) 100%)" }}>
+                  <div className="pointer-events-none absolute inset-0 opacity-40"
+                    style={{ background: "radial-gradient(ellipse at 20% 50%, var(--color-accent-glow), transparent 60%)" }}
+                  />
+                  <div className="relative flex items-center gap-3">
+                    <span className="relative shrink-0">
+                      <span className="absolute inset-0 rounded-full bg-gradient-to-br from-brand-400 to-violet-500 opacity-70 blur-[3px]" />
+                      <Avatar name={displayName} className="relative h-10 w-10 text-sm ring-2 ring-white/15" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-text-primary">{displayName}</p>
+                      <p className="truncate text-[11px] text-text-tertiary">{displayEmail}</p>
+                      <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-success-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-success-500">
+                        <span className="h-1 w-1 rounded-full bg-success-500" />
+                        Active
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                <Link
-                  href="/settings"
-                  className="mt-1 flex items-center gap-2 rounded px-2 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
-                  role="menuitem"
-                  onClick={() => setOpenAccountMenu(false)}
-                >
-                  <UserRound size={14} />
-                  Profile
-                </Link>
+                {/* Menu items */}
+                <div className="border-t border-border p-1">
+                  <Link
+                    href="/settings"
+                    id="account-menu-profile"
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                    role="menuitem"
+                    onClick={() => setOpenAccountMenu(false)}
+                  >
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-bg-elevated text-text-secondary">
+                      <UserRound size={13} />
+                    </span>
+                    <span>
+                      <span className="block text-[12px] font-medium text-text-primary">Profile</span>
+                      <span className="block text-[11px] text-text-tertiary">View your account</span>
+                    </span>
+                  </Link>
 
-                <Link
-                  href="/settings"
-                  className="flex items-center gap-2 rounded px-2 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
-                  role="menuitem"
-                  onClick={() => setOpenAccountMenu(false)}
-                >
-                  <Settings size={14} />
-                  Settings
-                </Link>
+                  <Link
+                    href="/settings"
+                    id="account-menu-settings"
+                    className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-text-secondary transition-colors hover:bg-bg-elevated hover:text-text-primary"
+                    role="menuitem"
+                    onClick={() => setOpenAccountMenu(false)}
+                  >
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-border bg-bg-elevated text-text-secondary">
+                      <Settings size={13} />
+                    </span>
+                    <span>
+                      <span className="block text-[12px] font-medium text-text-primary">Settings</span>
+                      <span className="block text-[11px] text-text-tertiary">Preferences & workspace</span>
+                    </span>
+                  </Link>
+                </div>
 
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 rounded px-2 py-2 text-sm text-error-500 transition-colors hover:bg-error-50"
-                  onClick={() => {
-                    logout();
-                    document.cookie = "auth_token=; Path=/; Max-Age=0; SameSite=Lax";
-                    setOpenAccountMenu(false);
-                    router.push("/login");
-                  }}
-                >
-                  <LogOut size={14} />
-                  Sign out
-                </button>
+                {/* Sign out */}
+                <div className="border-t border-border p-1">
+                  <button
+                    type="button"
+                    id="account-menu-signout"
+                    role="menuitem"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-error-50 dark:hover:bg-error-500/10"
+                    onClick={() => {
+                      logout();
+                      document.cookie = "auth_token=; Path=/; Max-Age=0; SameSite=Lax";
+                      setOpenAccountMenu(false);
+                      router.push("/login");
+                    }}
+                  >
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-error-200/60 bg-error-50/60 text-error-500 dark:border-error-800/30 dark:bg-error-900/20">
+                      <LogOut size={13} />
+                    </span>
+                    <span className="text-[12px] font-medium text-error-600 dark:text-error-400">Sign out</span>
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>

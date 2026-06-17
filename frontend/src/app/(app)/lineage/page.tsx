@@ -237,71 +237,71 @@ export default function LineagePage() {
 
       <div className="grid gap-3 lg:grid-cols-[260px_1fr]">
         <aside className="space-y-3">
-          <div className="rounded-xl border border-border bg-white p-3">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Legend</p>
-            <ul className="space-y-2 text-sm text-slate-700">
+          <div className="rounded-xl border border-border bg-bg-surface p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">Legend</p>
+            <ul className="space-y-2 text-sm text-text-secondary">
               <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-node-dataset" />Dataset</li>
               <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-node-run" />Run</li>
               <li className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-node-model" />Model</li>
             </ul>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-white via-white to-cyan-50/60 shadow-sm">
-            <div className="border-b border-indigo-100/80 p-3">
+          <div className="overflow-hidden rounded-xl border border-border bg-bg-surface shadow-sm">
+            <div className="border-b border-border p-3">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-elevated text-brand-500">
                     <Target size={16} />
                   </span>
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Impact Analysis</p>
-                    <p className="text-[11px] text-slate-500">Downstream model risk</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">Impact Analysis</p>
+                    <p className="text-[11px] text-text-secondary">Downstream model risk</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   disabled={!impactMode && !canRunImpact}
-                  className="rounded-md border border-indigo-200 bg-white px-2 py-1 text-xs font-medium text-indigo-700 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                  className="rounded-md border border-border bg-bg-elevated px-2 py-1 text-xs font-medium text-brand-500 shadow-sm transition hover:border-brand-500 hover:bg-bg-surface disabled:cursor-not-allowed disabled:border-border disabled:text-text-tertiary disabled:shadow-none"
                   onClick={() => setImpactMode((prev) => !prev)}
                 >
                   {impactMode ? "Disable" : "Enable"}
                 </button>
               </div>
-              <p className="text-xs leading-5 text-slate-600">
+              <p className="text-xs leading-5 text-text-secondary">
                 Highlight models that may be affected when a dataset changes. Select a dataset root or click a dataset node, then enable analysis.
               </p>
             </div>
 
             <div className="space-y-2 p-3">
-              <div className="rounded-lg border border-slate-200 bg-white/80 p-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Dataset</p>
-                <p className="mt-1 truncate text-sm font-medium text-slate-800" title={impactTargetLabel}>
+              <div className="rounded-lg border border-border bg-bg-elevated p-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-tertiary">Dataset</p>
+                <p className="mt-1 truncate text-sm font-medium text-text-primary" title={impactTargetLabel}>
                   {impactTargetLabel}
                 </p>
               </div>
 
               {!canRunImpact ? (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-800 dark:border-amber-800/40 dark:bg-amber-900/20 dark:text-amber-300">
                   <Info className="mt-0.5 shrink-0" size={14} />
                   Select a dataset in the toolbar or click a dataset node to run impact analysis.
                 </div>
               ) : !impactMode ? (
-                <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs text-slate-600">
+                <div className="flex items-start gap-2 rounded-lg border border-border bg-bg-elevated px-2.5 py-2 text-xs text-text-secondary">
                   <Info className="mt-0.5 shrink-0" size={14} />
                   Analysis is off. Enable it to show impacted downstream models on the graph.
                 </div>
               ) : impactedModelCount > 0 ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2">
-                  <p className="flex items-center gap-2 text-xs font-semibold text-red-700">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 dark:border-red-800/40 dark:bg-red-900/20">
+                  <p className="flex items-center gap-2 text-xs font-semibold text-red-700 dark:text-red-400">
                     <AlertTriangle size={14} />
                     {impactedModelCount} impacted {impactedModelCount === 1 ? "model" : "models"}
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-red-700">
+                  <p className="mt-1 text-xs leading-5 text-red-700 dark:text-red-400">
                     These downstream models are connected to the selected dataset in the current lineage graph.
                   </p>
                 </div>
               ) : (
-                <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700">
+                <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-900/20 dark:text-emerald-400">
                   <CheckCircle2 className="mt-0.5 shrink-0" size={14} />
                   No downstream models are impacted by this dataset.
                 </div>
@@ -310,7 +310,7 @@ export default function LineagePage() {
           </div>
 
           <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Selected Node</p>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-tertiary">Selected Node</p>
             <NodeInfoPanel node={selectedNode} />
           </div>
         </aside>

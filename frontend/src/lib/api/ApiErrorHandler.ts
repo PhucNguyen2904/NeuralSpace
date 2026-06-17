@@ -28,7 +28,10 @@ export function setupApiErrorHandler() {
     (response) => response,
     (error: AxiosError<ApiErrorShape>) => {
       if (error.response?.status === 401 && typeof window !== "undefined") {
-        window.location.href = "/login";
+        document.cookie = "auth_token=; Path=/; Max-Age=0; SameSite=Lax";
+        if (!["/login", "/register"].includes(window.location.pathname)) {
+          window.location.href = "/login";
+        }
         return Promise.reject(error);
       }
       const message = toFriendlyMessage(error);

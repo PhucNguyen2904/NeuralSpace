@@ -140,7 +140,7 @@ export function transformLineageResponse(response: LineageApiResponse): LineageG
       type: "smoothstep",
       animated: false,
       label: datasetToRun ? "used for training" : "produced",
-      style: datasetToRun ? { stroke: "#06B6D4", strokeDasharray: "5 4", strokeWidth: 1.8 } : { stroke: "#6366F1", strokeWidth: 2 },
+      style: datasetToRun ? { stroke: "#06B6D4", strokeWidth: 2 } : { stroke: "#6366F1", strokeWidth: 2 },
       labelStyle: { fontSize: 10, fill: "#475569" }
     };
   });

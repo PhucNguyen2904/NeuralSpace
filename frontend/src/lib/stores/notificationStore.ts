@@ -3,6 +3,8 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 export type NotificationType =
   | "WORKSPACE_RUNNING"
+  | "WORKSPACE_STARTED"
+  | "IDLE_WARNING"
   | "WORKSPACE_KILLED"
   | "WORKSPACE_ERROR"
   | "SAVE_COMPLETE"

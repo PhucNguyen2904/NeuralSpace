@@ -11,7 +11,7 @@ export function ModelNode({ data }: { data: ModelNodeData }) {
   return (
     <div
       className={cn(
-        "min-w-[170px] rounded-xl border-2 bg-white px-3 py-2.5 shadow-sm transition-all",
+        "h-[100px] w-[200px] rounded-xl border-2 bg-white px-3 py-2.5 shadow-sm transition-all",
         // Selection overrides stage border so the green border never looks like a persistent "selected" indicator
         data.isSelected
           ? "border-indigo-500 ring-2 ring-offset-1 ring-indigo-400 shadow-lg shadow-indigo-100"

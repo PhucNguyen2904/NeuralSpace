@@ -41,6 +41,7 @@ from app.schemas.colab import (
     ArtifactUploadGrantResponse,
 )
 from app.services.colab_claim_service import ColabClaimService
+from app.services.notification_service import NotificationService
 from app.services.runtime_session_service import RuntimeIdentity, RuntimeSessionService
 
 router = APIRouter(prefix="/colab", tags=["colab"])
@@ -230,6 +231,7 @@ async def exchange_colab_claim(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Claim is no longer valid")
 
     runtime_session, runtime_token = await RuntimeSessionService.connect(db, session_id, user_id)
+    await NotificationService.notify_workspace_started(redis, workspace_id, access_url=settings.get_colab_notebook_url())
     audit_event(
         logger,
         "colab.claim_exchanged",

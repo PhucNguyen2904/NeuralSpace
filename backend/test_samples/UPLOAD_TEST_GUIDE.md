@@ -27,6 +27,28 @@ curl.exe -X POST "http://localhost:8000/api/v1/models/$modelId/versions" `
   -F "metadata=$meta"
 ```
 
+## Model upload + version demo (PowerShell)
+
+```powershell
+$token = "<PASTE_AUTH_TOKEN>"
+$filePath = "D:\Documents\Lap_trinh\NeuralSpace\backend\test_samples\models\version-demo\neuralspace-demo-model-v1.onnx"
+$meta = Get-Content -LiteralPath "D:\Documents\Lap_trinh\NeuralSpace\backend\test_samples\models\version-demo\upload-metadata.json" -Raw
+
+$uploadResponse = curl.exe -s -X POST "http://localhost:8000/api/v1/models/upload" `
+  -H "Authorization: Bearer $token" `
+  -F "file=@$filePath" `
+  -F "metadata=$meta" | ConvertFrom-Json
+
+$modelId = $uploadResponse.id
+$versionFilePath = "D:\Documents\Lap_trinh\NeuralSpace\backend\test_samples\models\version-demo\neuralspace-demo-model-v2.onnx"
+$versionMeta = Get-Content -LiteralPath "D:\Documents\Lap_trinh\NeuralSpace\backend\test_samples\models\version-demo\version-metadata.json" -Raw
+
+curl.exe -X POST "http://localhost:8000/api/v1/models/$modelId/versions" `
+  -H "Authorization: Bearer $token" `
+  -F "file=@$versionFilePath" `
+  -F "metadata=$versionMeta"
+```
+
 ## Dataset upload (PowerShell)
 
 ```powershell

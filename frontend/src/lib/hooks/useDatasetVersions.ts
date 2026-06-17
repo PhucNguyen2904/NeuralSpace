@@ -277,6 +277,8 @@ export interface UseUploadVersionReturn {
     changelog?: string;
     itemCount?: number;
     status?: DvcVersionStatus;
+    splitInfo?: Record<string, number>;
+    schemaSnapshot?: Record<string, unknown>;
   }) => Promise<void>;
   isUploading: boolean;
   steps: UploadStep[];
@@ -307,6 +309,8 @@ export function useUploadVersion(): UseUploadVersionReturn {
       changelog?: string;
       itemCount?: number;
       status?: DvcVersionStatus;
+      splitInfo?: Record<string, number>;
+      schemaSnapshot?: Record<string, unknown>;
     }) => {
       // ── Phase 1: upload ───────────────────────────────────────────────
       setStep("upload", { status: "running", label: "Uploading file..." });
@@ -318,6 +322,8 @@ export function useUploadVersion(): UseUploadVersionReturn {
         changelog: opts.changelog,
         itemCount: opts.itemCount ?? 0,
         status: opts.status ?? "draft",
+        splitInfo: opts.splitInfo,
+        schemaSnapshot: opts.schemaSnapshot,
         onUploadProgress: (pct) => {
           if (pct < 100) {
             setStep("upload", { percent: pct, label: `Uploading file... ${pct}%` });

@@ -11,7 +11,10 @@ import { useNotificationStore } from "@/lib/stores/notificationStore";
 function typeMeta(type: string) {
   switch (type) {
     case "WORKSPACE_RUNNING":
+    case "WORKSPACE_STARTED":
       return { icon: <Terminal size={16} className="text-success-500" />, action: "Open" };
+    case "IDLE_WARNING":
+      return { icon: <AlertTriangle size={16} className="text-warning-500" />, action: "Open" };
     case "WORKSPACE_KILLED":
       return { icon: <AlertTriangle size={16} className="text-warning-500" />, action: "View" };
     case "WORKSPACE_ERROR":

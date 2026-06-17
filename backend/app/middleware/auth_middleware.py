@@ -39,6 +39,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         authorization = request.headers.get("Authorization")
+        if (
+            not authorization
+            and request.url.path.startswith("/api/v1/workspaces/")
+            and request.url.path.endswith("/events")
+        ):
+            token = request.query_params.get("access_token")
+            if token:
+                try:
+                    request.state.user = verify_jwt(token)
+                    return await call_next(request)
+                except Exception:
+                    self._log_failed_auth(request, "invalid_or_expired_sse_token")
+                    return JSONResponse(status_code=401, content={"message": "Invalid or expired token"})
+
         if not authorization:
             self._log_failed_auth(request, "missing_authorization")
             return JSONResponse(status_code=401, content={"message": "Missing authorization"})

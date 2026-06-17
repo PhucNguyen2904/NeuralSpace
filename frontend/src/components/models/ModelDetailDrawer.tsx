@@ -3,14 +3,14 @@
 import * as React from "react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { AlertTriangle, Link2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, FileJson, Link2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { MetricsChart } from "@/components/models/MetricsChart";
 import { VersionTimeline } from "@/components/models/VersionTimeline";
 import { useToast } from "@/lib/hooks/useToast";
 import { useDeleteModel, useModelDetail, useUpdateModel, useUploadModelVersion } from "@/lib/hooks/useModels";
 import { cn } from "@/lib/utils/cn";
-import type { Model } from "@/types/model";
+import type { Model, UploadModelVersionMetadata } from "@/types/model";
 
 type Tab = "overview" | "metrics" | "files" | "usage" | "versions";
 type CustomField = { key: string; value: string };
@@ -36,6 +36,9 @@ export function ModelDetailDrawer({
   const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
   const [versionFile, setVersionFile] = React.useState<File | null>(null);
+  const versionMetadataInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [versionMetadataFileName, setVersionMetadataFileName] = React.useState("");
+  const [importedVersionMetadata, setImportedVersionMetadata] = React.useState<UploadModelVersionMetadata | null>(null);
   const [metadataForm, setMetadataForm] = React.useState({
     description: "",
     architecture: "",
@@ -70,6 +73,8 @@ export function ModelDetailDrawer({
       frameworkVersion: model.framework_version ?? ""
     }));
     setVersionFile(null);
+    setVersionMetadataFileName("");
+    setImportedVersionMetadata(null);
     setMetadataForm({
       description: model.description ?? "",
       architecture: model.architecture ?? "",
@@ -139,26 +144,54 @@ export function ModelDetailDrawer({
     }
     const metricValue = Number(versionForm.primaryMetricValue);
     const hasMetric = versionForm.primaryMetricName.trim() && Number.isFinite(metricValue);
+    const metadata: UploadModelVersionMetadata = {
+      ...(importedVersionMetadata ?? {}),
+      version: versionForm.version.trim() || importedVersionMetadata?.version,
+      changelog: versionForm.changelog.trim() || importedVersionMetadata?.changelog,
+      framework_version: versionForm.frameworkVersion.trim() || importedVersionMetadata?.framework_version,
+      primary_metric_name: hasMetric ? versionForm.primaryMetricName.trim() : importedVersionMetadata?.primary_metric_name,
+      primary_metric_value: hasMetric ? metricValue : importedVersionMetadata?.primary_metric_value,
+      metrics: hasMetric ? { [versionForm.primaryMetricName.trim()]: metricValue } : importedVersionMetadata?.metrics
+    };
     try {
       await uploadVersion.mutateAsync({
         modelId: model.id,
         file: versionFile,
-        metadata: {
-          version: versionForm.version.trim() || undefined,
-          changelog: versionForm.changelog.trim() || undefined,
-          framework_version: versionForm.frameworkVersion.trim() || undefined,
-          primary_metric_name: hasMetric ? versionForm.primaryMetricName.trim() : undefined,
-          primary_metric_value: hasMetric ? metricValue : undefined,
-          metrics: hasMetric ? { [versionForm.primaryMetricName.trim()]: metricValue } : undefined
-        }
+        metadata
       });
       toast.success("New model version uploaded");
       setVersionFile(null);
+      setVersionMetadataFileName("");
+      setImportedVersionMetadata(null);
       setVersionForm((prev) => ({ ...prev, version: "", changelog: "" }));
       setVersionModalOpen(false);
       setTab("versions");
     } catch {
       toast.error("Failed to upload version");
+    }
+  };
+
+  const importVersionMetadata = async (file: File | null) => {
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as Partial<UploadModelVersionMetadata>;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Invalid metadata");
+      }
+      const primaryMetricValue = Number(parsed.primary_metric_value);
+      setImportedVersionMetadata(parsed);
+      setVersionMetadataFileName(file.name);
+      setVersionForm((prev) => ({
+        ...prev,
+        version: typeof parsed.version === "string" ? parsed.version : prev.version,
+        changelog: typeof parsed.changelog === "string" ? parsed.changelog : prev.changelog,
+        frameworkVersion: typeof parsed.framework_version === "string" ? parsed.framework_version : prev.frameworkVersion,
+        primaryMetricName: typeof parsed.primary_metric_name === "string" ? parsed.primary_metric_name : prev.primaryMetricName,
+        primaryMetricValue: Number.isFinite(primaryMetricValue) ? String(primaryMetricValue) : prev.primaryMetricValue
+      }));
+      toast.success("Imported version metadata JSON");
+    } catch {
+      toast.error("Invalid version metadata JSON");
     }
   };
 
@@ -258,6 +291,25 @@ export function ModelDetailDrawer({
               onChange={(event) => setVersionFile(event.target.files?.[0] ?? null)}
             />
           </label>
+          <input
+            ref={versionMetadataInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(event) => {
+              void importVersionMetadata(event.target.files?.[0] ?? null);
+              event.target.value = "";
+            }}
+          />
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-white px-3 py-2 text-sm">
+            <div className="flex min-w-0 items-center gap-2">
+              <FileJson size={16} className="shrink-0 text-violet-600" />
+              <p className="truncate text-[13px] text-text-secondary">{versionMetadataFileName || "No version metadata JSON selected"}</p>
+            </div>
+            <Button type="button" size="sm" variant="outline" onClick={() => versionMetadataInputRef.current?.click()} disabled={uploadVersion.isPending}>
+              Import JSON
+            </Button>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <VersionField label="Version">
               <input className={versionInputCls()} value={versionForm.version} onChange={(e) => setVersionForm((p) => ({ ...p, version: e.target.value }))} placeholder={`Sau ${model.version}`} />

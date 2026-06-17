@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from redis.asyncio import Redis
+from starlette.requests import Request
+from starlette.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -22,6 +27,7 @@ from app.schemas.workspace import (
     WorkspaceStatusPollResponse,
 )
 from app.services.workspace_service import WorkspaceService
+from app.services.notification_service import WORKSPACE_EVENTS_CHANNEL, NotificationService
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 logger = get_logger(__name__)
@@ -152,6 +158,56 @@ async def get_workspace_status(
         raise _translate_workspace_error(exc) from exc
 
 
+@router.get("/{id}/events")
+async def stream_workspace_events(
+    id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    current_user: UserContext = Depends(get_current_user),
+):
+    try:
+        await WorkspaceService.get_workspace_detail(db, redis, id, current_user.user_id)
+    except Exception as exc:
+        raise _translate_workspace_error(exc) from exc
+
+    channel = WORKSPACE_EVENTS_CHANNEL.format(workspace_id=id)
+
+    async def event_stream():
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(channel)
+        try:
+            yield ": connected\n\n"
+            while not await request.is_disconnected():
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=15.0)
+                if message is None:
+                    yield ": keep-alive\n\n"
+                    continue
+
+                data = message.get("data")
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
+                try:
+                    payload = json.loads(data)
+                except (TypeError, ValueError):
+                    payload = {"type": "UNKNOWN", "message": str(data)}
+                yield f"data: {json.dumps(payload)}\n\n"
+                await asyncio.sleep(0)
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.close()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.delete("/{id}", status_code=status.HTTP_202_ACCEPTED)
 async def delete_workspace(
     id: str,
@@ -161,6 +217,7 @@ async def delete_workspace(
 ):
     try:
         await WorkspaceService.delete_workspace(db, id, current_user.user_id)
+        await NotificationService.notify_workspace_killed(redis, id)
         audit_event(
             logger,
             "workspace.delete",

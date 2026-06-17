@@ -1,16 +1,20 @@
 export interface IdleWarningEvent {
   workspaceId: string;
   minutesLeft: number;
+  message?: string;
 }
 
 export interface WorkspaceKilledEvent {
   workspaceId: string;
   reason?: string;
+  message?: string;
 }
 
 export interface StatusChangeEvent {
   workspaceId: string;
   status: string;
+  message?: string;
+  accessUrl?: string;
 }
 
 export interface SSEHandlers {
@@ -88,7 +92,27 @@ class SSEManager {
   }
 
   private createEventSource(workspaceId: string) {
-    return new EventSource(`/api/v1/workspaces/${workspaceId}/events`);
+    const token = this.readToken();
+    const query = token ? `?access_token=${encodeURIComponent(token)}` : "";
+    return new EventSource(`/api/v1/workspaces/${workspaceId}/events${query}`);
+  }
+
+  private readToken() {
+    if (typeof window === "undefined") return "";
+    const cookieToken = document.cookie
+      .split("; ")
+      .find((entry) => entry.startsWith("auth_token="))
+      ?.split("=")[1];
+    if (cookieToken) return decodeURIComponent(cookieToken);
+
+    const storeRaw = window.localStorage.getItem("neuralspace-auth");
+    if (!storeRaw) return "";
+    try {
+      const parsed = JSON.parse(storeRaw) as { state?: { token?: string | null } };
+      return parsed.state?.token ?? "";
+    } catch {
+      return "";
+    }
   }
 
   private bindEvents(workspaceId: string, entry: ConnectionEntry) {
@@ -101,21 +125,47 @@ class SSEManager {
     };
 
     entry.source.onmessage = (event) => {
-      let parsed: { type?: string; payload?: unknown } = {};
+      let parsed: { type?: string; payload?: unknown; workspace_id?: string; workspaceId?: string; minutes_left?: number; minutesLeft?: number; status?: string; message?: string; access_url?: string; accessUrl?: string; reason?: string } = {};
       try {
-        parsed = JSON.parse(event.data) as { type?: string; payload?: unknown };
+        parsed = JSON.parse(event.data) as typeof parsed;
       } catch {
         return;
       }
 
+      const payload =
+        parsed.payload && typeof parsed.payload === "object"
+          ? (parsed.payload as Record<string, unknown>)
+          : parsed;
+      const eventWorkspaceId = String(payload.workspaceId ?? payload.workspace_id ?? workspaceId);
+      const message = typeof payload.message === "string" ? payload.message : undefined;
+
       if (parsed.type === "IDLE_WARNING") {
-        notify((handler) => handler.onIdleWarning?.(parsed.payload as IdleWarningEvent));
+        notify((handler) =>
+          handler.onIdleWarning?.({
+            workspaceId: eventWorkspaceId,
+            minutesLeft: Number(payload.minutesLeft ?? payload.minutes_left ?? 0),
+            message
+          })
+        );
       }
       if (parsed.type === "WORKSPACE_KILLED") {
-        notify((handler) => handler.onWorkspaceKilled?.(parsed.payload as WorkspaceKilledEvent));
+        notify((handler) =>
+          handler.onWorkspaceKilled?.({
+            workspaceId: eventWorkspaceId,
+            reason: typeof payload.reason === "string" ? payload.reason : undefined,
+            message
+          })
+        );
       }
-      if (parsed.type === "STATUS_CHANGE") {
-        notify((handler) => handler.onStatusChange?.(parsed.payload as StatusChangeEvent));
+      if (parsed.type === "STATUS_CHANGE" || parsed.type === "WORKSPACE_STARTED") {
+        notify((handler) =>
+          handler.onStatusChange?.({
+            workspaceId: eventWorkspaceId,
+            status: parsed.type === "WORKSPACE_STARTED" ? "RUNNING" : String(payload.status ?? ""),
+            message,
+            accessUrl: typeof payload.accessUrl === "string" ? payload.accessUrl : typeof payload.access_url === "string" ? payload.access_url : undefined
+          })
+        );
       }
     };
 

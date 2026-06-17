@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  FileJson,
   FileUp,
   Loader2,
   UploadCloud,
@@ -12,6 +13,21 @@ import {
 import { Button, Modal } from "@/components/ui";
 import { useUploadVersion, type UploadStep } from "@/lib/hooks/useDatasetVersions";
 import type { DvcVersionStatus } from "@/lib/api/dvc";
+
+type DatasetVersionMetadata = {
+  version?: string;
+  commit_message?: string;
+  commitMessage?: string;
+  changelog?: string;
+  note?: string;
+  item_count?: number;
+  itemCount?: number;
+  status?: DvcVersionStatus;
+  split_info?: Record<string, number>;
+  splitInfo?: Record<string, number>;
+  schema_snapshot?: Record<string, unknown>;
+  schemaSnapshot?: Record<string, unknown>;
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -153,6 +169,9 @@ export function TrackVersionModal({
   const [changelog, setChangelog] = useState("");
   const [itemCount, setItemCount] = useState<string>("");
   const [versionStatus, setVersionStatus] = useState<DvcVersionStatus>("draft");
+  const metadataInputRef = useRef<HTMLInputElement>(null);
+  const [metadataFileName, setMetadataFileName] = useState("");
+  const [importedMetadata, setImportedMetadata] = useState<DatasetVersionMetadata | null>(null);
 
   const isDone = uploader.steps.every((s) => s.status === "done");
   const hasError = uploader.steps.some((s) => s.status === "error");
@@ -169,6 +188,8 @@ export function TrackVersionModal({
     setChangelog("");
     setItemCount("");
     setVersionStatus("draft");
+    setMetadataFileName("");
+    setImportedMetadata(null);
     onClose();
   };
 
@@ -182,8 +203,34 @@ export function TrackVersionModal({
       changelog,
       itemCount: itemCount ? parseInt(itemCount, 10) : 0,
       status: versionStatus,
+      splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
+      schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
     });
     onSuccess?.();
+  };
+
+  const importMetadata = async (metadataFile: File | null) => {
+    if (!metadataFile) return;
+    try {
+      const parsed = JSON.parse(await metadataFile.text()) as DatasetVersionMetadata;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("Invalid metadata");
+      }
+      const nextStatus = parsed.status;
+      const nextItemCount = parsed.item_count ?? parsed.itemCount;
+      setImportedMetadata(parsed);
+      setMetadataFileName(metadataFile.name);
+      setVersion(typeof parsed.version === "string" ? parsed.version : version);
+      setCommitMessage(typeof parsed.commit_message === "string" ? parsed.commit_message : typeof parsed.commitMessage === "string" ? parsed.commitMessage : commitMessage);
+      setChangelog(typeof parsed.changelog === "string" ? parsed.changelog : typeof parsed.note === "string" ? parsed.note : changelog);
+      setItemCount(typeof nextItemCount === "number" && Number.isFinite(nextItemCount) ? String(nextItemCount) : itemCount);
+      if (nextStatus === "draft" || nextStatus === "validated" || nextStatus === "deprecated") {
+        setVersionStatus(nextStatus);
+      }
+    } catch {
+      setMetadataFileName("");
+      setImportedMetadata(null);
+    }
   };
 
   const showProgress = uploader.steps.some((s) => s.status !== "pending");
@@ -235,6 +282,31 @@ export function TrackVersionModal({
               Dataset file <span className="text-red-500">*</span>
             </label>
             <FileDrop file={file} onFile={setFile} disabled={isActive} />
+          </div>
+        )}
+
+        {!showProgress && (
+          <div>
+            <input
+              ref={metadataInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={isActive}
+              onChange={(e) => {
+                void importMetadata(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm">
+              <div className="flex min-w-0 items-center gap-2">
+                <FileJson size={16} className="shrink-0 text-brand-500" />
+                <p className="truncate text-text-secondary">{metadataFileName || "No version metadata JSON selected"}</p>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={() => metadataInputRef.current?.click()} disabled={isActive}>
+                Import JSON
+              </Button>
+            </div>
           </div>
         )}
 

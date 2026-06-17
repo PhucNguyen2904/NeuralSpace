@@ -10,14 +10,16 @@ import {
   listWorkspaces,
   updateWorkspaceAssets,
 } from "@/lib/api/workspaces";
+import { useNotificationStore } from "@/lib/stores/notificationStore";
 import type { ColabLaunchResult, CreateWorkspaceInput, Workspace } from "@/types/workspace";
 
 const WORKSPACES_QUERY_KEY = ["workspaces"];
 
-export const useWorkspaces = () =>
+export const useWorkspaces = (enabled = true) =>
   useQuery({
     queryKey: WORKSPACES_QUERY_KEY,
     queryFn: listWorkspaces,
+    enabled,
     staleTime: 30_000,
     refetchInterval: (query) => {
       const data = query.state.data as Workspace[] | undefined;
@@ -35,9 +37,16 @@ export const useWorkspaceDetail = (id: string) =>
 
 export const useCreateWorkspaceMutation = () => {
   const queryClient = useQueryClient();
+  const addNotification = useNotificationStore((state) => state.addNotification);
   return useMutation({
     mutationFn: (input: CreateWorkspaceInput) => createWorkspace(input),
-    onSuccess: () => {
+    onSuccess: (workspace) => {
+      addNotification({
+        type: "WORKSPACE_STARTED",
+        title: "Workspace ready",
+        description: `${workspace.name} is ready to use.`,
+        workspaceId: workspace.id
+      });
       queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY });
     }
   });
@@ -45,6 +54,7 @@ export const useCreateWorkspaceMutation = () => {
 
 export const useDeleteWorkspace = () => {
   const queryClient = useQueryClient();
+  const addNotification = useNotificationStore((state) => state.addNotification);
 
   return useMutation({
     mutationFn: (id: string) => deleteWorkspace(id),
@@ -56,6 +66,14 @@ export const useDeleteWorkspace = () => {
     },
     onError: (_error, _id, context) => {
       queryClient.setQueryData(WORKSPACES_QUERY_KEY, context?.previous ?? []);
+    },
+    onSuccess: (_result, id) => {
+      addNotification({
+        type: "WORKSPACE_KILLED",
+        title: "Workspace closed",
+        description: "Workspace deletion was scheduled.",
+        workspaceId: id
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY });

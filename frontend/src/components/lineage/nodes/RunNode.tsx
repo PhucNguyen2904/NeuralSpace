@@ -10,7 +10,7 @@ export function RunNode({ data }: { data: RunNodeData }) {
   return (
     <div
       className={cn(
-        "min-w-[170px] rounded-xl border-2 border-node-run/60 bg-white px-3 py-2.5 shadow-sm",
+        "h-[100px] w-[200px] rounded-xl border-2 border-node-run/60 bg-white px-3 py-2.5 shadow-sm",
         data.isSelected && "border-node-run shadow-md shadow-violet-100",
         data.impacted && "border-red-400"
       )}

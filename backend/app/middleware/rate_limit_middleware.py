@@ -16,6 +16,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     """Per-user/workspace minute-window rate limiting."""
 
     async def dispatch(self, request: Request, call_next):
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if request.url.path in {"/health", "/api/v1/health"}:
             return await call_next(request)
 

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class DatasetCreateRequest(BaseModel):
     name: str = Field(..., examples=["customer-churn-dataset"])
     description: str | None = Field(default=None, examples=["Monthly snapshot for churn modeling"])
-    type: Literal["image", "tabular", "text", "audio", "video"] = Field(..., examples=["tabular"])
+    type: Literal["image", "tabular", "text", "audio", "video", "custom"] = Field(..., examples=["tabular"])
     team_id: str | None = Field(default=None, examples=["de305d54-75b4-431b-adb2-eb6b9e546014"])
     dvc_repo_url: str | None = Field(default=None, examples=["https://git.internal/mlops-data.git"])
     storage_path: str | None = Field(default=None, examples=["datasets/customer-churn"])
@@ -71,6 +71,13 @@ class DatasetVersionResponse(BaseModel):
     item_count: int | None = None
     split_info: dict[str, Any] | None = None
     schema_snapshot: dict[str, Any] | None = None
+    metadata_uri: str | None = None
+    validation_report_uri: str | None = None
+    validation_status: str | None = None
+    validation_summary: dict[str, Any] | None = None
+    metadata_snapshot: dict[str, Any] | None = None
+    format: str | None = None
+    task_type: str | None = None
     changelog: str | None = None
     is_latest: bool
     status: str
@@ -91,6 +98,13 @@ class DatasetVersionTrackResponse(BaseModel):
     item_count: int | None = None
     split_info: dict[str, Any] | None = None
     schema_snapshot: dict[str, Any] | None = None
+    metadata_uri: str | None = None
+    validation_report_uri: str | None = None
+    validation_status: str | None = None
+    validation_summary: dict[str, Any] | None = None
+    metadata_snapshot: dict[str, Any] | None = None
+    format: str | None = None
+    task_type: str | None = None
     changelog: str | None = None
     is_latest: bool
     status: str

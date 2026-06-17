@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -135,9 +136,18 @@ class DVCClient:
         return DVCReproResult(stage=pipeline_stage, success=True, stdout=stdout, stderr=stderr)
 
     async def _run_command(self, cmd: list[str], cwd: Path) -> tuple[str, str, int]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "safe.directory",
+                "GIT_CONFIG_VALUE_0": str(self.repo_path),
+            }
+        )
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=str(cwd),
+            env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

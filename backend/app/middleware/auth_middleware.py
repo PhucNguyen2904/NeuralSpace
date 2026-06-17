@@ -29,6 +29,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
     }
 
     async def dispatch(self, request: Request, call_next):
+        if request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
         if (
             request.url.path in self.SKIP_PATHS
             or request.url.path.startswith("/docs")

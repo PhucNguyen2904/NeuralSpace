@@ -12,10 +12,12 @@ from httpx import ASGITransport, AsyncClient
 
 from app.api.v1.colab.router import (
     _append_runtime_asset,
+    _dashboard_session_status,
     _owned_run,
     _runtime_run_status,
     _sync_runtime_output_models,
     create_colab_claim,
+    exchange_colab_claim,
 )
 from app.config import Settings
 from app.core.security import create_access_token
@@ -24,7 +26,7 @@ from app.main import create_app
 from app.models.runtime_session import RuntimeSessionStatus
 from app.models.model_registry import ModelRegistry
 from app.models.workspace_assets import WorkspaceModel
-from app.schemas.colab import RuntimeRunAssetRequest
+from app.schemas.colab import ColabAssetsResponse, ColabClaimExchangeRequest, RuntimeRunAssetRequest
 from app.services.colab_claim_service import ColabClaimService
 from app.services.runtime_session_service import RuntimeSessionService
 
@@ -187,6 +189,36 @@ def test_runtime_run_status_maps_colab_helper_values() -> None:
     assert _runtime_run_status("unexpected") == "FAILED"
 
 
+def test_dashboard_session_status_marks_stale_connected_session_disconnected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("app.api.v1.colab.router.get_settings", lambda: SimpleNamespace(COLAB_HEARTBEAT_STALE_SECONDS=90))
+    now = datetime.now(timezone.utc)
+
+    fresh = SimpleNamespace(
+        status=RuntimeSessionStatus.CONNECTED,
+        last_heartbeat_at=now - timedelta(seconds=30),
+        connected_at=now - timedelta(minutes=5),
+        expires_at=now + timedelta(hours=1),
+    )
+    stale = SimpleNamespace(
+        status=RuntimeSessionStatus.CONNECTED,
+        last_heartbeat_at=now - timedelta(seconds=120),
+        connected_at=now - timedelta(minutes=5),
+        expires_at=now + timedelta(hours=1),
+    )
+    expired = SimpleNamespace(
+        status=RuntimeSessionStatus.CONNECTED,
+        last_heartbeat_at=now,
+        connected_at=now - timedelta(minutes=5),
+        expires_at=now - timedelta(seconds=1),
+    )
+
+    assert _dashboard_session_status(fresh) == "CONNECTED"
+    assert _dashboard_session_status(stale) == "DISCONNECTED"
+    assert _dashboard_session_status(expired) == "EXPIRED"
+
+
 @pytest.mark.asyncio
 async def test_runtime_output_model_syncs_registry_metrics() -> None:
     class Result:
@@ -256,6 +288,65 @@ async def test_user_cannot_create_claim_for_another_users_workspace(monkeypatch:
             current_user=UserContext(user_id="user-a", email="a@example.com", roles=["user"]),
         )
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_exchange_colab_claim_returns_bootstrap(monkeypatch: pytest.MonkeyPatch) -> None:
+    redis = FakeRedis()
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    code = await ColabClaimService.create(
+        redis,
+        session_id="session-1",
+        workspace_id="ws_12345678",
+        user_id="user-1",
+        expires_in=120,
+    )
+
+    async def get_workspace(_db, workspace_id, user_id):
+        return SimpleNamespace(id=workspace_id, user_id=user_id)
+
+    async def get_session(_db, session_id):
+        return SimpleNamespace(
+            id=session_id,
+            workspace_id="ws_12345678",
+            user_id="user-1",
+            status=RuntimeSessionStatus.CREATED,
+        )
+
+    async def connect_session(_db, session_id, _user_id):
+        return (
+            SimpleNamespace(
+                id=session_id,
+                capabilities=["dataset:read"],
+                expires_at=expires_at,
+            ),
+            "runtime-token",
+        )
+
+    async def notify_started(*_args, **_kwargs):
+        return None
+
+    async def assets_payload(*_args, **_kwargs):
+        return ColabAssetsResponse()
+
+    monkeypatch.setattr("app.api.v1.colab.router.WorkspaceRepository.get_by_id_and_user", get_workspace)
+    monkeypatch.setattr(RuntimeSessionService, "get", get_session)
+    monkeypatch.setattr(RuntimeSessionService, "connect", connect_session)
+    monkeypatch.setattr("app.api.v1.colab.router.NotificationService.notify_workspace_started", notify_started)
+    monkeypatch.setattr("app.api.v1.colab.router._workspace_assets_payload", assets_payload)
+
+    response = await exchange_colab_claim(
+        ColabClaimExchangeRequest(claim_code=code),
+        request=SimpleNamespace(client=SimpleNamespace(host="127.0.0.1")),
+        db=object(),
+        redis=redis,
+    )
+
+    assert response.session_id == "session-1"
+    assert response.runtime_token == "runtime-token"
+    assert response.capabilities == ["dataset:read"]
+    assert response.datasets == []
+    assert response.models == []
 
 
 @pytest.mark.asyncio

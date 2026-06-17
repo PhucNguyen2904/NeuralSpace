@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
-dataset_type_enum = Enum("image", "tabular", "text", "audio", "video", name="mlops_dataset_type")
+dataset_type_enum = Enum("image", "tabular", "text", "audio", "video", "custom", name="mlops_dataset_type")
 dataset_status_enum = Enum("active", "archived", "deprecated", name="mlops_dataset_status")
 dataset_version_status_enum = Enum("draft", "validated", "deprecated", name="mlops_dataset_version_status")
 experiment_lifecycle_enum = Enum("active", "deleted", name="mlops_experiment_lifecycle")
@@ -80,6 +80,13 @@ class DatasetVersion(Base):
     schema_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     split_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    metadata_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    validation_report_uri: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    validation_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    validation_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    metadata_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    format: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    task_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     created_by: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     changelog: Mapped[str | None] = mapped_column(Text, nullable=True)

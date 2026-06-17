@@ -195,18 +195,22 @@ export function TrackVersionModal({
 
   const handleSubmit = async () => {
     if (!file) return;
-    await uploader.upload({
-      datasetId,
-      file,
-      version,
-      commitMessage,
-      changelog,
-      itemCount: itemCount ? parseInt(itemCount, 10) : 0,
-      status: versionStatus,
-      splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
-      schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
-    });
-    onSuccess?.();
+    try {
+      await uploader.upload({
+        datasetId,
+        file,
+        version,
+        commitMessage,
+        changelog,
+        itemCount: itemCount ? parseInt(itemCount, 10) : 0,
+        status: versionStatus,
+        splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
+        schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
+      });
+      onSuccess?.();
+    } catch {
+      // useTrackVersionUploader stores the visible error state.
+    }
   };
 
   const importMetadata = async (metadataFile: File | null) => {

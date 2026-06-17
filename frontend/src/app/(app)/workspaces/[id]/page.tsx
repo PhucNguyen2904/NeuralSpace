@@ -468,8 +468,106 @@ export default function WorkspaceDetailPage({ params }: { params: { id: string }
 
   if (isLoading || !workspace) {
     return (
-      <div className="flex h-48 items-center justify-center text-sm text-text-secondary">
-        <RefreshCw size={16} className="mr-2 animate-spin" /> Loading project…
+      <div className="flex min-h-0 flex-col space-y-5 px-4 py-4">
+        {/* Header skeleton */}
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <div className="skeleton-shimmer h-4 w-28 rounded" />
+            <div className="skeleton-shimmer h-6 w-52 rounded" />
+            <div className="skeleton-shimmer h-3 w-64 rounded" />
+          </div>
+          <div className="skeleton-shimmer h-7 w-36 rounded-full" />
+        </div>
+
+        {/* Connect Colab card skeleton */}
+        <div className="overflow-hidden rounded-2xl border border-border bg-bg-surface shadow-sm">
+          <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)] lg:p-6">
+            <div className="space-y-3">
+              <div className="skeleton-shimmer h-10 w-10 rounded-xl" />
+              <div className="skeleton-shimmer h-3 w-36 rounded" />
+              <div className="skeleton-shimmer h-6 w-64 rounded" />
+              <div className="skeleton-shimmer h-4 w-full max-w-sm rounded" />
+              <div className="skeleton-shimmer h-4 w-4/5 max-w-sm rounded" />
+              <div className="mt-2 grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="skeleton-shimmer h-7 w-7 shrink-0 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton-shimmer h-4 w-24 rounded" />
+                      <div className="skeleton-shimmer h-3 w-full rounded" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col justify-center gap-4 rounded-xl border border-border bg-bg-surface/90 p-4 shadow-sm">
+              <div className="skeleton-shimmer h-10 w-10 rounded-xl" />
+              <div className="skeleton-shimmer h-5 w-48 rounded" />
+              <div className="skeleton-shimmer h-4 w-full rounded" />
+              <div className="skeleton-shimmer h-4 w-4/5 rounded" />
+              <div className="skeleton-shimmer h-10 w-full rounded-lg" />
+            </div>
+          </div>
+        </div>
+
+        {/* Assets panel skeleton */}
+        <div className="rounded-xl border border-border bg-bg-surface p-4 shadow-sm space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <div className="skeleton-shimmer h-3 w-32 rounded" />
+              <div className="skeleton-shimmer h-3 w-72 rounded" />
+            </div>
+            <div className="skeleton-shimmer h-8 w-24 rounded-lg" />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {[0, 1].map((col) => (
+              <div key={col} className="space-y-2">
+                <div className="skeleton-shimmer h-3 w-16 rounded" />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="skeleton-shimmer h-14 rounded-lg" />
+                  <div className="skeleton-shimmer h-14 rounded-lg" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Runtime section skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-1.5">
+            <div className="skeleton-shimmer h-5 w-36 rounded" />
+            <div className="skeleton-shimmer h-3 w-64 rounded" />
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-xl border border-border bg-bg-surface p-4 shadow-sm space-y-2">
+              <div className="skeleton-shimmer h-2.5 w-16 rounded" />
+              <div className="skeleton-shimmer h-5 w-20 rounded" />
+              <div className="skeleton-shimmer h-2.5 w-32 rounded" />
+            </div>
+          ))}
+        </div>
+
+        {/* Metrics + Logs skeleton */}
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <div className="rounded-xl border border-border bg-bg-surface p-4 shadow-sm space-y-3">
+            <div className="skeleton-shimmer h-3 w-28 rounded" />
+            <div className="grid gap-2 sm:grid-cols-2">
+              {[1, 2, 3, 4].map((i) => <div key={i} className="skeleton-shimmer h-16 rounded-lg" />)}
+            </div>
+          </div>
+          <div className="rounded-xl border border-border bg-bg-surface p-4 shadow-sm space-y-3">
+            <div className="skeleton-shimmer h-3 w-24 rounded" />
+            <div className="skeleton-shimmer h-48 rounded-lg" />
+          </div>
+        </div>
+
+        {/* Artifacts skeleton */}
+        <div className="rounded-xl border border-border bg-bg-surface p-4 shadow-sm space-y-3">
+          <div className="skeleton-shimmer h-3 w-20 rounded" />
+          {[1, 2, 3].map((i) => <div key={i} className="skeleton-shimmer h-9 rounded-lg" />)}
+        </div>
       </div>
     );
   }
@@ -477,7 +575,7 @@ export default function WorkspaceDetailPage({ params }: { params: { id: string }
   const runtimeData = runData.data;
   const claimIsActive = Boolean(launchResult && secondsRemaining > 0);
   const sessionIsConnected = runtimeData?.session_status === "CONNECTED";
-  const lastReported = runtimeData?.run_last_reported ?? runtimeData?.session_last_seen;
+  const lastReported = runtimeData?.run_last_reported;
 
   return (
     <div className="flex min-h-0 flex-col space-y-5 px-4 py-4">
@@ -630,7 +728,7 @@ export default function WorkspaceDetailPage({ params }: { params: { id: string }
           valueClassName={sessionColor(runtimeData?.session_status)}
           detail={
             runtimeData?.session_last_seen
-              ? `Last seen ${formatDistanceToNow(new Date(runtimeData.session_last_seen), { addSuffix: true })}`
+              ? `Session started ${formatDistanceToNow(new Date(runtimeData.session_last_seen), { addSuffix: true })}`
               : undefined
           }
         />

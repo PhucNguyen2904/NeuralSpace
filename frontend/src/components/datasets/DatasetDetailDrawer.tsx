@@ -52,9 +52,9 @@ export function DatasetDetailDrawer({
     if (!dataset) return;
     setMetadataForm({
       description: dataset.description ?? "",
-      labelStatus: dataset.label_status,
+      labelStatus: dataset.label_status ?? "processing",
       classCount: dataset.class_count == null ? "" : String(dataset.class_count),
-      tags: dataset.tags.join(", "),
+      tags: (dataset.tags ?? []).join(", "),
       customFields: Object.entries(dataset.custom_metadata ?? {}).map(([key, value]) => ({
         key,
         value: String(value)
@@ -144,12 +144,15 @@ export function DatasetDetailDrawer({
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3 text-sm">
                 <Info label="Version" value={dataset.version || "v1.0"} />
-                <Info label="Type" value={dataset.type} />
-                <Info label="Size" value={formatSize(dataset.size_bytes)} />
-                <Info label="Item count" value={`${dataset.item_count.toLocaleString()} items`} />
+                <Info label="Type" value={dataset.type ?? "-"} />
+                <Info label="Size" value={formatSize(dataset.size_bytes ?? 0)} />
+                <Info label="Item count" value={`${(dataset.item_count ?? 0).toLocaleString()} items`} />
                 <Info label="Classes" value={dataset.class_count ? `${dataset.class_count} categories` : "-"} />
-                <Info label="Created by" value={dataset.created_by} />
-                <Info label="Last updated" value={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })} />
+                <Info label="Created by" value={dataset.created_by ?? "-"} />
+                <Info
+                  label="Last updated"
+                  value={dataset.updated_at ? formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true }) : "-"}
+                />
               </div>
               <p className="text-sm text-text-secondary">{dataset.description}</p>
             </div>
@@ -334,8 +337,12 @@ function DatasetVersionTimeline({
           <div className="relative">
             <span className="absolute -left-[18px] top-1.5 h-3 w-3 rounded-full border-2 border-emerald-500 bg-emerald-500" />
             <p className="text-sm font-semibold text-text-primary">{dataset.version || "v1.0"} Current</p>
-            <p className="text-sm text-text-secondary">{formatSize(dataset.size_bytes)} · {dataset.item_count.toLocaleString()} items</p>
-            <p className="text-xs text-text-tertiary">{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</p>
+            <p className="text-sm text-text-secondary">
+              {formatSize(dataset.size_bytes)} · {(dataset.item_count ?? 0).toLocaleString()} items
+            </p>
+            <p className="text-xs text-text-tertiary">
+              {dataset.updated_at ? formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true }) : "-"}
+            </p>
           </div>
         </div>
         <Button size="sm" className="bg-[#ECFDF5] text-emerald-700 hover:bg-[#D1FAE5]" onClick={onOpenVersions}>
@@ -357,8 +364,12 @@ function DatasetVersionTimeline({
                 <p className="text-sm font-semibold text-text-primary">{version.version}</p>
                 {version.is_latest ? <span className="rounded-full bg-[#ECFDF5] px-2 py-0.5 text-xs text-emerald-700">Latest</span> : null}
               </div>
-              <p className="text-sm text-text-secondary">{formatBytes(version.size_bytes)} · {version.item_count.toLocaleString()} items · {version.status}</p>
-              <p className="text-xs text-text-tertiary">{formatDistanceToNow(new Date(version.created_at), { addSuffix: true })}</p>
+              <p className="text-sm text-text-secondary">
+                {formatBytes(version.size_bytes ?? 0)} · {(version.item_count ?? 0).toLocaleString()} items · {version.status}
+              </p>
+              <p className="text-xs text-text-tertiary">
+                {version.created_at ? formatDistanceToNow(new Date(version.created_at), { addSuffix: true }) : "-"}
+              </p>
             </div>
           ))}
         </div>
@@ -370,10 +381,11 @@ function DatasetVersionTimeline({
   );
 }
 
-function formatSize(size: number) {
+function formatSize(size: number | null | undefined) {
+  const value = size ?? 0;
   const gb = 1024 ** 3;
-  if (size >= gb) return `${(size / gb).toFixed(1)} GB`;
-  return `${Math.round(size / 1024 ** 2)} MB`;
+  if (value >= gb) return `${(value / gb).toFixed(1)} GB`;
+  return `${Math.round(value / 1024 ** 2)} MB`;
 }
 
 function MetadataField({ label, children }: { label: string; children: React.ReactNode }) {

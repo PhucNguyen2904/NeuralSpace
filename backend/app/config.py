@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     COLAB_CLAIM_EXPIRE_SECONDS: int = 120
     COLAB_RUNTIME_TOKEN_EXPIRE_MINUTES: int = 480
     COLAB_DATA_URL_EXPIRE_SECONDS: int = 900
+    COLAB_HEARTBEAT_STALE_SECONDS: int = 90
     MLFLOW_TRACKING_URI: str = "http://localhost:5000"
     MLFLOW_ARTIFACT_BUCKET: str = "mlflow-artifacts"
     MLFLOW_WEBHOOK_SECRET: str = ""

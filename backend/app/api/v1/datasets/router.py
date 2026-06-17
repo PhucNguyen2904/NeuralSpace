@@ -107,11 +107,24 @@ def _version_payload(row: DatasetVersion, linked_models: list[dict] | None = Non
         "note": row.changelog or "",
         "is_latest": bool(row.is_latest),
         "status": row.status,
+        "metadata_uri": getattr(row, "metadata_uri", None),
+        "validation_report_uri": getattr(row, "validation_report_uri", None),
+        "validation_status": getattr(row, "validation_status", None),
+        "validation_summary": getattr(row, "validation_summary", None),
+        "metadata_snapshot": getattr(row, "metadata_snapshot", None),
+        "format": getattr(row, "format", None),
+        "task_type": getattr(row, "task_type", None),
         "created_by": row.created_by,
         "created_at": row.created_at.isoformat(),
         "tracked_at": row.created_at.isoformat(),
         "linked_models": linked_models or [],
     }
+
+
+def _parse_tags(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 async def _resolve_mlops_dataset(db: AsyncSession, dataset_id: str, user: UserContext) -> MLDataset:
@@ -579,6 +592,56 @@ async def track_dataset_version(
     return _version_payload(new_version)
 
 
+@router.post("/uploads/yolo", status_code=status.HTTP_201_CREATED)
+async def upload_yolo_dataset(
+    file: UploadFile = File(..., description="YOLO/Ultralytics dataset ZIP"),
+    name: str | None = Form(default=None),
+    version: str | None = Form(default=None),
+    description: str | None = Form(default=None),
+    tags: str | None = Form(default=None, description="Comma-separated tags"),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.services.dataset_upload_service import DatasetUploadService
+
+    return await DatasetUploadService(db).upload_yolo(
+        file=file,
+        user=current_user,
+        name=name,
+        version=version,
+        description=description,
+        tags=_parse_tags(tags),
+    )
+
+
+@router.post("/uploads/general", status_code=status.HTTP_201_CREATED)
+async def upload_general_dataset(
+    file: UploadFile = File(..., description="CSV, JSON, Parquet, or custom ZIP dataset"),
+    name: str | None = Form(default=None),
+    version: str | None = Form(default=None),
+    description: str | None = Form(default=None),
+    dataset_type: str | None = Form(default=None),
+    task: str | None = Form(default=None),
+    label_column: str | None = Form(default=None),
+    tags: str | None = Form(default=None, description="Comma-separated tags"),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.services.dataset_upload_service import DatasetUploadService
+
+    return await DatasetUploadService(db).upload_general(
+        file=file,
+        user=current_user,
+        name=name,
+        version=version,
+        description=description,
+        dataset_type=dataset_type,
+        task_type=task,
+        tags=_parse_tags(tags),
+        label_column=label_column,
+    )
+
+
 @router.get("/{dataset_id}/versions/{version_id}")
 async def get_dataset_version(
     dataset_id: str,
@@ -592,6 +655,41 @@ async def get_dataset_version(
     if row is None or row.dataset_id != dataset.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset version not found")
     return _version_payload(row, linked_models=await _version_linked_models(db, row.id))
+
+
+@router.get("/{dataset_id}/versions/{version_id}/metadata")
+async def get_dataset_version_metadata(
+    dataset_id: str,
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    row = await db.get(DatasetVersion, version_id)
+    if row is None or row.dataset_id != dataset.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset version not found")
+    return getattr(row, "metadata_snapshot", None) or {}
+
+
+@router.get("/{dataset_id}/versions/{version_id}/validation-report")
+async def get_dataset_version_validation_report(
+    dataset_id: str,
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    row = await db.get(DatasetVersion, version_id)
+    if row is None or row.dataset_id != dataset.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset version not found")
+    snapshot = getattr(row, "metadata_snapshot", None) or {}
+    validation = snapshot.get("validation") if isinstance(snapshot, dict) else None
+    return {
+        "status": getattr(row, "validation_status", None) or "unknown",
+        "summary": getattr(row, "validation_summary", None) or {},
+        "validation": validation or {},
+        "validation_report_uri": getattr(row, "validation_report_uri", None),
+    }
 
 
 @router.patch("/{dataset_id}/versions/{version_id}")
@@ -682,7 +780,13 @@ async def upload_dataset(
     from app.config import get_settings
     from app.services.mlops_dataset_service import DatasetService
 
-    parsed = json.loads(metadata) if metadata else {}
+    try:
+        parsed = json.loads(metadata) if metadata else {}
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="metadata must be valid JSON",
+        ) from exc
     now = datetime.now(timezone.utc)
     dataset_id = f"ds_{uuid4().hex[:10]}"
 
@@ -732,9 +836,10 @@ async def upload_dataset(
     existing_mlops_dataset = (
         await db.execute(select(MLDataset).where(MLDataset.name == payload_name))
     ).scalar_one_or_none()
-    mlops_dataset: MLDataset | None = None
+    mlops_dataset_id: str | None = None
     try:
         mlops_dataset = await _resolve_mlops_dataset(db, payload.id, current_user)
+        mlops_dataset_id = mlops_dataset.id
         version = await DatasetService(db).track_new_version(
             dataset=mlops_dataset,
             file_bytes=raw,
@@ -754,8 +859,8 @@ async def upload_dataset(
         await db.rollback()
         await minio.delete_object(object_name)
         await db.execute(delete(Dataset).where(Dataset.id == payload_id))
-        if existing_mlops_dataset is None and mlops_dataset is not None:
-            await db.execute(delete(MLDataset).where(MLDataset.id == mlops_dataset.id))
+        if existing_mlops_dataset is None and mlops_dataset_id is not None:
+            await db.execute(delete(MLDataset).where(MLDataset.id == mlops_dataset_id))
         await db.commit()
         raise
 

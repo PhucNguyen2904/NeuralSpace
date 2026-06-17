@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { PaginatedResponse } from "@/types/api";
-import type { Dataset, DatasetListParams, DatasetPreview, UpdateDatasetPayload, WorkspaceDatasetMountResponse } from "@/types/dataset";
+import type { Dataset, DatasetListParams, DatasetPreview, DatasetUploadResponse, UpdateDatasetPayload, WorkspaceDatasetMountResponse } from "@/types/dataset";
 
 export async function getDatasets(params: DatasetListParams): Promise<PaginatedResponse<Dataset>> {
   const response = await apiClient.get<PaginatedResponse<Dataset>>("/datasets", { params });
@@ -29,8 +29,31 @@ export async function uploadDataset(file: File, metadata?: Record<string, unknow
     formData.append("metadata", JSON.stringify(metadata));
   }
   const response = await apiClient.post<Dataset>("/datasets/upload", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
     timeout: 120_000
+  });
+  return response.data;
+}
+
+export async function uploadYoloDataset(file: File, payload: Record<string, string>): Promise<DatasetUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value.trim()) formData.append(key, value.trim());
+  });
+  const response = await apiClient.post<DatasetUploadResponse>("/datasets/uploads/yolo", formData, {
+    timeout: 180_000
+  });
+  return response.data;
+}
+
+export async function uploadGeneralDataset(file: File, payload: Record<string, string>): Promise<DatasetUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value.trim()) formData.append(key, value.trim());
+  });
+  const response = await apiClient.post<DatasetUploadResponse>("/datasets/uploads/general", formData, {
+    timeout: 180_000
   });
   return response.data;
 }

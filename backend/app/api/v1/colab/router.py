@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -201,6 +201,7 @@ async def exchange_colab_claim(
     db: AsyncSession = Depends(get_db),
     redis=Depends(get_redis),
 ) -> ColabBootstrapResponse:
+    settings = get_settings()
     claim = await ColabClaimService.consume(redis, payload.claim_code)
     if claim is None:
         audit_event(
@@ -490,6 +491,36 @@ def _session_response(identity: RuntimeIdentity) -> RuntimeSessionResponse:
         last_heartbeat_at=session.last_heartbeat_at,
         expires_at=session.expires_at,
     )
+
+
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _dashboard_session_status(session) -> str:
+    status_value = session.status.value if hasattr(session.status, "value") else str(session.status)
+    if status_value != "CONNECTED":
+        return status_value
+
+    now = datetime.now(timezone.utc)
+    expires_at = _as_aware_utc(session.expires_at)
+    if expires_at is not None and expires_at <= now:
+        return "EXPIRED"
+
+    last_seen = _as_aware_utc(session.last_heartbeat_at or session.connected_at)
+    stale_seconds = max(30, get_settings().COLAB_HEARTBEAT_STALE_SECONDS)
+    if last_seen is None or now - last_seen > timedelta(seconds=stale_seconds):
+        return "DISCONNECTED"
+
+    return status_value
+
+
+def _dashboard_session_started_at(session) -> datetime | None:
+    return session.connected_at or session.created_at
 
 
 @router.get("/runtime/session", response_model=RuntimeSessionResponse)
@@ -784,8 +815,8 @@ async def get_latest_workspace_session(
     ).scalar_one_or_none()
     if run is None:
         return WorkspaceSessionDashboardResponse(
-            session_status=session.status.value,
-            session_last_seen=session.last_heartbeat_at or session.connected_at or session.created_at,
+            session_status=_dashboard_session_status(session),
+            session_last_seen=_dashboard_session_started_at(session),
         )
 
     run_logs = list(
@@ -798,15 +829,15 @@ async def get_latest_workspace_session(
             )
         ).scalars().all()
     )
-    report_time = run_logs[-1].created_at if run_logs else session.last_heartbeat_at or run.created_at
+    report_time = run_logs[-1].created_at if run_logs else run.created_at
     metrics = [
         {"key": key, "value": value, "step": 0, "timestamp": report_time}
         for key, value in (run.metrics_snapshot or {}).items()
         if isinstance(value, (int, float))
     ]
     return WorkspaceSessionDashboardResponse(
-        session_status=session.status.value,
-        session_last_seen=session.last_heartbeat_at or session.connected_at or session.created_at,
+        session_status=_dashboard_session_status(session),
+        session_last_seen=_dashboard_session_started_at(session),
         run_id=run.id,
         run_status=run.status,
         run_started_at=run.start_time,

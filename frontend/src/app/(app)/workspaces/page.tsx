@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import { MoreHorizontal, Search, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DeleteConfirmModal, PageHeader, StatusBadge } from "@/components/shared";
 import { Button } from "@/components/ui";
 import { useDeleteWorkspace, useWorkspaces } from "@/lib/hooks/useWorkspace";
@@ -74,9 +74,15 @@ export default function WorkspacesPage() {
     return items;
   }, [workspaces, search, statusFilter, sortMode]);
 
+  // Reset to page 1 whenever filters change
+  useEffect(() => { setPage(1); }, [search, statusFilter, sortMode]);
+
   const total = filtered.length;
-  const start = (page - 1) * pageSize;
-  const paginated = filtered.slice(start, start + pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const start = (safePage - 1) * pageSize;
+  const end = Math.min(start + pageSize, total);
+  const paginated = filtered.slice(start, end);
 
   const handleDelete = () => {
     if (!deleteTarget) return;
@@ -236,12 +242,49 @@ export default function WorkspacesPage() {
           </>
         )}
 
-        <div className="mt-4 flex items-center justify-between text-sm text-text-secondary">
-          <p>Showing {total === 0 ? 0 : start + 1}-{Math.min(start + pageSize, total)} of {total}</p>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
-            <span className="font-semibold text-text-primary">{page}</span>
-            <Button variant="ghost" size="sm" onClick={() => setPage((p) => (start + pageSize < total ? p + 1 : p))} disabled={start + pageSize >= total}>Next</Button>
+        <div className="mt-5 flex items-center justify-between gap-4">
+          {/* Result summary */}
+          <div className="flex items-center gap-2 text-xs text-text-secondary">
+            {total === 0 ? (
+              <span className="text-text-tertiary">
+                No projects found{search || statusFilter !== "All" ? " matching your filters" : ""}
+              </span>
+            ) : search || statusFilter !== "All" ? (
+              <>
+                <span className="font-semibold text-text-primary">{total}</span>
+                <span>matched</span>
+                <span className="text-text-tertiary">·</span>
+                <span className="text-text-tertiary">{workspaces.length} total</span>
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-text-primary">{total}</span>
+                <span>{total === 1 ? "project" : "projects"}</span>
+              </>
+            )}
+          </div>
+
+          {/* Pagination controls */}
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+            >
+              ← Prev
+            </Button>
+            <span className="flex h-7 min-w-[60px] items-center justify-center rounded-md border border-border bg-bg-elevated px-2 font-mono text-xs font-semibold text-text-primary">
+              {safePage} / {totalPages}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPage((p) => (end < total ? p + 1 : p))}
+              disabled={end >= total}
+            >
+              Next →
+            </Button>
           </div>
         </div>
       </div>

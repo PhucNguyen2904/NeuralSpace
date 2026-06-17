@@ -1,8 +1,16 @@
 import axios from "axios";
 import type { AxiosResponse } from "axios";
 
+function resolveApiBaseUrl() {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "");
+  if (!configured) return "/api/v1";
+  return configured.endsWith("/api/v1") ? configured : `${configured}/api/v1`;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
 export const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL ?? "/api/v1",
+  baseURL: API_BASE_URL,
   timeout: 10000,
   paramsSerializer: {
     indexes: null
@@ -78,7 +86,7 @@ apiClient.interceptors.response.use(
       originalConfig._retry = true;
       try {
         const refreshResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/auth/refresh`,
+          `${API_BASE_URL}/auth/refresh`,
           {},
           { timeout: 10000 }
         );

@@ -82,8 +82,12 @@ export const useDeleteWorkspace = () => {
 };
 
 export const useLaunchWorkspaceInColab = () => {
+  const queryClient = useQueryClient();
   return useMutation<ColabLaunchResult, Error, string>({
-    mutationFn: (id: string) => launchWorkspaceInColab(id)
+    mutationFn: (id: string) => launchWorkspaceInColab(id),
+    onSuccess: (_result, id) => {
+      queryClient.invalidateQueries({ queryKey: ["workspace-run-data", id] });
+    }
   });
 };
 

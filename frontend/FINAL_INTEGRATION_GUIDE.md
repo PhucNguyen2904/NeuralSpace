@@ -2,7 +2,7 @@
 
 ## Environment Variables (`.env.local`)
 ```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
 NEXT_PUBLIC_APP_NAME=NeuralSpace
 NEXT_PUBLIC_WS_PROXY_URL=wss://lab.platform.com
 ```

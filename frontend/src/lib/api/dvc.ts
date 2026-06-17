@@ -117,8 +117,6 @@ export async function trackDatasetVersion(
     `/datasets/${datasetId}/versions/track`,
     form,
     {
-      // Let the browser set Content-Type with correct boundary
-      headers: { "Content-Type": "multipart/form-data" },
       timeout: 300_000, // 5 min – DVC push can be slow
       onUploadProgress: (evt) => {
         if (payload.onUploadProgress && evt.total) {

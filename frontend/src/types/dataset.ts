@@ -20,6 +20,59 @@ export interface Dataset {
   version?: string;
 }
 
+export interface DatasetUploadIssue {
+  code: string;
+  message: string;
+  severity: "error" | "warning";
+  path?: string;
+  line?: number;
+}
+
+export interface DatasetUploadPreview {
+  classes?: string[];
+  splits?: Record<string, { images?: number; labels?: number; annotations?: number }>;
+  class_distribution?: Record<string, number>;
+  validation_status?: string;
+  file_name?: string;
+  format?: string;
+  row_count?: number;
+  record_count?: number;
+  file_count?: number;
+  column_count?: number;
+  columns?: Array<{ name: string; type: string; missing?: number; nullable?: boolean }>;
+  missing_values?: Record<string, number>;
+  extension_counts?: Record<string, number>;
+}
+
+export interface DatasetUploadResponse {
+  dataset: {
+    id: string;
+    name: string;
+    description: string;
+    type: DatasetType | "custom";
+    task: string;
+    tags: string[];
+    storage_path: string;
+  };
+  version: {
+    id: string;
+    dataset_id: string;
+    version: string;
+    status: string;
+    storage_path: string;
+    metadata_uri?: string;
+    validation_report_uri?: string;
+    validation_status?: string;
+  };
+  preview: DatasetUploadPreview;
+  validation_report: {
+    status: string;
+    summary: { error_count: number; warning_count: number };
+    errors: DatasetUploadIssue[];
+    warnings: DatasetUploadIssue[];
+  };
+}
+
 export interface ColumnInfo {
   name: string;
   type: "numeric" | "text" | "date";

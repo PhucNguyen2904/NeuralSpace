@@ -86,6 +86,7 @@ def _mlops_to_payload(row: MLDataset) -> dict:
         "updated_at": row.updated_at.isoformat(),
         "thumbnail_url": None,
         "storage_path": row.storage_path or "",
+        "dvc_profile_id": row.dvc_profile_id,
     }
 
 
@@ -96,6 +97,7 @@ def _version_payload(row: DatasetVersion, linked_models: list[dict] | None = Non
         "version": row.version,
         "dvc_md5": row.dvc_md5 or "",
         "dvc_commit": row.dvc_commit or "",
+        "dvc_profile_id": row.dvc_profile_id,
         "git_commit": row.dvc_commit or "",
         "storage_path": row.storage_path or "",
         "storage_uri": row.storage_path or "",
@@ -481,6 +483,7 @@ async def create_dataset_version(
         version=version,
         dvc_md5=str(payload.get("dvc_md5") or payload.get("md5") or ""),
         dvc_commit=str(payload.get("dvc_commit") or payload.get("git_commit") or ""),
+        dvc_profile_id=payload.get("dvc_profile_id") if isinstance(payload.get("dvc_profile_id"), str) else dataset.dvc_profile_id,
         storage_path=str(payload.get("storage_path") or payload.get("path") or payload.get("local_path") or dataset.storage_path or ""),
         size_bytes=int(payload.get("size_bytes") or 0),
         item_count=int(payload.get("item_count") or 0),
@@ -510,6 +513,7 @@ async def track_dataset_version(
     version_status: str = Form(default="draft", alias="status", description="draft | validated | deprecated"),
     split_info: str | None = Form(default=None, description="JSON string: {train, val, test} split ratios"),
     schema_snapshot: str | None = Form(default=None, description="JSON string: column/feature schema snapshot"),
+    dvc_profile_id: str | None = Form(default=None, description="Optional DVC storage profile id"),
     # ── Dependencies ─────────────────────────────────────────────────────────
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
@@ -529,11 +533,17 @@ async def track_dataset_version(
 
     from app.config import get_settings
     from app.services.mlops_dataset_service import DatasetService
+    from app.services.dvc_profile_service import DVCProfileService
 
     settings = get_settings()
 
     # ── Resolve / auto-create the MLDataset row ───────────────────────────
     dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    profile = await DVCProfileService(db, settings).resolve_for_dataset(
+        dataset=dataset,
+        user=current_user,
+        requested_profile_id=dvc_profile_id,
+    )
 
     # ── Parse optional JSON form fields ──────────────────────────────────
     parsed_split_info: dict | None = None
@@ -585,8 +595,9 @@ async def track_dataset_version(
         split_info=parsed_split_info,
         schema_snapshot=parsed_schema_snapshot,
         user=current_user,
-        dvc_repo_path=settings.DVC_REPO_PATH,
-        dvc_remote_name=settings.DVC_REMOTE_NAME,
+        dvc_repo_path=profile.repo_path,
+        dvc_remote_name=profile.remote_name,
+        dvc_profile_id=profile.id,
     )
 
     return _version_payload(new_version)
@@ -827,6 +838,7 @@ async def upload_dataset(
     from app.clients.minio_client import get_minio_client, md5_hex
     from app.config import get_settings
     from app.services.mlops_dataset_service import DatasetService
+    from app.services.dvc_profile_service import DVCProfileService
 
     try:
         parsed = json.loads(metadata) if metadata else {}
@@ -888,6 +900,12 @@ async def upload_dataset(
     try:
         mlops_dataset = await _resolve_mlops_dataset(db, payload.id, current_user)
         mlops_dataset_id = mlops_dataset.id
+        requested_profile_id = parsed.get("dvc_profile_id") if isinstance(parsed.get("dvc_profile_id"), str) else None
+        profile = await DVCProfileService(db, get_settings()).resolve_for_dataset(
+            dataset=mlops_dataset,
+            user=current_user,
+            requested_profile_id=requested_profile_id,
+        )
         version = await DatasetService(db).track_new_version(
             dataset=mlops_dataset,
             file_bytes=raw,
@@ -900,8 +918,9 @@ async def upload_dataset(
             split_info=parsed.get("split_info") if isinstance(parsed.get("split_info"), dict) else None,
             schema_snapshot=parsed.get("schema_snapshot") if isinstance(parsed.get("schema_snapshot"), dict) else None,
             user=current_user,
-            dvc_repo_path=get_settings().DVC_REPO_PATH,
-            dvc_remote_name=get_settings().DVC_REMOTE_NAME,
+            dvc_repo_path=profile.repo_path,
+            dvc_remote_name=profile.remote_name,
+            dvc_profile_id=profile.id,
         )
     except Exception:
         await db.rollback()

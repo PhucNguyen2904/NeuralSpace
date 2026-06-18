@@ -36,6 +36,36 @@ model_status_enum = Enum("PENDING_REGISTRATION", "READY", "FAILED", name="mlops_
 link_type_enum = Enum("train", "val", "test", "eval", name="mlops_link_type")
 approval_target_stage_enum = Enum("Staging", "Production", name="mlops_approval_target_stage")
 approval_status_enum = Enum("pending", "approved", "rejected", "cancelled", name="mlops_approval_status")
+dvc_profile_scope_enum = Enum("global", "team", "user", "workspace", name="mlops_dvc_profile_scope")
+dvc_profile_status_enum = Enum("ready", "inactive", "error", name="mlops_dvc_profile_status")
+dvc_profile_repo_mode_enum = Enum("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode")
+
+
+class DVCProfile(Base):
+    __tablename__ = "dvc_profiles"
+    __table_args__ = (
+        UniqueConstraint("name", "scope", "scope_id", name="uq_mlops_dvc_profiles_name_scope"),
+        Index("ix_mlops_dvc_profiles_scope", "scope", "scope_id"),
+        {"schema": "mlops"},
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    scope: Mapped[str] = mapped_column(dvc_profile_scope_enum, nullable=False, server_default="global")
+    scope_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    repo_mode: Mapped[str] = mapped_column(dvc_profile_repo_mode_enum, nullable=False, server_default="managed_git")
+    git_repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    git_branch: Mapped[str] = mapped_column(String(100), nullable=False, server_default="main")
+    repo_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    remote_name: Mapped[str] = mapped_column(String(100), nullable=False, server_default="minio")
+    remote_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    endpoint_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    status: Mapped[str] = mapped_column(dvc_profile_status_enum, nullable=False, server_default="ready")
+    status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class MLDataset(Base):
@@ -48,6 +78,11 @@ class MLDataset(Base):
     type: Mapped[str] = mapped_column(dataset_type_enum, nullable=False)
     owner_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False)
     team_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    dvc_profile_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("mlops.dvc_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     dvc_repo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
@@ -74,6 +109,11 @@ class DatasetVersion(Base):
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     dvc_md5: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dvc_commit: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    dvc_profile_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("mlops.dvc_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     git_tag: Mapped[str | None] = mapped_column(String(100), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     item_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

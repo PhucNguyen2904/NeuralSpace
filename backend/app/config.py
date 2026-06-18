@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     # Must be a path to an already-initialised `git init && dvc init` repo.
     DVC_REPO_PATH: str = "/srv/dvc-repo"
     DVC_REMOTE_NAME: str = "minio"
+    DVC_MANAGED_REPO_ROOT: str = "/srv/dvc-repos"
 
     def __init__(self, **data):
         """Initialize settings with environment-based docs visibility."""

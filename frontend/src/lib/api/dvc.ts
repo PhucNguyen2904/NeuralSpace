@@ -3,6 +3,38 @@ import type { PaginatedResponse } from "@/types/api";
 
 export type DvcVersionStatus = "draft" | "validated" | "deprecated";
 
+export interface DvcProfile {
+  id: string;
+  name: string;
+  scope: "global" | "team" | "user" | "workspace";
+  scope_id?: string | null;
+  repo_mode: "managed_git" | "existing_path";
+  git_repo_url?: string | null;
+  git_branch: string;
+  repo_path: string;
+  remote_name: string;
+  remote_url?: string | null;
+  endpoint_url?: string | null;
+  is_default: boolean;
+  status: "ready" | "inactive" | "error";
+  status_message?: string | null;
+  is_environment_default?: boolean;
+}
+
+export interface DvcProfileCreatePayload {
+  name: string;
+  scope: "global" | "team" | "user" | "workspace";
+  scope_id?: string;
+  repo_mode?: "managed_git" | "existing_path";
+  git_repo_url?: string;
+  git_branch?: string;
+  repo_path?: string;
+  remote_name?: string;
+  remote_url?: string;
+  endpoint_url?: string;
+  is_default?: boolean;
+}
+
 export interface DvcDatasetVersion {
   id: string;
   dataset_id: string;
@@ -10,6 +42,7 @@ export interface DvcDatasetVersion {
   version: string;
   dvc_md5: string;
   dvc_commit?: string;
+  dvc_profile_id?: string | null;
   path?: string;
   storage_path?: string;
   storage_uri?: string;
@@ -93,6 +126,7 @@ export interface TrackVersionPayload {
   changelog?: string;
   itemCount?: number;
   status?: DvcVersionStatus;
+  dvcProfileId?: string;
   splitInfo?: Record<string, number>;
   schemaSnapshot?: Record<string, unknown>;
   onUploadProgress?: (percent: number) => void;
@@ -115,6 +149,9 @@ export async function trackDatasetVersion(
   form.append("changelog", payload.changelog ?? "");
   form.append("item_count", String(payload.itemCount ?? 0));
   form.append("status", payload.status ?? "draft");
+  if (payload.dvcProfileId) {
+    form.append("dvc_profile_id", payload.dvcProfileId);
+  }
   if (payload.splitInfo) {
     form.append("split_info", JSON.stringify(payload.splitInfo));
   }
@@ -134,6 +171,16 @@ export async function trackDatasetVersion(
       },
     }
   );
+  return response.data;
+}
+
+export async function getDvcProfiles(): Promise<DvcProfile[]> {
+  const response = await apiClient.get<{ items: DvcProfile[] }>("/dvc/profiles");
+  return response.data.items;
+}
+
+export async function createDvcProfile(payload: DvcProfileCreatePayload): Promise<DvcProfile> {
+  const response = await apiClient.post<DvcProfile>("/dvc/profiles", payload);
   return response.data;
 }
 

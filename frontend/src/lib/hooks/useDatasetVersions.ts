@@ -4,13 +4,15 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createDatasetVersion,
+  createDvcProfile,
   diffDatasetVersions,
   getDatasetVersionById,
   getDatasetVersions,
+  getDvcProfiles,
   trackDatasetVersion,
   validateDatasetVersion,
+  type DvcProfileCreatePayload,
   type DvcVersionStatus,
-  type TrackVersionPayload,
 } from "@/lib/api/dvc";
 import type { Stage } from "@/types/mlflow";
 
@@ -315,6 +317,7 @@ export interface UseUploadVersionReturn {
     changelog?: string;
     itemCount?: number;
     status?: DvcVersionStatus;
+    dvcProfileId?: string;
     splitInfo?: Record<string, number>;
     schemaSnapshot?: Record<string, unknown>;
   }) => Promise<void>;
@@ -347,6 +350,7 @@ export function useUploadVersion(): UseUploadVersionReturn {
       changelog?: string;
       itemCount?: number;
       status?: DvcVersionStatus;
+      dvcProfileId?: string;
       splitInfo?: Record<string, number>;
       schemaSnapshot?: Record<string, unknown>;
     }) => {
@@ -360,6 +364,7 @@ export function useUploadVersion(): UseUploadVersionReturn {
         changelog: opts.changelog,
         itemCount: opts.itemCount ?? 0,
         status: opts.status ?? "draft",
+        dvcProfileId: opts.dvcProfileId,
         splitInfo: opts.splitInfo,
         schemaSnapshot: opts.schemaSnapshot,
         onUploadProgress: (pct) => {
@@ -414,4 +419,21 @@ export function useUploadVersion(): UseUploadVersionReturn {
     }),
     [mutation, steps, error]
   );
+}
+
+export function useDvcProfiles() {
+  return useQuery({
+    queryKey: ["dvc-profiles"],
+    queryFn: getDvcProfiles,
+  });
+}
+
+export function useCreateDvcProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: DvcProfileCreatePayload) => createDvcProfile(payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dvc-profiles"] });
+    },
+  });
 }

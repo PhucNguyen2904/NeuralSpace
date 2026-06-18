@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  Database,
   FileJson,
   FileUp,
   Loader2,
@@ -11,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
-import { useUploadVersion, type UploadStep } from "@/lib/hooks/useDatasetVersions";
+import { useDvcProfiles, useUploadVersion, type UploadStep } from "@/lib/hooks/useDatasetVersions";
 import type { DvcVersionStatus } from "@/lib/api/dvc";
 
 type DatasetVersionMetadata = {
@@ -162,8 +163,10 @@ export function TrackVersionModal({
   onSuccess,
 }: UploadVersionModalProps) {
   const uploader = useUploadVersion();
+  const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
 
   const [file, setFile] = useState<File | null>(null);
+  const [dvcProfileId, setDvcProfileId] = useState("");
   const [version, setVersion] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [changelog, setChangelog] = useState("");
@@ -177,7 +180,9 @@ export function TrackVersionModal({
   const hasError = uploader.steps.some((s) => s.status === "error");
   const isActive = uploader.isUploading;
 
-  const canSubmit = Boolean(file) && !isActive && !isDone;
+  const readyDvcProfiles = dvcProfiles.filter((profile) => profile.status === "ready");
+  const selectedDvcProfileId = dvcProfileId || readyDvcProfiles.find((profile) => profile.is_environment_default)?.id || readyDvcProfiles[0]?.id || "";
+  const canSubmit = Boolean(file && selectedDvcProfileId) && !isActive && !isDone;
 
   const applyFileDefaults = async (selected: File) => {
     setFile(selected);
@@ -192,6 +197,7 @@ export function TrackVersionModal({
     if (isActive) return;
     uploader.reset();
     setFile(null);
+    setDvcProfileId("");
     setVersion("");
     setCommitMessage("");
     setChangelog("");
@@ -213,6 +219,7 @@ export function TrackVersionModal({
         changelog,
         itemCount: itemCount ? parseInt(itemCount, 10) : 0,
         status: versionStatus,
+        dvcProfileId: selectedDvcProfileId,
         splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
         schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
       });
@@ -320,6 +327,33 @@ export function TrackVersionModal({
                 Import JSON
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* ── DVC storage ── */}
+        {!showProgress && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text-secondary">
+              DVC storage
+            </label>
+            <div className="relative">
+              <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+              <select
+                value={selectedDvcProfileId}
+                onChange={(e) => setDvcProfileId(e.target.value)}
+                disabled={isActive || isLoadingDvcProfiles || readyDvcProfiles.length === 0}
+                className="h-9 w-full rounded-md border border-border bg-bg-surface pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+              >
+                {readyDvcProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.is_environment_default ? `${profile.name} · no setup needed` : `${profile.name} · ${profile.remote_name}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {readyDvcProfiles.length === 0 ? (
+              <p className="mt-1 text-xs text-red-500">No ready DVC storage profile is available.</p>
+            ) : null}
           </div>
         )}
 

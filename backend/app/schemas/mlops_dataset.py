@@ -11,6 +11,7 @@ class DatasetCreateRequest(BaseModel):
     description: str | None = Field(default=None, examples=["Monthly snapshot for churn modeling"])
     type: Literal["image", "tabular", "text", "audio", "video", "custom"] = Field(..., examples=["tabular"])
     team_id: str | None = Field(default=None, examples=["de305d54-75b4-431b-adb2-eb6b9e546014"])
+    dvc_profile_id: str | None = Field(default=None, examples=["2f0d7d4c-7fd3-44ec-9e4a-5b32d43ad51e"])
     dvc_repo_url: str | None = Field(default=None, examples=["https://git.internal/mlops-data.git"])
     storage_path: str | None = Field(default=None, examples=["datasets/customer-churn"])
     tags: list[str] = Field(default_factory=list, examples=[["pii-redacted", "gold"]])
@@ -45,6 +46,7 @@ class DatasetResponse(BaseModel):
     type: str
     owner_id: str
     team_id: str | None = None
+    dvc_profile_id: str | None = None
     dvc_repo_url: str | None = None
     storage_path: str | None = None
     tags: list[str] = Field(default_factory=list)
@@ -66,6 +68,7 @@ class DatasetVersionResponse(BaseModel):
     version: str
     dvc_md5: str | None = None
     dvc_commit: str | None = None
+    dvc_profile_id: str | None = None
     storage_path: str | None = None
     size_bytes: int | None = None
     item_count: int | None = None
@@ -93,6 +96,7 @@ class DatasetVersionTrackResponse(BaseModel):
     version: str
     dvc_md5: str | None = None
     dvc_commit: str | None = None
+    dvc_profile_id: str | None = None
     storage_path: str | None = None
     size_bytes: int | None = None
     item_count: int | None = None
@@ -143,3 +147,35 @@ class TaskStatusResponse(BaseModel):
     status: str
     result: dict[str, Any] | None = None
     error: str | None = None
+
+
+class DVCProfileCreateRequest(BaseModel):
+    name: str = Field(..., examples=["Team A DVC"])
+    scope: Literal["global", "team", "user", "workspace"] = "global"
+    scope_id: str | None = Field(default=None, examples=["ws_ab123"])
+    repo_mode: Literal["managed_git", "existing_path"] = "managed_git"
+    git_repo_url: str | None = Field(default=None, examples=["https://github.com/company/team-a-dvc.git"])
+    git_branch: str = Field(default="main", examples=["main"])
+    repo_path: str | None = Field(default=None, examples=["/srv/dvc-repos/team-a"])
+    remote_name: str = Field(default="minio", examples=["minio"])
+    remote_url: str | None = Field(default=None, examples=["s3://dvc-data/team-a"])
+    endpoint_url: str | None = Field(default=None, examples=["http://minio:9000"])
+    is_default: bool = False
+
+
+class DVCProfileResponse(BaseModel):
+    id: str
+    name: str
+    scope: str
+    scope_id: str | None = None
+    repo_mode: str = "managed_git"
+    git_repo_url: str | None = None
+    git_branch: str = "main"
+    repo_path: str
+    remote_name: str
+    remote_url: str | None = None
+    endpoint_url: str | None = None
+    is_default: bool
+    status: str
+    status_message: str | None = None
+    is_environment_default: bool = False

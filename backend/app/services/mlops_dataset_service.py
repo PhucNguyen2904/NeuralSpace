@@ -38,6 +38,7 @@ class DatasetService:
             type=payload.type,
             owner_id=user.user_id,
             team_id=payload.team_id,
+            dvc_profile_id=payload.dvc_profile_id,
             dvc_repo_url=payload.dvc_repo_url,
             storage_path=payload.storage_path,
             tags=payload.tags,
@@ -158,6 +159,7 @@ class DatasetService:
         user: UserContext,
         dvc_repo_path: str,
         dvc_remote_name: str,
+        dvc_profile_id: str | None = None,
     ) -> DatasetVersion:
         """
         Upload *file_bytes* into the DVC working repo, run `dvc add` + `git commit`
@@ -226,6 +228,9 @@ class DatasetService:
 
         # ── 5. Update parent MLDataset metadata ──────────────────────────
         dataset.storage_path = track_result.dvc_file_path
+        if dvc_profile_id is not None:
+            dataset.dvc_profile_id = dvc_profile_id
+            new_version.dvc_profile_id = dvc_profile_id
         dataset.updated_at = datetime.now()
         await self.db.commit()
         await self.db.refresh(dataset)

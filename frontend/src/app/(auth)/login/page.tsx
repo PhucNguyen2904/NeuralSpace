@@ -36,6 +36,11 @@ type LoginResponse = {
   };
 };
 
+const devLoginDefaults =
+  process.env.NODE_ENV === "development"
+    ? { email: "tester@collabclone.local", password: "Password123!" }
+    : { email: "", password: "" };
+
 export default function LoginPage() {
   useRedirectIfAuthed();
 
@@ -51,7 +56,7 @@ export default function LoginPage() {
     formState: { errors, isSubmitting }
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "", rememberMe: true }
+    defaultValues: { ...devLoginDefaults, rememberMe: true }
   });
 
   const onSubmit = async (values: FormValues) => {

@@ -18,15 +18,19 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-dvc_profile_scope_enum = sa.Enum("global", "team", "user", "workspace", name="mlops_dvc_profile_scope")
-dvc_profile_status_enum = sa.Enum("ready", "inactive", "error", name="mlops_dvc_profile_status")
-dvc_profile_repo_mode_enum = sa.Enum("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode")
+dvc_profile_scope_enum = postgresql.ENUM("global", "team", "user", "workspace", name="mlops_dvc_profile_scope", create_type=False)
+dvc_profile_status_enum = postgresql.ENUM("ready", "inactive", "error", name="mlops_dvc_profile_status", create_type=False)
+dvc_profile_repo_mode_enum = postgresql.ENUM("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode", create_type=False)
+
+_scope_enum_sa = sa.Enum("global", "team", "user", "workspace", name="mlops_dvc_profile_scope", create_type=False)
+_status_enum_sa = sa.Enum("ready", "inactive", "error", name="mlops_dvc_profile_status", create_type=False)
+_repo_mode_enum_sa = sa.Enum("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode", create_type=False)
 
 
 def upgrade() -> None:
-    dvc_profile_scope_enum.create(op.get_bind(), checkfirst=True)
-    dvc_profile_status_enum.create(op.get_bind(), checkfirst=True)
-    dvc_profile_repo_mode_enum.create(op.get_bind(), checkfirst=True)
+    _scope_enum_sa.create(op.get_bind(), checkfirst=True)
+    _status_enum_sa.create(op.get_bind(), checkfirst=True)
+    _repo_mode_enum_sa.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "dvc_profiles",

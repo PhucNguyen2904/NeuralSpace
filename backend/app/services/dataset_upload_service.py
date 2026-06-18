@@ -15,6 +15,7 @@ from app.models.mlops_tracking import DatasetVersion, MLDataset
 from app.services.dataset_storage_service import DatasetStorageService
 from app.services.dataset_upload_models import ParsedDataset, ValidationResult
 from app.services.dataset_version_service import DatasetVersionService
+from app.services.dvc_profile_service import DVCProfileService
 from app.services.metadata_generator import MetadataGenerator
 from app.services.parsers.general_dataset_parser import GeneralDatasetParser
 from app.services.parsers.yolo_dataset_parser import YoloDatasetParser, extract_zip_safely
@@ -105,6 +106,7 @@ class DatasetUploadService:
         version: str | None,
         description: str | None,
         tags: list[str],
+        dvc_profile_id: str | None = None,
     ) -> dict:
         filename = Path(file.filename or "upload.zip").name
         if not filename.lower().endswith(".zip"):
@@ -145,6 +147,7 @@ class DatasetUploadService:
                 tags=tags,
                 validation=validation,
                 extracted_root=extract_dir,
+                dvc_profile_id=dvc_profile_id,
             )
 
     async def upload_general(
@@ -159,6 +162,7 @@ class DatasetUploadService:
         task_type: str | None,
         tags: list[str],
         label_column: str | None,
+        dvc_profile_id: str | None = None,
     ) -> dict:
         filename = Path(file.filename or "upload").name
         raw = await file.read()
@@ -194,6 +198,7 @@ class DatasetUploadService:
                 tags=tags,
                 validation=validation,
                 label_column=label_column,
+                dvc_profile_id=dvc_profile_id,
             )
 
     async def _persist_upload(
@@ -211,6 +216,7 @@ class DatasetUploadService:
         validation: ValidationResult,
         label_column: str | None = None,
         extracted_root: Path | None = None,
+        dvc_profile_id: str | None = None,
     ) -> dict:
         dataset_id = f"ds_{uuid4().hex[:10]}"
         embedded_metadata = parsed.details.get("embedded_metadata") if isinstance(parsed.details, dict) else None
@@ -280,12 +286,31 @@ class DatasetUploadService:
             )
 
             class_count = parsed.statistics.get("class_count")
+            profile = await DVCProfileService(self.db, get_settings()).resolve_for_dataset(
+                dataset=MLDataset(
+                    id="00000000-0000-0000-0000-000000000000",
+                    name=parsed.name,
+                    description=resolved_description,
+                    type=parsed.dataset_type,
+                    owner_id=user.user_id,
+                    team_id=None,
+                    dvc_profile_id=None,
+                    dvc_repo_url=None,
+                    storage_path=None,
+                    tags=resolved_tags,
+                    status="active",
+                ),
+                user=user,
+                requested_profile_id=dvc_profile_id,
+            )
             dvc_result = await self._track_dvc_upload(
                 dataset_id=dataset_id,
                 dataset_name=parsed.name,
                 version=normalized_version,
                 filename=filename,
                 raw=raw,
+                dvc_repo_path=profile.repo_path,
+                dvc_remote_name=profile.remote_name,
             )
             public_dataset, _mlops_dataset, dataset_version = await self.version_service.create_upload_version(
                 dataset_id=dataset_id,
@@ -308,6 +333,7 @@ class DatasetUploadService:
                 dvc_md5=dvc_result.md5,
                 dvc_commit=dvc_result.git_commit,
                 dvc_storage_path=dvc_result.dvc_file_path,
+                dvc_profile_id=profile.id,
                 user=user,
             )
 
@@ -349,10 +375,11 @@ class DatasetUploadService:
         version: str,
         filename: str,
         raw: bytes,
+        dvc_repo_path: str,
+        dvc_remote_name: str,
     ) -> DVCTrackResult:
-        settings = get_settings()
         try:
-            dvc_client = DVCClient(settings.DVC_REPO_PATH, remote_name=settings.DVC_REMOTE_NAME)
+            dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
         except DVCRepositoryError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -360,7 +387,7 @@ class DatasetUploadService:
             ) from exc
 
         safe_filename = Path(filename).name or "upload"
-        staging_dir = Path(settings.DVC_REPO_PATH) / dataset_id / version
+        staging_dir = Path(dvc_repo_path) / dataset_id / version
         staging_dir.mkdir(parents=True, exist_ok=True)
         staging_file = staging_dir / safe_filename
         await asyncio.to_thread(staging_file.write_bytes, raw)

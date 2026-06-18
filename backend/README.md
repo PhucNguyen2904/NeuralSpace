@@ -87,7 +87,18 @@ This starts:
 alembic upgrade head
 ```
 
-5. **Access the API:**
+5. **Seed local demo data (optional):**
+
+```bash
+python scripts/seed_dev_data.py
+```
+
+This creates a local development user:
+
+- Email: `tester@collabclone.local`
+- Password: `Password123!`
+
+6. **Access the API:**
 
 - API: http://localhost:8000
 - API Docs (Swagger): http://localhost:8000/docs

@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, CheckCircle2, FileArchive, FileSpreadsheet, Info, UploadCloud } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, FileArchive, FileSpreadsheet, Info, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { inspectGeneralDataset, inspectYoloDataset, uploadGeneralDataset, uploadYoloDataset } from "@/lib/api/datasets";
+import { useDvcProfiles } from "@/lib/hooks/useDatasetVersions";
 import { cn } from "@/lib/utils/cn";
 import type { DatasetInspectResponse, DatasetUploadIssue, DatasetUploadResponse } from "@/types/dataset";
 
@@ -37,8 +38,12 @@ export function DatasetUploadModal({
   const [result, setResult] = React.useState<DatasetUploadResponse | null>(null);
   const [issues, setIssues] = React.useState<{ errors: DatasetUploadIssue[]; warnings: DatasetUploadIssue[] }>({ errors: [], warnings: [] });
   const [form, setForm] = React.useState({ ...INITIAL_FORM });
+  const [dvcProfileId, setDvcProfileId] = React.useState("");
   const [versionTouched, setVersionTouched] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
+  const readyDvcProfiles = dvcProfiles.filter((profile) => profile.status === "ready");
+  const selectedDvcProfileId = dvcProfileId || readyDvcProfiles.find((profile) => profile.is_environment_default)?.id || readyDvcProfiles[0]?.id || "";
 
   const resetState = React.useCallback(() => {
     setMode("yolo");
@@ -50,6 +55,7 @@ export function DatasetUploadModal({
     setResult(null);
     setIssues({ errors: [], warnings: [] });
     setForm({ ...INITIAL_FORM });
+    setDvcProfileId("");
     setVersionTouched(false);
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -96,7 +102,8 @@ export function DatasetUploadModal({
     tags: form.tags,
     dataset_type: form.dataset_type,
     task: form.task,
-    label_column: form.label_column
+    label_column: form.label_column,
+    dvc_profile_id: selectedDvcProfileId
   });
 
   const inspect = async () => {
@@ -168,7 +175,7 @@ export function DatasetUploadModal({
                 <Button variant="outline" onClick={() => void inspect()} disabled={!file || inspecting || submitting} loading={inspecting}>
                   Read
                 </Button>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || submitting || inspecting} loading={submitting}>
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || !selectedDvcProfileId || submitting || inspecting} loading={submitting}>
                   Upload
                 </Button>
               </>
@@ -182,6 +189,25 @@ export function DatasetUploadModal({
           <TabButton active={mode === "yolo"} onClick={() => { setMode("yolo"); setFile(null); setInspectResult(null); setResult(null); setIssues({ errors: [], warnings: [] }); }} icon={<FileArchive size={15} />} label="YOLO Dataset" />
           <TabButton active={mode === "general"} onClick={() => { setMode("general"); setFile(null); setInspectResult(null); setResult(null); setIssues({ errors: [], warnings: [] }); }} icon={<FileSpreadsheet size={15} />} label="General Dataset" />
         </div>
+
+        <Field label="DVC storage">
+          <div className="relative">
+            <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+            <select
+              className={`${inputCls()} w-full pl-9`}
+              value={selectedDvcProfileId}
+              onChange={(event) => setDvcProfileId(event.target.value)}
+              disabled={submitting || isLoadingDvcProfiles || readyDvcProfiles.length === 0}
+            >
+              {readyDvcProfiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.is_environment_default ? `${profile.name} · no setup needed` : `${profile.name} · ${profile.remote_name}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          {readyDvcProfiles.length === 0 ? <span className="text-xs text-red-600">No ready DVC storage profile is available.</span> : null}
+        </Field>
 
         {mode === "yolo" ? <YoloHelp /> : <GeneralForm form={form} setForm={setForm} />}
 

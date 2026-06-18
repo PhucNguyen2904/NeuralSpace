@@ -61,6 +61,7 @@ services:
       POSTGRES_DB: cloud_ide
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -71,22 +72,6 @@ services:
     networks:
       - backend-network
 
-  mlflow-postgres:
-    image: postgres:16-alpine
-    container_name: cloud-ide-mlflow-postgres
-    environment:
-      POSTGRES_USER: mlflow
-      POSTGRES_PASSWORD: mlflow
-      POSTGRES_DB: mlflow
-    volumes:
-      - mlflow_postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend-network
 
   redis:
     image: redis:7-alpine
@@ -108,7 +93,7 @@ services:
     image: ghcr.io/mlflow/mlflow:v2.14.3
     container_name: cloud-ide-mlflow
     depends_on:
-      mlflow-postgres:
+      postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
@@ -121,7 +106,7 @@ services:
     command: >
       sh -c "python -m pip install --no-cache-dir psycopg2-binary==2.9.9 boto3==1.34.131 &&
       python -m mlflow server
-      --backend-store-uri postgresql://mlflow:mlflow@mlflow-postgres:5432/mlflow
+      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow
       --default-artifact-root s3://mlflow-artifacts
       --host 0.0.0.0
       --port 5000"
@@ -190,7 +175,6 @@ services:
 volumes:
   minio_data:
   postgres_data:
-  mlflow_postgres_data:
   redis_data:
 
 networks:

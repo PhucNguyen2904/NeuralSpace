@@ -38,6 +38,7 @@ class DatasetVersionService:
         dvc_md5: str | None,
         dvc_commit: str | None,
         dvc_storage_path: str | None,
+        dvc_profile_id: str | None,
         user: UserContext,
     ) -> tuple[Dataset, MLDataset, DatasetVersion]:
         now = datetime.now(timezone.utc)
@@ -78,6 +79,7 @@ class DatasetVersionService:
                 type=dataset_type,
                 owner_id=user.user_id,
                 team_id=None,
+                dvc_profile_id=dvc_profile_id,
                 dvc_repo_url=None,
                 storage_path=dvc_storage_path or storage_path,
                 tags=tags,
@@ -87,6 +89,8 @@ class DatasetVersionService:
             await self.db.flush()
         else:
             mlops_dataset.storage_path = dvc_storage_path or storage_path
+            if dvc_profile_id is not None:
+                mlops_dataset.dvc_profile_id = dvc_profile_id
             mlops_dataset.updated_at = now
 
         await self.db.execute(
@@ -100,6 +104,7 @@ class DatasetVersionService:
             version=version,
             dvc_md5=dvc_md5,
             dvc_commit=dvc_commit,
+            dvc_profile_id=dvc_profile_id,
             storage_path=dvc_storage_path or storage_path,
             size_bytes=size_bytes,
             item_count=item_count,

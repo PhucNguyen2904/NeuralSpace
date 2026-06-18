@@ -610,6 +610,7 @@ async def upload_yolo_dataset(
     version: str | None = Form(default=None),
     description: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
+    dvc_profile_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -622,6 +623,7 @@ async def upload_yolo_dataset(
         version=version,
         description=description,
         tags=_parse_tags(tags),
+        dvc_profile_id=dvc_profile_id,
     )
 
 
@@ -656,6 +658,7 @@ async def upload_general_dataset(
     task: str | None = Form(default=None),
     label_column: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
+    dvc_profile_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -671,6 +674,7 @@ async def upload_general_dataset(
         task_type=task,
         tags=_parse_tags(tags),
         label_column=label_column,
+        dvc_profile_id=dvc_profile_id,
     )
 
 

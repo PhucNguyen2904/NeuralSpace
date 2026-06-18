@@ -8,7 +8,14 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.core.security import hash_password
 from app.models.dataset import Dataset
+from app.models.user import User
+
+
+DEV_USER_ID = "22222222-2222-2222-2222-222222222222"
+DEV_USER_EMAIL = "tester@collabclone.local"
+DEV_USER_PASSWORD = "Password123!"
 
 
 async def seed() -> None:
@@ -19,6 +26,15 @@ async def seed() -> None:
     user_1 = str(uuid4())
     user_2 = str(uuid4())
     async with session_maker() as session:
+        await session.merge(
+            User(
+                id=DEV_USER_ID,
+                email=DEV_USER_EMAIL,
+                full_name="NeuralSpace Tester",
+                password_hash=hash_password(DEV_USER_PASSWORD),
+            )
+        )
+
         dataset_samples = [
             Dataset(
                 id="ds_001",
@@ -132,7 +148,8 @@ async def seed() -> None:
 
     await engine.dispose()
     print("Seed completed.")
-    print(f"Demo user IDs: {user_1}, {user_2}")
+    print(f"Demo user IDs: {DEV_USER_ID}, {user_1}, {user_2}")
+    print(f"Dev login: {DEV_USER_EMAIL} / {DEV_USER_PASSWORD}")
 
 
 if __name__ == "__main__":

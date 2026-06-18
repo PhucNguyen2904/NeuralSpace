@@ -15,6 +15,15 @@ export interface DvcDatasetVersion {
   storage_uri?: string;
   size_bytes?: number;
   item_count?: number;
+  split_info?: Record<string, unknown>;
+  schema_snapshot?: Record<string, unknown>;
+  metadata_uri?: string;
+  validation_report_uri?: string;
+  validation_status?: string;
+  validation_summary?: Record<string, unknown>;
+  metadata_snapshot?: Record<string, unknown>;
+  format?: string;
+  task_type?: string;
   is_latest?: boolean;
   status: DvcVersionStatus;
   created_at: string;

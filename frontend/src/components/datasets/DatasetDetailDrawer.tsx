@@ -181,10 +181,11 @@ export function DatasetDetailDrawer({
             />
           ) : null}
           {tab === "history" ? (
-            <div className="space-y-2 text-sm text-text-secondary">
-              <p>ResNet Training - 3 days ago - 2h 15m</p>
-              <p>EDA Session - 1 week ago - 45m</p>
-            </div>
+            <DatasetHistory
+              dataset={dataset}
+              versions={versionsQuery.data ?? []}
+              loading={versionsQuery.isLoading}
+            />
           ) : null}
         </div>
       </motion.aside>
@@ -301,6 +302,88 @@ export function DatasetDetailDrawer({
       </Modal>
     </div>
   );
+}
+
+function DatasetHistory({
+  dataset,
+  versions,
+  loading
+}: {
+  dataset: Dataset;
+  versions: DatasetVersion[];
+  loading: boolean;
+}) {
+  const events = buildDatasetHistory(dataset, versions);
+
+  if (loading) {
+    return <div className="rounded-lg border border-border p-4 text-sm text-text-secondary">Loading history...</div>;
+  }
+
+  if (events.length === 0) {
+    return <div className="rounded-lg border border-border p-4 text-sm text-text-secondary">No history recorded yet.</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {events.map((event) => (
+        <div key={event.key} className="rounded-lg border border-border p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text-primary">{event.title}</p>
+              <p className="mt-1 text-xs text-text-secondary">{event.detail}</p>
+            </div>
+            <span className="shrink-0 text-xs text-text-tertiary">{event.when}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function buildDatasetHistory(dataset: Dataset, versions: DatasetVersion[]) {
+  const versionEvents = versions.map((version) => ({
+    key: `version-${version.id}`,
+    title: `${version.is_latest ? "Latest version" : "Version"} ${version.version}`,
+    detail: [
+      version.changelog || (version.validation_status ? `Validation ${version.validation_status}` : version.status),
+      `${formatBytes(version.size_bytes ?? 0)}`,
+      `${(version.item_count ?? 0).toLocaleString()} items`,
+      version.created_by ? `by ${version.created_by}` : ""
+    ].filter(Boolean).join(" - "),
+    at: version.created_at,
+    when: relativeTime(version.created_at)
+  }));
+
+  const metadataEvents = [
+    {
+      key: `dataset-updated-${dataset.id}`,
+      title: "Dataset metadata updated",
+      detail: `${dataset.label_status} - ${formatSize(dataset.size_bytes)} - ${(dataset.item_count ?? 0).toLocaleString()} items`,
+      at: dataset.updated_at,
+      when: relativeTime(dataset.updated_at)
+    },
+    {
+      key: `dataset-created-${dataset.id}`,
+      title: "Dataset created",
+      detail: dataset.created_by ? `Created by ${dataset.created_by}` : "Initial dataset record",
+      at: dataset.created_at,
+      when: relativeTime(dataset.created_at)
+    }
+  ].filter((event, index, items) => {
+    if (index !== 0) return true;
+    return dataset.updated_at && dataset.created_at && dataset.updated_at !== dataset.created_at && items.length > 1;
+  });
+
+  return [...versionEvents, ...metadataEvents]
+    .filter((event) => Boolean(event.at))
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+}
+
+function relativeTime(value: string | null | undefined) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return formatDistanceToNow(date, { addSuffix: true });
 }
 
 function Info({ label, value }: { label: string; value: string }) {

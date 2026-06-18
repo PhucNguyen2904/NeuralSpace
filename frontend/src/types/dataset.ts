@@ -60,6 +60,8 @@ export interface DatasetUploadResponse {
     version: string;
     status: string;
     storage_path: string;
+    dvc_md5?: string;
+    dvc_commit?: string;
     metadata_uri?: string;
     validation_report_uri?: string;
     validation_status?: string;
@@ -71,6 +73,31 @@ export interface DatasetUploadResponse {
     errors: DatasetUploadIssue[];
     warnings: DatasetUploadIssue[];
   };
+}
+
+export interface DatasetInspectResponse {
+  form: {
+    name: string;
+    version: string;
+    description: string;
+    tags: string[];
+    dataset_type: DatasetType | "custom";
+    task: string;
+  };
+  preview: DatasetUploadPreview;
+  metadata: {
+    name: string;
+    format: string;
+    dataset_type: DatasetType | "custom";
+    task: string;
+    item_count: number;
+    size_bytes: number;
+    schema_snapshot?: Record<string, unknown>;
+    split_info?: Record<string, unknown>;
+    statistics?: Record<string, unknown>;
+    embedded_metadata?: Record<string, unknown>;
+  };
+  validation_report: DatasetUploadResponse["validation_report"];
 }
 
 export interface ColumnInfo {

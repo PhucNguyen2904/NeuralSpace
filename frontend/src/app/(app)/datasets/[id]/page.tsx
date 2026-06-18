@@ -23,6 +23,7 @@ export default function DatasetDetailPage() {
   const datasetDetail = useDatasetDetail(datasetId);
   const listQuery = useVersionList(datasetId);
   const versions = listQuery.data ?? [];
+  const versionListError = listQuery.error instanceof Error ? listQuery.error.message : listQuery.isError ? "Failed to load versions." : undefined;
   const filteredVersions = useMemo(
     () => versions.filter((item) => item.version.toLowerCase().includes(search.toLowerCase()) || item.dvc_md5.toLowerCase().includes(search.toLowerCase())),
     [versions, search]
@@ -50,6 +51,7 @@ export default function DatasetDetailPage() {
           versions={filteredVersions}
           selectedVersionId={activeVersionId || null}
           search={search}
+          errorMessage={versionListError}
           onSearchChange={setSearch}
           onSelectVersion={(version) => setSelectedVersionId(version.id)}
           onTrack={() => {

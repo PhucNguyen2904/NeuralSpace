@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, Package, GitBranch, Boxes, Link2 } from "lucide-react";
+import { Copy, ExternalLink, Package, GitBranch, Boxes, ShieldCheck } from "lucide-react";
 import { type ReactNode, useMemo, useState } from "react";
 import { IntegrityCheck } from "@/components/datasets/versions/IntegrityCheck";
 import { VersionDiff } from "@/components/datasets/versions/VersionDiff";
@@ -34,9 +34,10 @@ export function VersionDetail({ version, versions, diffState, onRecheckIntegrity
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-xl font-semibold">{version.version}</h2>
           <VersionTag version={version.version} isLatest={version.is_latest} status={version.status} />
+          {version.validation_status ? <ValidationBadge status={version.validation_status} /> : null}
         </div>
         <p className="text-sm text-text-secondary">
-          Created by {version.created_by} · {formatRelativeTime(version.created_at)} · {version.dvc_md5}
+          Created by {version.created_by} · {formatRelativeTime(version.created_at)} · {[version.format, version.task_type].filter(Boolean).join(" · ") || version.dvc_md5 || "generated metadata"}
         </p>
       </header>
 
@@ -44,7 +45,7 @@ export function VersionDetail({ version, versions, diffState, onRecheckIntegrity
         <StatCard icon={<Package size={15} />} label="Size" value={formatBytes(version.size_bytes)} />
         <StatCard icon={<Boxes size={15} />} label="Items" value={`${version.item_count.toLocaleString()} items`} />
         <StatCard icon={<GitBranch size={15} />} label="Split" value={version.split_ratio} />
-        <StatCard icon={<Link2 size={15} />} label="Models" value={`${version.linked_models.length} models`} />
+        <StatCard icon={<ShieldCheck size={15} />} label="Validation" value={version.validation_status || version.status} />
       </div>
 
       <div className="mt-4 border-b border-border pb-2">
@@ -64,10 +65,14 @@ export function VersionDetail({ version, versions, diffState, onRecheckIntegrity
               <p className="text-text-secondary">{version.changelog}</p>
             </div>
             <div>
-              <p className="mb-2 font-medium">DVC metadata</p>
+              <p className="mb-2 font-medium">Generated metadata</p>
+              <MetaRow label="Format" value={version.format || "-"} />
+              <MetaRow label="Task" value={version.task_type || "-"} />
               <MetaRow label="Git commit" value={version.git_commit} />
               <MetaRow label="DVC md5" value={version.dvc_md5} />
               <MetaRow label="Storage" value={version.storage_uri} />
+              <MetaRow label="Metadata JSON" value={version.metadata_uri} />
+              <MetaRow label="Validation report" value={version.validation_report_uri} />
               <MetaRow label="Tracked at" value={version.tracked_at} />
             </div>
             <div>
@@ -75,9 +80,13 @@ export function VersionDetail({ version, versions, diffState, onRecheckIntegrity
                 Schema snapshot {schemaExpanded ? "▲" : "▼"}
               </button>
               {schemaExpanded ? (
-                <div className="mt-2 rounded-md border border-border bg-bg-elevated p-2 font-mono text-xs">
-                  filename | label | bbox_x | bbox_y | bbox_w | bbox_h
-                </div>
+                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-border bg-bg-elevated p-2 font-mono text-xs text-text-secondary">
+                  {JSON.stringify({
+                    split_info: version.split_info,
+                    schema_snapshot: version.schema_snapshot,
+                    validation_summary: version.validation_summary
+                  }, null, 2)}
+                </pre>
               ) : null}
             </div>
           </div>
@@ -127,11 +136,20 @@ function MetaRow({ label, value }: { label: string; value: string }) {
     <div className="mb-1 flex items-center justify-between gap-3 rounded-md border border-border px-2 py-1.5">
       <span className="text-text-secondary">{label}</span>
       <div className="flex items-center gap-1.5">
-        <code className="max-w-[360px] truncate font-mono text-xs text-text-primary">{value}</code>
+        <code className="max-w-[360px] truncate font-mono text-xs text-text-primary">{value || "-"}</code>
         <Button size="sm" variant="ghost"><Copy size={12} /></Button>
       </div>
     </div>
   );
+}
+
+function ValidationBadge({ status }: { status: string }) {
+  const cls = status === "failed"
+    ? "bg-red-50 text-red-700"
+    : status === "warning"
+      ? "bg-amber-50 text-amber-700"
+      : "bg-emerald-50 text-emerald-700";
+  return <span className={`${cls} rounded-full px-2 py-0.5 text-xs font-medium`}>{status}</span>;
 }
 
 function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {

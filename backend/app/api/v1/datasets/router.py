@@ -614,6 +614,27 @@ async def upload_yolo_dataset(
     )
 
 
+@router.post("/uploads/yolo/inspect")
+async def inspect_yolo_dataset(
+    file: UploadFile = File(..., description="YOLO/Ultralytics dataset ZIP"),
+    name: str | None = Form(default=None),
+    version: str | None = Form(default=None),
+    description: str | None = Form(default=None),
+    tags: str | None = Form(default=None, description="Comma-separated tags"),
+    db: AsyncSession = Depends(get_db),
+    _current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.services.dataset_upload_service import DatasetUploadService
+
+    return await DatasetUploadService(db).inspect_yolo(
+        file=file,
+        name=name,
+        version=version,
+        description=description,
+        tags=_parse_tags(tags),
+    )
+
+
 @router.post("/uploads/general", status_code=status.HTTP_201_CREATED)
 async def upload_general_dataset(
     file: UploadFile = File(..., description="CSV, JSON, Parquet, or custom ZIP dataset"),
@@ -632,6 +653,33 @@ async def upload_general_dataset(
     return await DatasetUploadService(db).upload_general(
         file=file,
         user=current_user,
+        name=name,
+        version=version,
+        description=description,
+        dataset_type=dataset_type,
+        task_type=task,
+        tags=_parse_tags(tags),
+        label_column=label_column,
+    )
+
+
+@router.post("/uploads/general/inspect")
+async def inspect_general_dataset(
+    file: UploadFile = File(..., description="CSV, JSON, Parquet, or custom ZIP dataset"),
+    name: str | None = Form(default=None),
+    version: str | None = Form(default=None),
+    description: str | None = Form(default=None),
+    dataset_type: str | None = Form(default=None),
+    task: str | None = Form(default=None),
+    label_column: str | None = Form(default=None),
+    tags: str | None = Form(default=None, description="Comma-separated tags"),
+    db: AsyncSession = Depends(get_db),
+    _current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.services.dataset_upload_service import DatasetUploadService
+
+    return await DatasetUploadService(db).inspect_general(
+        file=file,
         name=name,
         version=version,
         description=description,

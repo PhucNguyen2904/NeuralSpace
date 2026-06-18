@@ -35,6 +35,9 @@ class DatasetVersionService:
         format: str,
         task_type: str,
         class_count: int | None,
+        dvc_md5: str | None,
+        dvc_commit: str | None,
+        dvc_storage_path: str | None,
         user: UserContext,
     ) -> tuple[Dataset, MLDataset, DatasetVersion]:
         now = datetime.now(timezone.utc)
@@ -46,7 +49,7 @@ class DatasetVersionService:
             status="ready",
             size_bytes=size_bytes,
             item_count=item_count,
-            label_status="labeled" if class_count else "processing",
+            label_status="labeled" if validation_status in {"passed", "warning"} else "processing",
             tags=tags,
             storage_path=storage_path,
             created_by=user.user_id,
@@ -76,12 +79,15 @@ class DatasetVersionService:
                 owner_id=user.user_id,
                 team_id=None,
                 dvc_repo_url=None,
-                storage_path=storage_path,
+                storage_path=dvc_storage_path or storage_path,
                 tags=tags,
                 status="active",
             )
             self.db.add(mlops_dataset)
             await self.db.flush()
+        else:
+            mlops_dataset.storage_path = dvc_storage_path or storage_path
+            mlops_dataset.updated_at = now
 
         await self.db.execute(
             update(DatasetVersion)
@@ -92,9 +98,9 @@ class DatasetVersionService:
             id=str(uuid4()),
             dataset_id=mlops_dataset.id,
             version=version,
-            dvc_md5=None,
-            dvc_commit=None,
-            storage_path=storage_path,
+            dvc_md5=dvc_md5,
+            dvc_commit=dvc_commit,
+            storage_path=dvc_storage_path or storage_path,
             size_bytes=size_bytes,
             item_count=item_count,
             schema_snapshot=schema_snapshot,
@@ -117,4 +123,3 @@ class DatasetVersionService:
         await self.db.refresh(mlops_dataset)
         await self.db.refresh(dataset_version)
         return public_dataset, mlops_dataset, dataset_version
-

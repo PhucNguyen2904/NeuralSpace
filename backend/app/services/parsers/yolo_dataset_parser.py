@@ -10,6 +10,8 @@ from app.services.dataset_upload_models import ParsedDataset, ValidationResult
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+MAX_ZIP_FILES = 50_000
+MAX_EXTRACTED_BYTES = 20 * 1024 * 1024 * 1024
 
 
 class YoloDatasetParser:
@@ -30,6 +32,9 @@ class YoloDatasetParser:
         if not isinstance(config, dict):
             validation.add_error("YOLO_INVALID_DATA_YAML", "data.yaml must contain a YAML object", str(data_yaml.relative_to(root)))
             return None, validation
+        for field in ["path", "train", "val", "names"]:
+            if field not in config:
+                validation.add_error("YOLO_MISSING_DATA_YAML_FIELD", f"data.yaml must define '{field}'", str(data_yaml.relative_to(root)))
 
         names = self._normalize_names(config.get("names"), validation)
         split_paths = {
@@ -71,6 +76,8 @@ class YoloDatasetParser:
                 "labels": len(labels),
                 "annotations": split_annotations,
             }
+            if split in {"train", "val"} and len(images) == 0:
+                validation.add_error("YOLO_EMPTY_REQUIRED_SPLIT", f"{split} split must contain at least one image", f"images/{split}")
             image_count += len(images)
             label_file_count += len(labels)
             annotation_count += split_annotations
@@ -119,7 +126,9 @@ class YoloDatasetParser:
     @staticmethod
     def _normalize_names(raw: Any, validation: ValidationResult) -> dict[int, str]:
         if isinstance(raw, list):
-            return {index: str(name) for index, name in enumerate(raw)}
+            names = {index: str(name) for index, name in enumerate(raw)}
+            YoloDatasetParser._warn_duplicate_names(names, validation)
+            return names
         if isinstance(raw, dict):
             names: dict[int, str] = {}
             for key, value in raw.items():
@@ -127,16 +136,38 @@ class YoloDatasetParser:
                     names[int(key)] = str(value)
                 except (TypeError, ValueError):
                     validation.add_error("YOLO_INVALID_CLASS_KEY", f"Invalid class id in names: {key}", "data.yaml")
-            return dict(sorted(names.items()))
+            names = dict(sorted(names.items()))
+            YoloDatasetParser._warn_duplicate_names(names, validation)
+            return names
         validation.add_error("YOLO_MISSING_NAMES", "data.yaml must define names as a list or id-to-name map", "data.yaml")
         return {}
+
+    @staticmethod
+    def _warn_duplicate_names(names: dict[int, str], validation: ValidationResult) -> None:
+        seen: set[str] = set()
+        duplicates: set[str] = set()
+        for name in names.values():
+            token = name.strip()
+            if token in seen:
+                duplicates.add(token)
+            seen.add(token)
+        for name in sorted(duplicates):
+            validation.add_warning("YOLO_DUPLICATE_CLASS_NAME", f"Duplicate class name: {name}", "data.yaml")
 
 
 def extract_zip_safely(zip_path: Path, target_dir: Path) -> ValidationResult:
     validation = ValidationResult()
     try:
         with zipfile.ZipFile(zip_path) as archive:
-            for member in archive.infolist():
+            members = archive.infolist()
+            if len(members) > MAX_ZIP_FILES:
+                validation.add_error("ZIP_TOO_MANY_FILES", f"ZIP contains too many files: {len(members)}", zip_path.name)
+                return validation
+            total_size = sum(max(member.file_size, 0) for member in members)
+            if total_size > MAX_EXTRACTED_BYTES:
+                validation.add_error("ZIP_TOO_LARGE_EXTRACTED", "ZIP extracted size exceeds the configured limit", zip_path.name)
+                return validation
+            for member in members:
                 member_path = Path(member.filename)
                 if member_path.is_absolute() or ".." in member_path.parts:
                     validation.add_error("ZIP_UNSAFE_PATH", "ZIP contains an unsafe path", member.filename)
@@ -145,4 +176,3 @@ def extract_zip_safely(zip_path: Path, target_dir: Path) -> ValidationResult:
     except zipfile.BadZipFile:
         validation.add_error("ZIP_INVALID", "Uploaded file is not a valid ZIP archive", zip_path.name)
     return validation
-

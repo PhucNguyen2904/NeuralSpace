@@ -31,3 +31,6 @@ class DatasetStorageService:
                 content_type="application/octet-stream",
             )
         return f"{prefix}/"
+
+    async def delete_version_prefix(self, *, dataset_id: str, version: str) -> int:
+        return await self.client.delete_prefix(f"datasets/{dataset_id}/versions/{version}/")

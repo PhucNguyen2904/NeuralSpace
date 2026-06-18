@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { PaginatedResponse } from "@/types/api";
-import type { Model, ModelDetail, ModelListParams, ModelMetrics, ModelVersion, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
+import type { Model, ModelDetail, ModelInspectResponse, ModelListParams, ModelMetrics, ModelVersion, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
 
 export async function getModels(params: ModelListParams): Promise<PaginatedResponse<Model>> {
   const response = await apiClient.get<PaginatedResponse<Model>>("/models", { params });
@@ -38,6 +38,46 @@ export async function uploadModel(file: File, metadata?: Record<string, unknown>
   return response.data;
 }
 
+export async function uploadGeneralModel(file: File, metadata?: Record<string, unknown>): Promise<Model> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (metadata) {
+    formData.append("metadata", JSON.stringify(metadata));
+  }
+  const response = await apiClient.post<Model>("/models/general/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data;
+}
+
+export async function uploadYoloModel(file: File, payload: Record<string, string>): Promise<Model> {
+  const formData = new FormData();
+  formData.append("file", file);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value !== "") formData.append(key, value);
+  });
+  const response = await apiClient.post<Model>("/models/yolo/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+  return response.data;
+}
+
+export async function inspectYoloModel(file: File, payload: Record<string, string>): Promise<ModelInspectResponse> {
+  const formData = modelUploadFormData(file, payload);
+  const response = await apiClient.post<ModelInspectResponse>("/models/yolo/inspect", formData, {
+    timeout: 120_000
+  });
+  return response.data;
+}
+
+export async function inspectGeneralModel(file: File, payload: Record<string, string>): Promise<ModelInspectResponse> {
+  const formData = modelUploadFormData(file, payload);
+  const response = await apiClient.post<ModelInspectResponse>("/models/general/inspect", formData, {
+    timeout: 120_000
+  });
+  return response.data;
+}
+
 export async function updateModel(modelId: string, payload: UpdateModelPayload): Promise<Model> {
   const response = await apiClient.patch<Model>(`/models/${modelId}`, payload);
   return response.data;
@@ -57,4 +97,13 @@ export async function uploadModelVersion(modelId: string, file: File, metadata?:
     headers: { "Content-Type": "multipart/form-data" }
   });
   return response.data;
+}
+
+function modelUploadFormData(file: File, payload: Record<string, string>) {
+  const formData = new FormData();
+  formData.append("file", file);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value.trim()) formData.append(key, value.trim());
+  });
+  return formData;
 }

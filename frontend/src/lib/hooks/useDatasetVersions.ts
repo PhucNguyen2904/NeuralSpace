@@ -49,6 +49,15 @@ export interface DatasetVersion {
   size_bytes: number;
   item_count: number;
   split_ratio: string;
+  split_info: Record<string, unknown>;
+  schema_snapshot: Record<string, unknown>;
+  metadata_uri: string;
+  validation_report_uri: string;
+  validation_status: string;
+  validation_summary: Record<string, unknown>;
+  metadata_snapshot: Record<string, unknown>;
+  format: string;
+  task_type: string;
   created_by: string;
   created_at: string;
   changelog: string;
@@ -75,6 +84,15 @@ function mapVersion(raw: {
   item_count?: number;
   storage_path?: string;
   storage_uri?: string;
+  split_info?: Record<string, unknown>;
+  schema_snapshot?: Record<string, unknown>;
+  metadata_uri?: string;
+  validation_report_uri?: string;
+  validation_status?: string;
+  validation_summary?: Record<string, unknown>;
+  metadata_snapshot?: Record<string, unknown>;
+  format?: string;
+  task_type?: string;
   created_by?: string;
   created_at: string;
   changelog?: string;
@@ -91,7 +109,16 @@ function mapVersion(raw: {
     is_latest: Boolean(raw.is_latest),
     size_bytes: raw.size_bytes ?? 0,
     item_count: raw.item_count ?? 0,
-    split_ratio: "N/A",
+    split_ratio: formatSplitRatio(raw.split_info),
+    split_info: raw.split_info ?? {},
+    schema_snapshot: raw.schema_snapshot ?? {},
+    metadata_uri: raw.metadata_uri ?? "",
+    validation_report_uri: raw.validation_report_uri ?? "",
+    validation_status: raw.validation_status ?? "",
+    validation_summary: raw.validation_summary ?? {},
+    metadata_snapshot: raw.metadata_snapshot ?? {},
+    format: raw.format ?? "",
+    task_type: raw.task_type ?? "",
     created_by: raw.created_by ?? "system",
     created_at: raw.created_at,
     changelog: raw.changelog ?? raw.note ?? "",
@@ -106,12 +133,27 @@ function mapVersion(raw: {
     integrity: {
       lastChecked: "Not checked",
       checks: [
-        { key: "md5", label: "DVC md5 metadata exists", passed: Boolean(raw.dvc_md5) },
-        { key: "git", label: "Git commit metadata exists", passed: Boolean(raw.dvc_commit ?? raw.git_commit) },
-        { key: "storage", label: "Storage path metadata exists", passed: Boolean(raw.storage_path ?? raw.storage_uri) }
+        { key: "storage", label: "Storage path metadata exists", passed: Boolean(raw.storage_path ?? raw.storage_uri) },
+        { key: "metadata", label: "Generated metadata exists", passed: Boolean(raw.metadata_uri ?? raw.metadata_snapshot) },
+        { key: "validation", label: "Validation report exists", passed: Boolean(raw.validation_report_uri ?? raw.validation_status) }
       ]
     }
   };
+}
+
+function formatSplitRatio(splitInfo?: Record<string, unknown>) {
+  if (!splitInfo || Object.keys(splitInfo).length === 0) return "N/A";
+  const parts = ["train", "val", "test"].flatMap((key) => {
+    const value = splitInfo[key];
+    if (value == null) return [];
+    if (typeof value === "number") return [`${key}: ${value}`];
+    if (typeof value === "object") {
+      const counts = value as { images?: number; labels?: number; annotations?: number };
+      return [`${key}: ${counts.images ?? counts.labels ?? counts.annotations ?? 0}`];
+    }
+    return [`${key}: ${String(value)}`];
+  });
+  return parts.length ? parts.join(" / ") : "N/A";
 }
 
 export function useVersionList(datasetId: string) {
@@ -119,12 +161,8 @@ export function useVersionList(datasetId: string) {
     queryKey: ["dataset-versions", datasetId],
     enabled: Boolean(datasetId),
     queryFn: async () => {
-      try {
-        const response = await getDatasetVersions({ dataset_name: datasetId, limit: 100 });
-        return response.items.map((item) => mapVersion(item));
-      } catch {
-        return [];
-      }
+      const response = await getDatasetVersions({ dataset_name: datasetId, limit: 100 });
+      return response.items.map((item) => mapVersion(item));
     }
   });
 }

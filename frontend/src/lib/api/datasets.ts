@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import type { PaginatedResponse } from "@/types/api";
-import type { Dataset, DatasetListParams, DatasetPreview, DatasetUploadResponse, UpdateDatasetPayload, WorkspaceDatasetMountResponse } from "@/types/dataset";
+import type { Dataset, DatasetInspectResponse, DatasetListParams, DatasetPreview, DatasetUploadResponse, UpdateDatasetPayload, WorkspaceDatasetMountResponse } from "@/types/dataset";
 
 export async function getDatasets(params: DatasetListParams): Promise<PaginatedResponse<Dataset>> {
   const response = await apiClient.get<PaginatedResponse<Dataset>>("/datasets", { params });
@@ -58,6 +58,22 @@ export async function uploadGeneralDataset(file: File, payload: Record<string, s
   return response.data;
 }
 
+export async function inspectYoloDataset(file: File, payload: Record<string, string>): Promise<DatasetInspectResponse> {
+  const formData = datasetUploadFormData(file, payload);
+  const response = await apiClient.post<DatasetInspectResponse>("/datasets/uploads/yolo/inspect", formData, {
+    timeout: 120_000
+  });
+  return response.data;
+}
+
+export async function inspectGeneralDataset(file: File, payload: Record<string, string>): Promise<DatasetInspectResponse> {
+  const formData = datasetUploadFormData(file, payload);
+  const response = await apiClient.post<DatasetInspectResponse>("/datasets/uploads/general/inspect", formData, {
+    timeout: 120_000
+  });
+  return response.data;
+}
+
 export async function updateDataset(datasetId: string, payload: UpdateDatasetPayload): Promise<Dataset> {
   const response = await apiClient.patch<Dataset>(`/datasets/${datasetId}`, payload);
   return response.data;
@@ -65,4 +81,13 @@ export async function updateDataset(datasetId: string, payload: UpdateDatasetPay
 
 export async function deleteDataset(datasetId: string): Promise<void> {
   await apiClient.delete(`/datasets/${datasetId}`);
+}
+
+function datasetUploadFormData(file: File, payload: Record<string, string>) {
+  const formData = new FormData();
+  formData.append("file", file);
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value.trim()) formData.append(key, value.trim());
+  });
+  return formData;
 }

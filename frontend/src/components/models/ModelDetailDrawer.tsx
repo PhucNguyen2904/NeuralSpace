@@ -255,7 +255,7 @@ export function ModelDetailDrawer({
               <Info label="Last updated" value={formatDistanceToNow(new Date(model.updated_at), { addSuffix: true })} />
             </div>
           ) : null}
-          {tab === "metrics" ? <div className="space-y-4"><div className="grid grid-cols-3 gap-2">{Object.entries(metrics.data?.final_metrics ?? {}).slice(0, 3).map(([k, v]) => <div key={k} className="rounded-lg border border-border p-3 text-center"><p className="text-xl font-semibold text-violet-700">{v.toFixed(1)}%</p><p className="text-xs text-text-secondary">{k}</p></div>)}</div><MetricsChart data={metrics.data?.training_history ?? []} /></div> : null}
+          {tab === "metrics" ? <MetricsTab model={model} trainingHistory={metrics.data?.training_history ?? []} /> : null}
           {tab === "files" ? <div className="space-y-2">{model.files.map((f) => <div key={f.name} className="flex items-center justify-between rounded-md border border-border p-2 text-sm"><span>{f.name}</span><span className="text-text-secondary">{f.size} · {f.type}</span><Button size="sm" variant="ghost">Download</Button></div>)}</div> : null}
           {tab === "usage" ? <div className="space-y-2"><div className="flex items-center justify-between"><p className="text-sm font-medium">Python</p><Button size="sm" variant="ghost"><Link2 size={14} />Copy</Button></div><pre className="overflow-x-auto rounded-md bg-bg-elevated p-3 font-mono text-xs">{code}</pre></div> : null}
           {tab === "versions" ? <VersionTimeline versions={versions.data ?? []} /> : null}
@@ -495,7 +495,113 @@ export function ModelDetailDrawer({
   );
 }
 
+// ─── Metrics Tab ─────────────────────────────────────────────────────────────
+
+const LOSS_KEYS = new Set(["box_loss", "cls_loss", "dfl_loss", "seg_loss", "pose_loss", "kobj_loss", "train_loss", "val_loss", "loss"]);
+const PERF_KEYS = new Set(["precision", "recall", "mAP50", "mAP50_95", "mAP50-95", "accuracy", "f1", "auc", "iou", "dice", "top1", "top5"]);
+
+function classifyMetric(key: string): "perf" | "loss" | "other" {
+  const lower = key.toLowerCase();
+  if (LOSS_KEYS.has(lower) || lower.includes("loss")) return "loss";
+  if (PERF_KEYS.has(lower) || lower.includes("map") || lower.includes("precision") || lower.includes("recall") || lower.includes("accuracy")) return "perf";
+  return "other";
+}
+
+function formatMetricValue(key: string, value: number): string {
+  const lower = key.toLowerCase();
+  // Loss values: show 4 decimal places
+  if (LOSS_KEYS.has(lower) || lower.includes("loss")) return value.toFixed(4);
+  // Values that look like 0–1 ratios → show as percentage
+  if (value > 0 && value <= 1) return `${(value * 100).toFixed(2)}%`;
+  // Already percentage-range (0–100)
+  if (value > 1 && value <= 100) return `${value.toFixed(2)}%`;
+  return value.toFixed(4);
+}
+
+function MetricCard({ label, value, isPrimary }: { label: string; value: number; isPrimary: boolean }) {
+  const isLoss = classifyMetric(label) === "loss";
+  return (
+    <div className={cn("relative rounded-lg border p-3 text-center", isPrimary ? "border-violet-300 bg-violet-50" : "border-border bg-white")}>
+      {isPrimary && (
+        <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-semibold text-white">
+          Primary
+        </span>
+      )}
+      <p className={cn("text-lg font-bold tabular-nums", isLoss ? "text-amber-600" : "text-violet-700")}>
+        {formatMetricValue(label, value)}
+      </p>
+      <p className="mt-0.5 truncate text-xs text-text-secondary" title={label}>{label}</p>
+    </div>
+  );
+}
+
+function MetricsGroup({ title, entries, primaryKey }: { title: string; entries: [string, number][]; primaryKey: string }) {
+  if (entries.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary">{title}</p>
+      <div className="grid grid-cols-3 gap-2">
+        {entries.map(([k, v]) => (
+          <MetricCard key={k} label={k} value={v} isPrimary={k === primaryKey} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MetricsTab({
+  model,
+  trainingHistory
+}: {
+  model: import("@/types/model").ModelDetail;
+  trainingHistory: import("@/types/model").ModelMetrics["training_history"];
+}) {
+  const allMetrics = model.all_metrics ?? {};
+  const hasMetrics = Object.keys(allMetrics).length > 0;
+  const primaryKey = model.primary_metric_name;
+
+  const perf: [string, number][] = [];
+  const loss: [string, number][] = [];
+  const other: [string, number][] = [];
+
+  for (const [k, v] of Object.entries(allMetrics)) {
+    const group = classifyMetric(k);
+    if (group === "perf") perf.push([k, v]);
+    else if (group === "loss") loss.push([k, v]);
+    else other.push([k, v]);
+  }
+
+  // Ensure primary metric is always shown first in its group
+  const sortByPrimary = (entries: [string, number][]) =>
+    [...entries].sort((a, b) => (a[0] === primaryKey ? -1 : b[0] === primaryKey ? 1 : 0));
+
+  return (
+    <div className="space-y-5">
+      {!hasMetrics ? (
+        <div className="rounded-lg border border-border bg-bg-elevated p-6 text-center text-sm text-text-tertiary">
+          No metrics recorded for this model.
+        </div>
+      ) : (
+        <>
+          <MetricsGroup title="Performance" entries={sortByPrimary(perf)} primaryKey={primaryKey} />
+          <MetricsGroup title="Loss" entries={sortByPrimary(loss)} primaryKey={primaryKey} />
+          <MetricsGroup title="Other" entries={sortByPrimary(other)} primaryKey={primaryKey} />
+        </>
+      )}
+      {trainingHistory.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary">Training History</p>
+          <MetricsChart data={trainingHistory} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function Info({ label, value }: { label: string; value: string }) {
+
   return <p><span className="text-text-tertiary">{label}: </span><span className="font-medium text-text-primary">{value}</span></p>;
 }
 

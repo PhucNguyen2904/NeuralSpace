@@ -3,11 +3,21 @@
 import * as React from "react";
 import { AlertTriangle, CheckCircle2, FileArchive, FileSpreadsheet, Info, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
-import { uploadGeneralDataset, uploadYoloDataset } from "@/lib/api/datasets";
+import { inspectGeneralDataset, inspectYoloDataset, uploadGeneralDataset, uploadYoloDataset } from "@/lib/api/datasets";
 import { cn } from "@/lib/utils/cn";
-import type { DatasetUploadIssue, DatasetUploadResponse } from "@/types/dataset";
+import type { DatasetInspectResponse, DatasetUploadIssue, DatasetUploadResponse } from "@/types/dataset";
 
 type UploadMode = "yolo" | "general";
+
+const INITIAL_FORM = {
+  name: "",
+  version: "",
+  description: "",
+  tags: "",
+  dataset_type: "tabular",
+  task: "custom",
+  label_column: ""
+};
 
 export function DatasetUploadModal({
   open,
@@ -21,28 +31,36 @@ export function DatasetUploadModal({
   const [mode, setMode] = React.useState<UploadMode>("yolo");
   const [file, setFile] = React.useState<File | null>(null);
   const [dragging, setDragging] = React.useState(false);
+  const [inspecting, setInspecting] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [inspectResult, setInspectResult] = React.useState<DatasetInspectResponse | null>(null);
   const [result, setResult] = React.useState<DatasetUploadResponse | null>(null);
   const [issues, setIssues] = React.useState<{ errors: DatasetUploadIssue[]; warnings: DatasetUploadIssue[] }>({ errors: [], warnings: [] });
-  const [form, setForm] = React.useState({
-    name: "",
-    version: "",
-    description: "",
-    tags: "",
-    dataset_type: "tabular",
-    task: "custom",
-    label_column: ""
-  });
+  const [form, setForm] = React.useState({ ...INITIAL_FORM });
+  const [versionTouched, setVersionTouched] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const resetState = React.useCallback(() => {
+    setMode("yolo");
+    setFile(null);
+    setDragging(false);
+    setInspecting(false);
+    setSubmitting(false);
+    setInspectResult(null);
+    setResult(null);
+    setIssues({ errors: [], warnings: [] });
+    setForm({ ...INITIAL_FORM });
+    setVersionTouched(false);
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!open) {
-      setFile(null);
-      setResult(null);
-      setIssues({ errors: [], warnings: [] });
-      setSubmitting(false);
+      resetState();
     }
-  }, [open]);
+  }, [open, resetState]);
 
   const accept = mode === "yolo" ? ".zip,application/zip" : ".csv,.json,.parquet,.zip";
 
@@ -60,27 +78,64 @@ export function DatasetUploadModal({
       return;
     }
     setFile(selected);
+    setForm((current) => ({
+      ...current,
+      version: versionTouched ? current.version : "",
+      name: current.name.trim() || filenameStem(selected.name),
+      description: current.description.trim() || defaultDescription(selected.name, mode)
+    }));
+    setInspectResult(null);
     setResult(null);
     setIssues({ errors: [], warnings: [] });
   };
 
-  const submit = async () => {
+  const payloadForRequest = () => ({
+    name: form.name,
+    version: versionTouched ? form.version : "",
+    description: form.description,
+    tags: form.tags,
+    dataset_type: form.dataset_type,
+    task: form.task,
+    label_column: form.label_column
+  });
+
+  const inspect = async () => {
     if (!file) return;
+    setInspecting(true);
+    setInspectResult(null);
+    setResult(null);
+    setIssues({ errors: [], warnings: [] });
+    try {
+      const response = mode === "yolo"
+        ? await inspectYoloDataset(file, payloadForRequest())
+        : await inspectGeneralDataset(file, payloadForRequest());
+      setInspectResult(response);
+      setIssues({ errors: response.validation_report.errors, warnings: response.validation_report.warnings });
+      setForm((current) => ({
+        ...current,
+        name: response.form.name || current.name,
+        version: response.form.version || current.version,
+        description: response.form.description || current.description,
+        tags: response.form.tags.join(", "),
+        dataset_type: response.form.dataset_type,
+        task: response.form.task
+      }));
+      setVersionTouched(false);
+    } catch (error) {
+      setIssues(parseUploadError(error));
+    } finally {
+      setInspecting(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!file || !inspectResult) return;
     setSubmitting(true);
     setIssues({ errors: [], warnings: [] });
     try {
-      const payload = {
-        name: form.name,
-        version: form.version,
-        description: form.description,
-        tags: form.tags,
-        dataset_type: form.dataset_type,
-        task: form.task,
-        label_column: form.label_column
-      };
       const response = mode === "yolo"
-        ? await uploadYoloDataset(file, payload)
-        : await uploadGeneralDataset(file, payload);
+        ? await uploadYoloDataset(file, payloadForRequest())
+        : await uploadGeneralDataset(file, payloadForRequest());
       setResult(response);
       setIssues({ errors: response.validation_report.errors, warnings: response.validation_report.warnings });
       onUploaded();
@@ -104,17 +159,28 @@ export function DatasetUploadModal({
           <p className="text-xs text-text-tertiary">{file ? `${file.name} · ${formatBytes(file.size)}` : "No file selected"}</p>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={submitting}>Close</Button>
-            <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || submitting} loading={submitting}>
-              Upload
-            </Button>
+            {result ? (
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={resetState} disabled={submitting}>
+                Upload another
+              </Button>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => void inspect()} disabled={!file || inspecting || submitting} loading={inspecting}>
+                  Read
+                </Button>
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || submitting || inspecting} loading={submitting}>
+                  Upload
+                </Button>
+              </>
+            )}
           </div>
         </div>
       }
     >
       <div className="space-y-5">
         <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-bg-elevated p-1">
-          <TabButton active={mode === "yolo"} onClick={() => { setMode("yolo"); setFile(null); setResult(null); }} icon={<FileArchive size={15} />} label="YOLO Dataset" />
-          <TabButton active={mode === "general"} onClick={() => { setMode("general"); setFile(null); setResult(null); }} icon={<FileSpreadsheet size={15} />} label="General Dataset" />
+          <TabButton active={mode === "yolo"} onClick={() => { setMode("yolo"); setFile(null); setInspectResult(null); setResult(null); setIssues({ errors: [], warnings: [] }); }} icon={<FileArchive size={15} />} label="YOLO Dataset" />
+          <TabButton active={mode === "general"} onClick={() => { setMode("general"); setFile(null); setInspectResult(null); setResult(null); setIssues({ errors: [], warnings: [] }); }} icon={<FileSpreadsheet size={15} />} label="General Dataset" />
         </div>
 
         {mode === "yolo" ? <YoloHelp /> : <GeneralForm form={form} setForm={setForm} />}
@@ -143,9 +209,10 @@ export function DatasetUploadModal({
           <p className="mt-1 text-xs text-text-secondary">{mode === "yolo" ? "ZIP with data.yaml, images, and labels" : "CSV, JSON, Parquet, or custom ZIP"}</p>
         </button>
 
-        <CommonFields form={form} setForm={setForm} mode={mode} />
+        <CommonFields form={form} setForm={setForm} setVersionTouched={setVersionTouched} mode={mode} />
         <IssueList title="Errors" issues={issues.errors} tone="error" />
         <IssueList title="Warnings" issues={issues.warnings} tone="warning" />
+        {inspectResult && !result ? <InspectPreview result={inspectResult} /> : null}
         {result ? <UploadPreview result={result} /> : null}
       </div>
     </Modal>
@@ -244,14 +311,32 @@ type FormState = {
   label_column: string;
 };
 
-function CommonFields({ form, setForm, mode }: { form: FormState; setForm: React.Dispatch<React.SetStateAction<FormState>>; mode: UploadMode }) {
+function CommonFields({
+  form,
+  setForm,
+  setVersionTouched,
+  mode
+}: {
+  form: FormState;
+  setForm: React.Dispatch<React.SetStateAction<FormState>>;
+  setVersionTouched: React.Dispatch<React.SetStateAction<boolean>>;
+  mode: UploadMode;
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field label="Dataset name">
         <input className={inputCls()} value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} placeholder="Inferred from file if empty" />
       </Field>
       <Field label="Version">
-        <input className={inputCls()} value={form.version} onChange={(event) => setForm((prev) => ({ ...prev, version: event.target.value }))} placeholder="v1.0" />
+        <input
+          className={inputCls()}
+          value={form.version}
+          onChange={(event) => {
+            setVersionTouched(true);
+            setForm((prev) => ({ ...prev, version: event.target.value }));
+          }}
+          placeholder="Resolved after Read"
+        />
       </Field>
       <Field label="Tags">
         <input className={inputCls()} value={form.tags} onChange={(event) => setForm((prev) => ({ ...prev, tags: event.target.value }))} placeholder="vision, gold, training" />
@@ -304,6 +389,34 @@ function UploadPreview({ result }: { result: DatasetUploadResponse }) {
   );
 }
 
+function InspectPreview({ result }: { result: DatasetInspectResponse }) {
+  const preview = result.preview;
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-emerald-800">
+        <CheckCircle2 size={16} />
+        Read {result.form.name || result.metadata.name} · {result.metadata.format}
+      </div>
+      <div className="space-y-2 text-sm">
+        <p><span className="text-text-tertiary">Items:</span> {result.metadata.item_count}</p>
+        <p><span className="text-text-tertiary">Type:</span> {result.metadata.dataset_type} · {result.metadata.task}</p>
+        {preview.classes ? <p><span className="text-text-tertiary">Classes:</span> {preview.classes.join(", ") || "-"}</p> : null}
+        {preview.columns?.length ? (
+          <div className="max-h-36 overflow-auto rounded-md bg-white">
+            {preview.columns.slice(0, 8).map((column) => (
+              <div key={column.name} className="grid grid-cols-[1fr_90px_80px] gap-2 border-b border-border px-2 py-1 text-xs">
+                <span className="truncate">{column.name}</span>
+                <span>{column.type}</span>
+                <span>{column.missing ?? 0} missing</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function IssueList({ title, issues, tone }: { title: string; issues: DatasetUploadIssue[]; tone: "error" | "warning" }) {
   if (issues.length === 0) return null;
   return (
@@ -339,7 +452,7 @@ function inputCls() {
 }
 
 function parseUploadError(error: unknown): { errors: DatasetUploadIssue[]; warnings: DatasetUploadIssue[] } {
-  const maybe = error as { response?: { data?: { detail?: unknown } } };
+  const maybe = error as { response?: { data?: { detail?: unknown; message?: unknown; error_code?: unknown } } };
   const detail = maybe.response?.data?.detail;
   if (detail && typeof detail === "object") {
     const payload = detail as { errors?: DatasetUploadIssue[]; warnings?: DatasetUploadIssue[]; message?: string };
@@ -348,7 +461,12 @@ function parseUploadError(error: unknown): { errors: DatasetUploadIssue[]; warni
       warnings: payload.warnings ?? []
     };
   }
-  return { errors: [{ code: "UPLOAD_FAILED", message: "Upload failed", severity: "error" }], warnings: [] };
+  const message = typeof detail === "string"
+    ? detail
+    : typeof maybe.response?.data?.message === "string"
+      ? maybe.response.data.message
+      : "Upload failed";
+  return { errors: [{ code: String(maybe.response?.data?.error_code ?? "UPLOAD_FAILED"), message, severity: "error" }], warnings: [] };
 }
 
 function formatBytes(value: number) {
@@ -358,3 +476,12 @@ function formatBytes(value: number) {
   return `${value} B`;
 }
 
+function filenameStem(filename: string) {
+  const clean = filename.replace(/\\/g, "/").split("/").pop() || "dataset";
+  return clean.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "dataset";
+}
+
+function defaultDescription(filename: string, mode: UploadMode) {
+  const name = filenameStem(filename);
+  return mode === "yolo" ? `YOLO dataset imported from ${name}` : `Dataset imported from ${name}`;
+}

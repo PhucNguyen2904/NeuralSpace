@@ -177,7 +177,16 @@ export function TrackVersionModal({
   const hasError = uploader.steps.some((s) => s.status === "error");
   const isActive = uploader.isUploading;
 
-  const canSubmit = Boolean(file && commitMessage.trim()) && !isActive && !isDone;
+  const canSubmit = Boolean(file) && !isActive && !isDone;
+
+  const applyFileDefaults = async (selected: File) => {
+    setFile(selected);
+    const datasetName = filenameStem(selected.name);
+    const inferredCount = await inferItemCount(selected);
+    setCommitMessage((current) => current.trim() || `chore(data): track ${datasetName}`);
+    setChangelog((current) => current.trim() || `Upload ${selected.name}`);
+    setItemCount((current) => current.trim() || (inferredCount > 0 ? String(inferredCount) : ""));
+  };
 
   const handleClose = () => {
     if (isActive) return;
@@ -200,7 +209,7 @@ export function TrackVersionModal({
         datasetId,
         file,
         version,
-        commitMessage,
+        commitMessage: commitMessage.trim() || `chore(data): track ${filenameStem(file.name)}`,
         changelog,
         itemCount: itemCount ? parseInt(itemCount, 10) : 0,
         status: versionStatus,
@@ -285,7 +294,7 @@ export function TrackVersionModal({
             <label className="mb-2 block text-sm font-medium">
               Dataset file <span className="text-red-500">*</span>
             </label>
-            <FileDrop file={file} onFile={setFile} disabled={isActive} />
+            <FileDrop file={file} onFile={(selected) => void applyFileDefaults(selected)} disabled={isActive} />
           </div>
         )}
 
@@ -334,13 +343,13 @@ export function TrackVersionModal({
         {!showProgress && (
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Commit message <span className="text-red-500">*</span>
+              Commit message <span className="text-text-tertiary">(auto)</span>
             </label>
             <input
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
               disabled={isActive}
-              placeholder="feat(data): add april snapshot with 20k new rows"
+              placeholder={file ? `chore(data): track ${filenameStem(file.name)}` : "Generated from the selected file"}
               className="h-9 w-full rounded-md border border-border bg-bg-surface px-3 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
             />
           </div>
@@ -368,7 +377,7 @@ export function TrackVersionModal({
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="mb-1 block text-sm font-medium text-text-secondary">
-                Item count
+                Item count <span className="text-text-tertiary">(auto for CSV/JSON)</span>
               </label>
               <input
                 type="number"
@@ -433,4 +442,33 @@ export function TrackVersionModal({
       </div>
     </Modal>
   );
+}
+
+function filenameStem(filename: string) {
+  const clean = filename.replace(/\\/g, "/").split("/").pop() || "dataset";
+  return clean.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim() || "dataset";
+}
+
+async function inferItemCount(file: File) {
+  const lower = file.name.toLowerCase();
+  if (lower.endsWith(".csv")) {
+    const text = await file.slice(0, 8 * 1024 * 1024).text();
+    const rows = text.split(/\r?\n/).filter((line) => line.trim()).length;
+    return Math.max(rows - 1, 0);
+  }
+  if (lower.endsWith(".json")) {
+    try {
+      const parsed = JSON.parse(await file.slice(0, 8 * 1024 * 1024).text()) as unknown;
+      if (Array.isArray(parsed)) return parsed.length;
+      if (parsed && typeof parsed === "object") {
+        const records = (parsed as { records?: unknown; data?: unknown; items?: unknown }).records
+          ?? (parsed as { data?: unknown }).data
+          ?? (parsed as { items?: unknown }).items;
+        return Array.isArray(records) ? records.length : 1;
+      }
+    } catch {
+      return 0;
+    }
+  }
+  return 0;
 }

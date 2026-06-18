@@ -83,15 +83,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS Middleware
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.get_cors_origins(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     # Trusted Host Middleware
     app.add_middleware(
         TrustedHostMiddleware,
@@ -148,6 +139,16 @@ def create_app() -> FastAPI:
             duration_ms=round(duration * 1000, 2),
         )
         return response
+
+    # CORS must be the outermost middleware so auth/rate-limit error responses
+    # still include Access-Control-Allow-Origin for the browser.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.get_cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Global exception handlers
     @app.exception_handler(HTTPException)

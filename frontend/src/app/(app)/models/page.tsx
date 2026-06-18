@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { BrainCircuit, Paperclip, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { BrainCircuit, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ModelCard } from "@/components/models/ModelCard";
 import { ModelCompareTool } from "@/components/models/ModelCompareTool";
 import { ModelDetailDrawer } from "@/components/models/ModelDetailDrawer";
 import { ModelRow } from "@/components/models/ModelRow";
+import { ModelUploadModal } from "@/components/models/upload/ModelUploadModal";
 import { ResourceBrowser } from "@/components/shared/ResourceBrowser";
-import { Button, Input, Modal } from "@/components/ui";
-import { uploadModel } from "@/lib/api/models";
+import { Button, Input } from "@/components/ui";
 import { useToast } from "@/lib/hooks/useToast";
 import { defaultModelFilters, useLoadModel, useModelFilterStore, useModels } from "@/lib/hooks/useModels";
-import { cn } from "@/lib/utils/cn";
 import type { Model, ModelFilters, ModelFramework, TaskType } from "@/types/model";
 
 const frameworkOptions: Array<{ key: ModelFramework; label: string; count: number }> = [
@@ -21,7 +20,8 @@ const frameworkOptions: Array<{ key: ModelFramework; label: string; count: numbe
   { key: "tensorflow", label: "TensorFlow", count: 4 },
   { key: "onnx", label: "ONNX", count: 3 },
   { key: "huggingface", label: "HuggingFace", count: 2 },
-  { key: "sklearn", label: "Scikit-learn", count: 1 }
+  { key: "sklearn", label: "Scikit-learn", count: 1 },
+  { key: "ultralytics", label: "Ultralytics", count: 0 }
 ];
 const taskOptions: Array<{ key: TaskType; label: string; count: number }> = [
   { key: "image_classification", label: "Image Classification", count: 5 },
@@ -55,21 +55,7 @@ export default function ModelsPage() {
   const [searchText, setSearchText] = useState(filters.search);
   const [selectedModel, setSelectedModel] = useState<Model | null>(null);
   const [compareIds, setCompareIds] = useState<string[]>([]);
-  const uploadInputRef = useRef<HTMLInputElement | null>(null);
-  const metadataInputRef = useRef<HTMLInputElement | null>(null);
-  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [metadataFileName, setMetadataFileName] = useState<string>("");
-  const [metricInputs, setMetricInputs] = useState<Array<{ name: string; value: string }>>([{ name: "accuracy", value: "0.0" }]);
-  const [uploadMeta, setUploadMeta] = useState({
-    name: "",
-    description: "",
-    framework: "onnx",
-    task_type: "image_classification",
-    architecture: "",
-    tags: ""
-  });
   const loadMutation = useLoadModel();
 
   useEffect(() => {
@@ -119,123 +105,8 @@ export default function ModelsPage() {
     ? (filters.taskTypes[0] === "object_detection" ? "Minimum mAP" : filters.taskTypes[0].includes("classification") ? "Minimum accuracy" : "Minimum metric")
     : "Select a task type to filter by metric";
 
-  const allMetricsPreview = useMemo(() => {
-    const metrics: Array<{ name: string; value: number }> = [];
-    const seen = new Set<string>();
-
-    const pushMetric = (name: string, value: number) => {
-      const key = name.trim().toLowerCase();
-      if (!name.trim() || !Number.isFinite(value) || seen.has(key)) return;
-      metrics.push({ name: name.trim(), value });
-      seen.add(key);
-    };
-
-    for (const metric of metricInputs) {
-      const value = Number(metric.value);
-      if (metric.name.trim() && Number.isFinite(value)) {
-        pushMetric(metric.name, value);
-      }
-    }
-
-    return metrics;
-  }, [metricInputs]);
-
   const onLoad = (model: Model, workspaceId = "ws_resnet", mountPath = `/workspace/models/${model.name.toLowerCase().replaceAll(" ", "")}`) => {
     loadMutation.mutate({ modelId: model.id, workspaceId, mountPath }, { onSuccess: () => toast.success(`Model ${model.name} was loaded`) });
-  };
-
-  const handleUploadModelFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    const accepted = Array.from(files).filter((file) => {
-      const lower = file.name.toLowerCase();
-      return lower.endsWith(".onnx") || lower.endsWith(".pt") || lower.endsWith(".pth") || lower.endsWith(".h5") || lower.endsWith(".safetensors");
-    });
-    if (accepted.length === 0) {
-      toast.warning("Invalid file", { description: "Supported: .onnx, .pt, .pth, .h5, .safetensors" });
-      return;
-    }
-    setPendingUploadFiles(accepted);
-    setUploadModalOpen(true);
-  };
-
-  const submitModelUpload = async () => {
-    if (pendingUploadFiles.length === 0) return;
-    setUploading(true);
-    let successCount = 0;
-    for (const file of pendingUploadFiles) {
-      const allMetrics: Record<string, number> = {};
-      for (const metric of allMetricsPreview) {
-        allMetrics[metric.name] = metric.value;
-      }
-      const firstMetric = allMetricsPreview[0];
-
-      const metadata = {
-        name: pendingUploadFiles.length === 1 ? uploadMeta.name.trim() || undefined : undefined,
-        description: uploadMeta.description.trim() || undefined,
-        framework: uploadMeta.framework,
-        task_type: uploadMeta.task_type,
-        architecture: uploadMeta.architecture.trim() || undefined,
-        primary_metric_name: firstMetric?.name || "metric",
-        primary_metric_value: firstMetric?.value ?? 0,
-        all_metrics: Object.keys(allMetrics).length ? allMetrics : undefined,
-        tags: uploadMeta.tags.split(",").map((s) => s.trim()).filter(Boolean),
-        version: "v1.0"
-      };
-
-      try {
-        await uploadModel(file, metadata);
-        successCount += 1;
-      } catch {
-        toast.error(`Upload failed: ${file.name}`);
-      }
-    }
-
-    setUploading(false);
-    setUploadModalOpen(false);
-    setPendingUploadFiles([]);
-
-    if (successCount > 0) {
-      toast.success(`Uploaded ${successCount}/${pendingUploadFiles.length} model`);
-      await queryClient.invalidateQueries({ queryKey: ["models"] });
-      router.refresh();
-    }
-  };
-
-  const handleImportMetadata = async (file: File | null) => {
-    if (!file) return;
-    try {
-      const raw = await file.text();
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== "object") {
-        throw new Error("Metadata must be a JSON object");
-      }
-
-      setUploadMeta((prev) => ({
-        ...prev,
-        name: typeof parsed.name === "string" ? parsed.name : prev.name,
-        description: typeof parsed.description === "string" ? parsed.description : prev.description,
-        framework: typeof parsed.framework === "string" ? parsed.framework : prev.framework,
-        task_type: typeof parsed.task_type === "string" ? parsed.task_type : prev.task_type,
-        architecture: typeof parsed.architecture === "string" ? parsed.architecture : prev.architecture,
-        tags: Array.isArray(parsed.tags) ? parsed.tags.map((t) => String(t)).join(", ") : prev.tags
-      }));
-      const parsedMetrics: Array<{ name: string; value: string }> = [];
-      if (parsed.all_metrics && typeof parsed.all_metrics === "object") {
-        for (const [k, v] of Object.entries(parsed.all_metrics as Record<string, unknown>)) {
-          const n = typeof v === "number" ? v : Number(v);
-          if (Number.isFinite(n)) parsedMetrics.push({ name: k, value: String(n) });
-        }
-      }
-      if (parsedMetrics.length > 0) {
-        setMetricInputs(parsedMetrics);
-      } else if (typeof parsed.primary_metric_name === "string" && typeof parsed.primary_metric_value === "number") {
-        setMetricInputs([{ name: parsed.primary_metric_name, value: String(parsed.primary_metric_value) }]);
-      }
-      setMetadataFileName(file.name);
-      toast.success("Imported metadata JSON");
-    } catch {
-      toast.error("Invalid metadata JSON");
-    }
   };
 
   return (
@@ -248,20 +119,9 @@ export default function ModelsPage() {
           </div>
           <p className="mt-1 text-sm text-text-secondary">Select a model for inference or fine-tuning in the workspace</p>
         </div>
-        <input
-          ref={uploadInputRef}
-          type="file"
-          multiple
-          accept=".onnx,.pt,.pth,.h5,.safetensors"
-          className="hidden"
-          onChange={(event) => {
-            handleUploadModelFiles(event.target.files);
-            event.currentTarget.value = "";
-          }}
-        />
         <Button
           className="bg-violet-600 text-white hover:bg-violet-500"
-          onClick={() => uploadInputRef.current?.click()}
+          onClick={() => setUploadModalOpen(true)}
         >
           <Plus size={14} /> Upload Model
         </Button>
@@ -332,153 +192,15 @@ export default function ModelsPage() {
       {!isLoading && models.length === 0 ? <div className="rounded-lg border border-border bg-bg-surface p-6 text-center"><BrainCircuit className="mx-auto mb-2 text-text-tertiary" /><p className="font-medium">No models yet</p><p className="text-sm text-text-secondary">Train your first model in the upstream module</p></div> : null}
       <ModelDetailDrawer modelId={selectedModel?.id ?? null} open={Boolean(selectedModel)} onClose={() => setSelectedModel(null)} />
       <ModelCompareTool selected={compareModels} onClear={() => setCompareIds([])} />
-      <Modal
+      <ModelUploadModal
         open={uploadModalOpen}
-        onClose={() => !uploading && setUploadModalOpen(false)}
-        title={
-          <div>
-            <h2 className="text-[15px] font-semibold text-[#0F1117]">
-              Upload Model
-              <span className="ml-2 rounded-full bg-[#EEF2FF] px-2 py-0.5 text-[12px] font-normal text-[#6366F1]">
-                {pendingUploadFiles.length} file
-              </span>
-            </h2>
-            {pendingUploadFiles[0] ? (
-              <p className="mt-1 flex items-center gap-1.5 text-[12px] text-[#64748B]">
-                <Paperclip size={11} />
-                <span className="max-w-[360px] truncate">{pendingUploadFiles[0].name}</span>
-                <span className="text-[#94A3B8]">·</span>
-                <span className="shrink-0 text-[#94A3B8]">{formatBytes(pendingUploadFiles[0].size)}</span>
-              </p>
-            ) : null}
-          </div>
-        }
-        size="md"
-        showCloseButton
-        allowContentOverflow
-        closeOnBackdrop={false}
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setUploadModalOpen(false)}
-              disabled={uploading}
-              className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-[13px] font-medium text-[#475569] transition-colors hover:bg-[#F1F5F9] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <Button className="px-5 py-2 text-[13px] font-medium text-white shadow-sm shadow-indigo-200 bg-[#6366F1] hover:bg-[#4F46E5]" onClick={() => void submitModelUpload()} disabled={uploading}>
-              {uploading ? "Uploading..." : "Upload"}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-3.5">
-          <input
-            ref={metadataInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={(event) => {
-              void handleImportMetadata(event.target.files?.[0] ?? null);
-              event.currentTarget.value = "";
-            }}
-          />
-          <div className="flex items-center justify-between gap-2 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-2">
-            <div className="min-w-0 text-[12px] text-[#64748B]">
-              <p className="font-medium text-[#334155]">Metadata JSON</p>
-              <p className="truncate">{metadataFileName || "No metadata file selected"}</p>
-              {allMetricsPreview.length > 0 ? (
-                <p className="mt-0.5 truncate text-[#6366F1]">
-                  Loaded {allMetricsPreview.length} metrics
-                </p>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className="shrink-0 rounded-md border border-[#CBD5E1] px-2.5 py-1 text-[12px] font-medium text-[#475569] hover:bg-[#F1F5F9]"
-              onClick={() => metadataInputRef.current?.click()}
-            >
-              Import .json
-            </button>
-          </div>
-          {pendingUploadFiles.length > 1 ? <p className="text-[12px] text-[#64748B]">Model names will be inferred from each file name when uploading multiple files.</p> : null}
-          <Field label="Model name" hint="(optional)">
-            <input className={inputCls()} value={uploadMeta.name} onChange={(e) => setUploadMeta((p) => ({ ...p, name: e.target.value }))} placeholder="vd: ResNet-50 Custom" />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Framework" required>
-              <select className={inputCls()} value={uploadMeta.framework} onChange={(e) => setUploadMeta((p) => ({ ...p, framework: e.target.value }))}>
-                <option value="onnx">ONNX</option>
-                <option value="pytorch">PyTorch</option>
-                <option value="tensorflow">TensorFlow</option>
-                <option value="huggingface">HuggingFace</option>
-                <option value="sklearn">Scikit-learn</option>
-              </select>
-            </Field>
-            <Field label="Task Type" required>
-              <select className={inputCls()} value={uploadMeta.task_type} onChange={(e) => setUploadMeta((p) => ({ ...p, task_type: e.target.value }))}>
-                <option value="image_classification">Image Classification</option>
-                <option value="object_detection">Object Detection</option>
-                <option value="semantic_segmentation">Segmentation</option>
-                <option value="text_classification">Text Classification</option>
-                <option value="text_generation">Text Generation</option>
-                <option value="regression">Regression</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Architecture" hint="(optional)">
-            <input className={inputCls()} value={uploadMeta.architecture} onChange={(e) => setUploadMeta((p) => ({ ...p, architecture: e.target.value }))} placeholder="vd: ResNet-50, BERT-base, YOLOv8..." />
-          </Field>
-          <Field label="Metrics">
-            <div className="space-y-2">
-              {metricInputs.map((metric, index) => (
-                <div key={`metric-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2">
-                  <input
-                    className={inputCls()}
-                    placeholder={`Metric ${index + 1} Name`}
-                    value={metric.name}
-                    onChange={(e) =>
-                      setMetricInputs((prev) => prev.map((item, i) => (i === index ? { ...item, name: e.target.value } : item)))
-                    }
-                  />
-                  <input
-                    className={inputCls()}
-                    type="number"
-                    step="0.001"
-                    min="0"
-                    placeholder={`Metric ${index + 1} Value`}
-                    value={metric.value}
-                    onChange={(e) =>
-                      setMetricInputs((prev) => prev.map((item, i) => (i === index ? { ...item, value: e.target.value } : item)))
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="rounded-lg border border-[#E2E8F0] px-2 text-[12px] text-[#64748B] hover:bg-[#F1F5F9]"
-                    onClick={() => setMetricInputs((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev))}
-                  >
-                    Delete
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="rounded-lg border border-[#CBD5E1] px-3 py-1.5 text-[12px] font-medium text-[#475569] hover:bg-[#F1F5F9]"
-                onClick={() => setMetricInputs((prev) => [...prev, { name: "", value: "" }])}
-              >
-                + Add metric
-              </button>
-            </div>
-          </Field>
-          <Field label="Tags" hint="(comma-separated)">
-            <input className={inputCls()} value={uploadMeta.tags} onChange={(e) => setUploadMeta((p) => ({ ...p, tags: e.target.value }))} placeholder="classification, production, v2..." />
-          </Field>
-          <Field label="Description" hint="(optional)">
-            <textarea rows={3} className={cn(inputCls(), "resize-none")} value={uploadMeta.description} onChange={(e) => setUploadMeta((p) => ({ ...p, description: e.target.value }))} placeholder="Briefly describe the model, dataset used, and results..." />
-          </Field>
-        </div>
-      </Modal>
+        onClose={() => setUploadModalOpen(false)}
+        onUploaded={async (model) => {
+          toast.success(`Uploaded ${model.name}`);
+          await queryClient.invalidateQueries({ queryKey: ["models"] });
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
@@ -486,45 +208,3 @@ export default function ModelsPage() {
 function ModelSkeleton() {
   return <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="space-y-2 rounded-lg border border-border p-4"><div className="skeleton-shimmer h-5 w-2/3 rounded" /><div className="skeleton-shimmer h-16 rounded" /><div className="skeleton-shimmer h-8 rounded" /></div>)}</div>;
 }
-
-function Field({
-  label,
-  hint,
-  required,
-  children
-}: {
-  label: string;
-  hint?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[12.5px] font-medium text-[#374151]">
-        {label}
-        {hint ? <span className="ml-1 font-normal text-[#9CA3AF]">{hint}</span> : null}
-        {required ? <span className="ml-0.5 text-red-500">*</span> : null}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function inputCls(error = false) {
-  return cn(
-    "w-full rounded-lg border bg-white px-3 py-1.5 text-[13.5px] text-[#0F1117]",
-    "placeholder:text-[#9CA3AF]",
-    "focus:outline-none focus:ring-2 transition-colors",
-    error
-      ? "border-red-300 focus:border-red-400 focus:ring-red-200"
-      : "border-[#E2E8F0] focus:border-[#6366F1] focus:ring-[#6366F1]/20"
-  );
-}
-
-function formatBytes(value: number) {
-  if (value >= 1024 ** 3) return `${(value / 1024 ** 3).toFixed(1)} GB`;
-  if (value >= 1024 ** 2) return `${(value / 1024 ** 2).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${value} B`;
-}
-

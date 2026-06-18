@@ -9,6 +9,7 @@ interface VersionListProps {
   versions: DatasetVersion[];
   selectedVersionId: string | null;
   search: string;
+  errorMessage?: string;
   onSearchChange: (value: string) => void;
   onSelectVersion: (version: DatasetVersion) => void;
   onTrack: () => void;
@@ -18,6 +19,7 @@ export function VersionList({
   versions,
   selectedVersionId,
   search,
+  errorMessage,
   onSearchChange,
   onSelectVersion,
   onTrack
@@ -42,7 +44,9 @@ export function VersionList({
       </div>
 
       <div className="max-h-[640px] overflow-y-auto p-2">
-        {versions.length === 0 ? (
+        {errorMessage ? (
+          <p className="p-4 text-sm text-red-600">{errorMessage}</p>
+        ) : versions.length === 0 ? (
           <p className="p-4 text-sm text-text-secondary">No versions found.</p>
         ) : null}
         {versions.map((version) => {
@@ -59,8 +63,18 @@ export function VersionList({
             >
               <div className="flex items-center justify-between gap-2">
                 <VersionTag version={version.version} isLatest={version.is_latest} status={version.status} />
+                {version.validation_status ? (
+                  <span className={cn(
+                    "rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    version.validation_status === "failed" ? "bg-red-50 text-red-700" : version.validation_status === "warning" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"
+                  )}>
+                    {version.validation_status}
+                  </span>
+                ) : null}
               </div>
-              <p className="mt-1.5 font-mono text-xs text-text-secondary">{version.dvc_md5.slice(0, 7)}</p>
+              <p className="mt-1.5 text-xs text-text-secondary">
+                {[version.format, version.task_type].filter(Boolean).join(" · ") || version.dvc_md5.slice(0, 7) || "metadata"}
+              </p>
               <p className="mt-1 text-xs text-text-secondary">
                 {formatBytes(version.size_bytes)} · {formatRelativeTime(version.created_at)}
               </p>

@@ -1,4 +1,4 @@
-export type ModelFramework = "pytorch" | "tensorflow" | "onnx" | "huggingface" | "sklearn";
+export type ModelFramework = "pytorch" | "tensorflow" | "onnx" | "huggingface" | "sklearn" | "ultralytics";
 export type TaskType =
   | "image_classification"
   | "object_detection"
@@ -101,6 +101,44 @@ export interface UploadModelVersionMetadata {
   primary_metric_name?: string;
   primary_metric_value?: number;
   metrics?: Record<string, number>;
+}
+
+export interface ModelInspectIssue {
+  code: string;
+  message: string;
+  severity: "error" | "warning";
+  path?: string;
+}
+
+export interface ModelInspectResponse {
+  form: {
+    name: string;
+    version: string;
+    description: string;
+    architecture: string;
+    framework: string;
+    task: string;
+    tags: string[];
+  };
+  metadata: {
+    name: string;
+    format: string;
+    framework: string;
+    task_type: string;
+    size_bytes: number;
+    architecture?: string;
+    has_weights?: boolean;
+    has_onnx?: boolean;
+    primary_metric_name?: string;
+    primary_metric_value?: number;
+    all_metrics?: Record<string, number>;
+  };
+  validation_report: {
+    status: string;
+    summary: { error_count: number; warning_count: number };
+    errors: ModelInspectIssue[];
+    warnings: ModelInspectIssue[];
+  };
 }
 
 export interface ModelFilters {

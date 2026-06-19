@@ -302,6 +302,8 @@ class DVCProfileService:
     async def _configure_remote(self, repo_path: str, remote_name: str, remote_url: str | None, endpoint_url: str | None) -> None:
         if not remote_url:
             return
+        # Auto-create the S3/MinIO bucket if it does not exist yet.
+        await asyncio.to_thread(self._ensure_s3_bucket, remote_url, endpoint_url)
         await self._run(["dvc", "remote", "add", "-d", remote_name, remote_url], cwd=repo_path, allow_failure=True)
         await self._run(["dvc", "remote", "modify", remote_name, "url", remote_url], cwd=repo_path, allow_failure=True)
         if endpoint_url:
@@ -309,11 +311,49 @@ class DVCProfileService:
         await self._run(["git", "add", ".dvc/config"], cwd=repo_path)
         await self._run(["git", "commit", "-m", "chore: configure dvc remote"], cwd=repo_path, allow_failure=True)
 
+    def _ensure_s3_bucket(self, remote_url: str, endpoint_url: str | None) -> None:
+        """Create the S3/MinIO bucket extracted from remote_url if it does not exist."""
+        import re
+        match = re.match(r"s3://([^/]+)", remote_url.strip())
+        if not match:
+            return  # Not an S3 URL – skip
+        bucket_name = match.group(1)
+        try:
+            import boto3
+            from botocore.client import Config
+            from botocore.exceptions import ClientError
+
+            effective_endpoint = endpoint_url or self.settings.MINIO_ENDPOINT
+            if effective_endpoint and not effective_endpoint.startswith("http"):
+                effective_endpoint = f"http://{effective_endpoint}"
+
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=effective_endpoint,
+                aws_access_key_id=self.settings.MINIO_ACCESS_KEY,
+                aws_secret_access_key=self.settings.MINIO_SECRET_KEY,
+                config=Config(signature_version="s3v4"),
+            )
+            try:
+                s3.head_bucket(Bucket=bucket_name)
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code", "")
+                if code in ("404", "NoSuchBucket"):
+                    s3.create_bucket(Bucket=bucket_name)
+        except Exception:
+            # Non-fatal: bucket creation failure is caught later by dvc push.
+            pass
+
     @staticmethod
     async def _run(command: list[str], *, cwd: str | None, allow_failure: bool = False) -> None:
         import os
         env = os.environ.copy()
         env["GIT_TERMINAL_PROMPT"] = "0"
+        # Fallback identity so `git commit` works in headless Docker containers.
+        env.setdefault("GIT_AUTHOR_NAME", "NeuralSpace")
+        env.setdefault("GIT_AUTHOR_EMAIL", "noreply@neuralspace.local")
+        env.setdefault("GIT_COMMITTER_NAME", "NeuralSpace")
+        env.setdefault("GIT_COMMITTER_EMAIL", "noreply@neuralspace.local")
         
         proc = await asyncio.create_subprocess_exec(
             *command,

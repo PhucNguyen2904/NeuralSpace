@@ -142,6 +142,12 @@ class DVCClient:
                 "GIT_CONFIG_COUNT": "1",
                 "GIT_CONFIG_KEY_0": "safe.directory",
                 "GIT_CONFIG_VALUE_0": str(self.repo_path),
+                # Provide a fallback identity so `git commit` works in headless
+                # environments (Docker containers) that have no global git config.
+                "GIT_AUTHOR_NAME": env.get("GIT_AUTHOR_NAME") or "NeuralSpace",
+                "GIT_AUTHOR_EMAIL": env.get("GIT_AUTHOR_EMAIL") or "noreply@neuralspace.local",
+                "GIT_COMMITTER_NAME": env.get("GIT_COMMITTER_NAME") or "NeuralSpace",
+                "GIT_COMMITTER_EMAIL": env.get("GIT_COMMITTER_EMAIL") or "noreply@neuralspace.local",
             }
         )
         proc = await asyncio.create_subprocess_exec(

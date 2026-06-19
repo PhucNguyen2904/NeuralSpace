@@ -48,6 +48,10 @@ class DVCClient:
         await self._run_command([*self._git_cmd, "add", *git_add_paths], cwd=self.repo_path)
         await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
         await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name], cwd=self.repo_path)
+        try:
+            await self._run_command([*self._git_cmd, "push", "origin", "HEAD"], cwd=self.repo_path)
+        except DVCCommandError:
+            pass  # Ignore failure if origin is missing or requires auth in the container
 
         info = await self.get_version_info(rel_dvc_file)
         stdout, _, _ = await self._run_command([*self._git_cmd, "rev-parse", "HEAD"], cwd=self.repo_path)

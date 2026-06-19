@@ -12,6 +12,7 @@ from fastapi.responses import Response, JSONResponse
 from pydantic import ValidationError
 
 from app import __version__
+from fastapi.exceptions import RequestValidationError
 from app.api.v1.router import router as api_v1_router
 from app.config import get_settings
 from app.core.logging import configure_logging, get_logger, generate_request_id, set_request_id
@@ -172,7 +173,8 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(ValidationError)
-    async def validation_exception_handler(request: Request, exc: ValidationError):
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: ValidationError | RequestValidationError):
         """Handle validation errors."""
         logger.warning(
             "Validation exception returned",

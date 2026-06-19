@@ -18,9 +18,17 @@ from .schemas import DVCDiffResult, DVCReproResult, DVCTrackResult, DVCVersionIn
 class DVCClient:
     """Wrapper around DVC and Git CLI commands."""
 
-    def __init__(self, repo_path: str, remote_name: str = "minio") -> None:
+    def __init__(
+        self,
+        repo_path: str,
+        remote_name: str = "minio",
+        ssh_key_encrypted: bytes | None = None,
+        git_ssh_url: str | None = None,
+    ) -> None:
         self.repo_path = Path(repo_path).resolve()
         self.remote_name = remote_name
+        self.ssh_key_encrypted = ssh_key_encrypted
+        self.git_ssh_url = git_ssh_url
         # Resolve executables once so they work regardless of system PATH.
         # DVC: prefer the venv-local binary; fall back to `python -m dvc`.
         _dvc_bin = shutil.which("dvc") or shutil.which(
@@ -48,10 +56,45 @@ class DVCClient:
         await self._run_command([*self._git_cmd, "add", *git_add_paths], cwd=self.repo_path)
         await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
         await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name], cwd=self.repo_path)
-        try:
-            await self._run_command([*self._git_cmd, "push", "origin", "HEAD"], cwd=self.repo_path)
-        except DVCCommandError:
-            pass  # Ignore failure if origin is missing or requires auth in the container
+
+        if self.git_ssh_url and self.ssh_key_encrypted:
+            from app.utils.ssh_key_manager import temp_ssh_key_file
+            from app.core.exceptions import GitPushError
+            with temp_ssh_key_file(self.ssh_key_encrypted) as key_path:
+                extra_env = {
+                    "GIT_SSH_COMMAND": f"ssh -i {key_path} -o StrictHostKeyChecking=no -o BatchMode=yes",
+                    "GIT_TERMINAL_PROMPT": "0",
+                }
+                try:
+                    await self._run_command(
+                        [*self._git_cmd, "push", self.git_ssh_url, "HEAD"],
+                        cwd=self.repo_path,
+                        extra_env=extra_env,
+                    )
+                except DVCCommandError as exc:
+                    msg = (exc.stderr or exc.stdout or "").lower()
+                    if "permission denied" in msg:
+                        raise GitPushError("SSH key bị từ chối bởi GitHub. Deploy Key có thể đã bị xóa hoặc thu hồi.")
+                    elif "repository not found" in msg:
+                        raise GitPushError("Không tìm thấy repository trên GitHub.")
+                    else:
+                        raise GitPushError(f"Git push thất bại: {msg}")
+        else:
+            try:
+                await self._run_command([*self._git_cmd, "push", "origin", "HEAD"], cwd=self.repo_path)
+            except DVCCommandError as exc:
+                msg = (exc.stderr or exc.stdout or "").lower()
+                if "does not appear to be a git repository" in msg or "no configured push destination" in msg:
+                    pass  # Ignore failure if origin is missing (e.g. Server default)
+                else:
+                    if "terminal prompts disabled" in msg or "could not read username" in msg:
+                        raise DVCCommandError(
+                            exc.cmd,
+                            exc.returncode,
+                            exc.stdout,
+                            "Git authentication failed. Please configure the Git URL with credentials (e.g., https://<token>@github.com/...)",
+                        )
+                    raise
 
         info = await self.get_version_info(rel_dvc_file)
         stdout, _, _ = await self._run_command([*self._git_cmd, "rev-parse", "HEAD"], cwd=self.repo_path)
@@ -139,7 +182,7 @@ class DVCClient:
         )
         return DVCReproResult(stage=pipeline_stage, success=True, stdout=stdout, stderr=stderr)
 
-    async def _run_command(self, cmd: list[str], cwd: Path) -> tuple[str, str, int]:
+    async def _run_command(self, cmd: list[str], cwd: Path, extra_env: dict | None = None) -> tuple[str, str, int]:
         env = os.environ.copy()
         env.update(
             {
@@ -154,6 +197,8 @@ class DVCClient:
                 "GIT_COMMITTER_EMAIL": env.get("GIT_COMMITTER_EMAIL") or "noreply@neuralspace.local",
             }
         )
+        if extra_env:
+            env.update(extra_env)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             cwd=str(cwd),

@@ -176,6 +176,19 @@ services:
     networks:
       - backend-network
 
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    command: http api:8000
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    depends_on:
+      - api
+    networks:
+      - backend-network
+
 volumes:
   minio_data:
   postgres_data:

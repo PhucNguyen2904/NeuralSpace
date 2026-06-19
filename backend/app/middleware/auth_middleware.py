@@ -26,6 +26,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/auth/login",
         "/api/v1/auth/register",
         "/api/v1/colab/claims/exchange",
+        "/api/v1/github/callback",
     }
 
     async def dispatch(self, request: Request, call_next):

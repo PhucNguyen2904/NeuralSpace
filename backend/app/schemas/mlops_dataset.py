@@ -185,3 +185,25 @@ class DVCProfileResponse(BaseModel):
     status: str
     status_message: str | None = None
     is_environment_default: bool = False
+
+
+class CreateManagedGitProfileRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class CreateManagedGitProfileResponse(BaseModel):
+    profile_id: str
+    status: str
+    connect_url: str
+
+
+class SetupRepoRequest(BaseModel):
+    repo_owner: str
+    repo_name: str
+
+
+class SetupRepoResponse(BaseModel):
+    profile_id: str
+    status: str
+    repo: str
+    message: str

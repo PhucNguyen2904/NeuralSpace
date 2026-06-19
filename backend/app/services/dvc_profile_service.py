@@ -8,11 +8,21 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.dependencies import UserContext
 from app.models.mlops_tracking import DatasetVersion, DVCProfile, MLDataset
-from app.schemas.mlops_dataset import DVCProfileCreateRequest, DVCProfilePatchRequest
+from app.schemas.mlops_dataset import (
+    DVCProfileCreateRequest,
+    DVCProfilePatchRequest,
+    CreateManagedGitProfileRequest,
+    CreateManagedGitProfileResponse,
+    SetupRepoRequest,
+    SetupRepoResponse,
+)
+from app.utils.github_app import GitHubAppAuth
+from app.utils.ssh_key_manager import generate_ssh_keypair
 from src.integrations.dvc.exceptions import DVCRepositoryError
 import shutil
 
@@ -27,6 +37,8 @@ class ResolvedDVCProfile:
     repo_path: str
     remote_name: str
     remote_url: str | None = None
+    git_ssh_url: str | None = None
+    ssh_key_encrypted: bytes | None = None
 
 
 def environment_dvc_profile(settings: Settings) -> dict:
@@ -115,7 +127,14 @@ class DVCProfileService:
         if row.is_default:
             await self._clear_default(row.scope, row.scope_id)
         self.db.add(row)
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A DVC profile with the name '{payload.name.strip()}' already exists in this scope.",
+            )
         await self.db.refresh(row)
         return row
 
@@ -142,6 +161,92 @@ class DVCProfileService:
         await self.db.refresh(profile)
         return profile
 
+    async def create_managed_git_profile(
+        self, payload: CreateManagedGitProfileRequest, user: UserContext
+    ) -> CreateManagedGitProfileResponse:
+        profile_id = str(uuid4())
+        repo_path = str(Path(self.settings.DVC_MANAGED_REPO_ROOT) / profile_id)
+
+        # Trạng thái pending_oauth: Đợi user connect GitHub
+        row = DVCProfile(
+            id=profile_id,
+            name=payload.name.strip(),
+            scope="user",
+            scope_id=user.user_id,
+            repo_mode="managed_git",
+            repo_path=repo_path,
+            remote_name="minio",
+            is_default=False,
+            status="pending_oauth",
+            status_message="Waiting for GitHub App connection",
+            created_by=user.user_id,
+        )
+        self.db.add(row)
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            await self.db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A DVC profile with the name '{payload.name.strip()}' already exists.",
+            )
+
+        # Tạo connect URL, truyền state là profile_id để callback biết
+        connect_url = GitHubAppAuth.get_install_url(state=profile_id)
+
+        return CreateManagedGitProfileResponse(
+            profile_id=profile_id,
+            status="pending_oauth",
+            connect_url=connect_url,
+        )
+
+    async def setup_repo_for_profile(
+        self, profile_id: str, payload: SetupRepoRequest, user: UserContext
+    ) -> SetupRepoResponse:
+        profile = await self.db.get(DVCProfile, profile_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        self._check_access(profile, user)
+
+        if profile.status != "pending_repo_selection":
+            raise HTTPException(
+                status_code=400, detail=f"Cannot setup repo in status: {profile.status}"
+            )
+        if not profile.github_installation_id:
+            raise HTTPException(
+                status_code=400, detail="Missing installation ID. Connect GitHub first."
+            )
+
+        auth = GitHubAppAuth(profile.github_installation_id)
+
+        # 1. Tạo Deploy Key
+        encrypted_private_key, public_key = generate_ssh_keypair()
+
+        # 2. Đăng ký lên GitHub
+        title = f"NeuralSpace Managed DVC - {profile.name} ({profile_id})"
+        key_id = await auth.add_deploy_key(
+            payload.repo_owner, payload.repo_name, title, public_key
+        )
+
+        # 3. Update DB
+        profile.git_repo_owner = payload.repo_owner
+        profile.git_repo_name = payload.repo_name
+        profile.git_ssh_url = f"git@github.com:{payload.repo_owner}/{payload.repo_name}.git"
+        profile.github_deploy_key_id = key_id
+        profile.ssh_key_encrypted = encrypted_private_key
+        profile.ssh_public_key = public_key
+        profile.status = "active"
+        profile.status_message = "Ready"
+
+        await self.db.commit()
+
+        return SetupRepoResponse(
+            profile_id=profile_id,
+            status="active",
+            repo=f"{payload.repo_owner}/{payload.repo_name}",
+            message="Deploy key added and profile is active.",
+        )
+
     async def delete_profile(self, profile_id: str, user: UserContext, delete_files: bool = False) -> None:
         if profile_id == ENV_DEFAULT_DVC_PROFILE_ID:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the server default profile")
@@ -152,26 +257,23 @@ class DVCProfileService:
 
         self._check_access(profile, user)
 
-        # Check usages
-        dataset_count = await self.db.scalar(
-            select(func.count()).select_from(MLDataset).where(MLDataset.dvc_profile_id == profile_id)
-        )
-        version_count = await self.db.scalar(
-            select(func.count()).select_from(DatasetVersion).where(DatasetVersion.dvc_profile_id == profile_id)
-        )
-
-        if dataset_count or version_count:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "message": "DVC profile is in use. Disable it instead.",
-                    "datasets_count": dataset_count or 0,
-                    "versions_count": version_count or 0,
-                }
-            )
+        # Check usages removed. Database handles this via ON DELETE SET NULL for MLDataset and DatasetVersion.
 
         repo_mode = profile.repo_mode
         repo_path = profile.repo_path
+
+        # Thu hồi Deploy Key nếu có
+        if profile.github_installation_id and profile.github_deploy_key_id and profile.git_repo_owner and profile.git_repo_name:
+            try:
+                auth = GitHubAppAuth(profile.github_installation_id)
+                await auth.remove_deploy_key(
+                    profile.git_repo_owner,
+                    profile.git_repo_name,
+                    profile.github_deploy_key_id,
+                )
+            except Exception as e:
+                # Log error but continue deletion
+                print(f"Failed to remove deploy key: {e}")
 
         await self.db.delete(profile)
         await self.db.commit()
@@ -216,7 +318,7 @@ class DVCProfileService:
 
         if profile is None:
             return self._from_env()
-        if profile.status != "ready":
+        if profile.status not in ("ready", "active"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"DVC profile is not ready: {profile.status_message or profile.status}")
         self._check_access(profile, user)
         return ResolvedDVCProfile(
@@ -225,6 +327,8 @@ class DVCProfileService:
             repo_path=profile.repo_path,
             remote_name=profile.remote_name,
             remote_url=profile.remote_url,
+            git_ssh_url=profile.git_ssh_url,
+            ssh_key_encrypted=profile.ssh_key_encrypted,
         )
 
     async def _clear_default(self, scope: str, scope_id: str | None) -> None:
@@ -241,6 +345,8 @@ class DVCProfileService:
             name="Server default",
             repo_path=self.settings.DVC_REPO_PATH,
             remote_name=self.settings.DVC_REMOTE_NAME,
+            git_ssh_url=None,
+            ssh_key_encrypted=None,
         )
 
     def _check_access(self, profile: DVCProfile, user: UserContext) -> None:
@@ -275,9 +381,13 @@ class DVCProfileService:
     ) -> tuple[str, str]:
         try:
             if repo_mode == "managed_git":
-                await self._clone_managed_repo(repo_path, git_repo_url or "", git_branch)
-                await self._ensure_dvc_repo(repo_path)
-                await self._configure_remote(repo_path, remote_name, remote_url, endpoint_url)
+                if git_repo_url: # Normal managed git
+                    await self._clone_managed_repo(repo_path, git_repo_url, git_branch)
+                    await self._ensure_dvc_repo(repo_path)
+                    await self._configure_remote(repo_path, remote_name, remote_url, endpoint_url)
+                    await self._run(["git", "push", "origin", "HEAD"], cwd=repo_path)
+                else: # GitHub App managed git, wait for setup
+                    return "pending_repo_selection", "Waiting for GitHub App connection"
             self._validate_repo(repo_path)
             return "ready", "Repo validated"
         except DVCRepositoryError as exc:

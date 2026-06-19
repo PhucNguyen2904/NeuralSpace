@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    LargeBinary,
     UniqueConstraint,
     func,
     text,
@@ -37,7 +38,7 @@ link_type_enum = Enum("train", "val", "test", "eval", name="mlops_link_type")
 approval_target_stage_enum = Enum("Staging", "Production", name="mlops_approval_target_stage")
 approval_status_enum = Enum("pending", "approved", "rejected", "cancelled", name="mlops_approval_status")
 dvc_profile_scope_enum = Enum("global", "team", "user", "workspace", name="mlops_dvc_profile_scope")
-dvc_profile_status_enum = Enum("ready", "inactive", "error", "archived", name="mlops_dvc_profile_status")
+dvc_profile_status_enum = Enum("ready", "inactive", "error", "archived", "pending_oauth", "pending_repo_selection", "active", name="mlops_dvc_profile_status")
 dvc_profile_repo_mode_enum = Enum("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode")
 
 
@@ -63,6 +64,16 @@ class DVCProfile(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     status: Mapped[str] = mapped_column(dvc_profile_status_enum, nullable=False, server_default="ready")
     status_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # GitHub App fields
+    git_ssh_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    git_repo_owner: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    git_repo_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    github_installation_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    github_deploy_key_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    ssh_key_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    ssh_public_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now(), onupdate=func.now())

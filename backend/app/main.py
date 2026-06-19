@@ -13,8 +13,10 @@ from pydantic import ValidationError
 
 from app import __version__
 from fastapi.exceptions import RequestValidationError
+import asyncio
 from app.api.v1.router import router as api_v1_router
 from app.config import get_settings
+from app.utils.ngrok import get_ngrok_public_url
 from app.core.logging import configure_logging, get_logger, generate_request_id, set_request_id
 from app.core.metrics import api_request_duration_seconds
 from app.core.tracing import setup_tracing
@@ -51,6 +53,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.exception("Failed to initialize resources", error=str(e))
         raise
+
+    settings = get_settings()
+    if settings.ENVIRONMENT == "development":
+        ngrok_url = None
+        for attempt in range(10):
+            ngrok_url = await get_ngrok_public_url()
+            if ngrok_url:
+                break
+            logger.info(f"Chờ ngrok... (lần {attempt + 1}/10)")
+            await asyncio.sleep(2)
+
+        if ngrok_url:
+            settings.BACKEND_URL = ngrok_url
+            logger.info("=" * 50)
+            logger.info(f"✅ ngrok tunnel: {ngrok_url}")
+            logger.info(f"   GitHub Callback URL:")
+            logger.info(f"   {ngrok_url}/api/v1/github/callback")
+            logger.info("=" * 50)
+        else:
+            logger.warning("⚠️  Không lấy được ngrok URL sau 10 lần thử")
 
     yield
 

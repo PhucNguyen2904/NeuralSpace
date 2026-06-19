@@ -11,11 +11,13 @@ import {
   TerminalSquare,
   UserRound
 } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Avatar, Button, Card, Modal, Select } from "@/components/ui";
+import { CreateProfileWizard } from "@/components/dvc-profiles/CreateProfileWizard";
 import {
   useChangePassword,
   useSettings,
@@ -27,14 +29,14 @@ import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcP
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
 
-type TabKey = "profile" | "workspace" | "storage" | "runtime" | "notifications" | "appearance" | "security";
+type TabKey = "profile" | "storage" | "runtime" | "notifications" | "appearance" | "security";
 type ThemePreference = "system" | "light" | "dark";
 type DvcProfileScope = "global" | "team" | "user" | "workspace";
 type DvcRepoMode = "managed_git" | "existing_path";
 
 const tabs: Array<{ key: TabKey; label: string; icon: ComponentType<{ size?: string | number; className?: string }> }> = [
   { key: "profile", label: "Profile", icon: UserRound },
-  { key: "workspace", label: "Workspace Preferences", icon: MonitorCog },
+
   { key: "storage", label: "Storage", icon: Database },
   { key: "runtime", label: "Runtime / Colab", icon: TerminalSquare },
   { key: "notifications", label: "Notifications", icon: Bell },
@@ -73,19 +75,7 @@ export default function SettingsPage() {
   const [deleteFilesChecked, setDeleteFilesChecked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
-  const [dvcProfileForm, setDvcProfileForm] = useState({
-    name: "",
-    scope: "user" as DvcProfileScope,
-    repoMode: "managed_git" as DvcRepoMode,
-    scopeId: "",
-    gitRepoUrl: "",
-    gitBranch: "main",
-    repoPath: "",
-    remoteName: "minio",
-    remoteUrl: "",
-    endpointUrl: "",
-    isDefault: false
-  });
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const { data: settings } = useSettings();
@@ -95,7 +85,6 @@ export default function SettingsPage() {
   const updateDefaults = useUpdateWorkspaceDefaults();
   const updateNotifications = useUpdateNotifications();
   const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
-  const createDvcProfile = useCreateDvcProfile();
   const updateDvcProfile = useUpdateDvcProfile();
   const deleteDvcProfile = useDeleteDvcProfile();
 
@@ -159,44 +148,6 @@ export default function SettingsPage() {
     window.localStorage.setItem("ui-theme", value);
     applyTheme(value);
     setToastMsg("Appearance updated");
-  };
-
-  const submitDvcProfile = async () => {
-    const isManagedGit = dvcProfileForm.repoMode === "managed_git";
-    if (!dvcProfileForm.name.trim() || (isManagedGit ? !dvcProfileForm.gitRepoUrl.trim() : !dvcProfileForm.repoPath.trim())) {
-      setToastMsg(isManagedGit ? "Name and Git repo URL are required" : "Name and repo path are required");
-      return;
-    }
-    try {
-      await createDvcProfile.mutateAsync({
-        name: dvcProfileForm.name.trim(),
-        scope: dvcProfileForm.scope,
-        scope_id: dvcProfileForm.scopeId.trim() || undefined,
-        repo_mode: dvcProfileForm.repoMode,
-        git_repo_url: dvcProfileForm.gitRepoUrl.trim() || undefined,
-        git_branch: dvcProfileForm.gitBranch.trim() || "main",
-        repo_path: dvcProfileForm.repoPath.trim() || undefined,
-        remote_name: dvcProfileForm.remoteName.trim() || "minio",
-        remote_url: dvcProfileForm.remoteUrl.trim() || undefined,
-        endpoint_url: dvcProfileForm.endpointUrl.trim() || undefined,
-        is_default: dvcProfileForm.isDefault
-      });
-      setDvcProfileForm((current) => ({
-        ...current,
-        name: "",
-        scopeId: "",
-        gitRepoUrl: "",
-        gitBranch: "main",
-        repoPath: "",
-        remoteName: "minio",
-        remoteUrl: "",
-        endpointUrl: "",
-        isDefault: false
-      }));
-      setToastMsg("DVC profile saved");
-    } catch {
-      // Lỗi đã được hiển thị qua createDvcProfile.error trong UI
-    }
   };
 
   if (!settings) {
@@ -296,66 +247,18 @@ export default function SettingsPage() {
             </div>
           ) : null}
 
-          {activeTab === "workspace" ? (
-            <div className="max-w-2xl space-y-6">
-              <h3 className="text-base font-semibold text-text-primary">Workspace Defaults</h3>
-
-              <div className="max-w-md">
-                <Field label="Default Python version">
-                  <Select value={settings.defaults.pythonVersion} onChange={(e) => updateDefaults.mutate({ pythonVersion: e.target.value as "3.10" | "3.11" | "3.12" })}>
-                    <option value="3.10">Python 3.10</option>
-                    <option value="3.11">Python 3.11</option>
-                    <option value="3.12">Python 3.12</option>
-                  </Select>
-                </Field>
-              </div>
-
-              <div className="max-w-md space-y-2">
-                <p className="text-sm text-text-primary font-medium">Auto close (idle timeout): <span className="text-text-secondary font-normal">{settings.defaults.idleTimeoutMinutes} minutes</span></p>
-                <input
-                  type="range"
-                  min={15}
-                  max={120}
-                  step={15}
-                  value={settings.defaults.idleTimeoutMinutes}
-                  onChange={(e) => updateDefaults.mutate({ idleTimeoutMinutes: Number(e.target.value) as 15 | 30 | 60 | 120 })}
-                  className="h-2 w-full accent-brand-500"
-                />
-                <div className="flex justify-between text-xs text-text-tertiary"><span>15</span><span>30</span><span>60</span><span>120</span></div>
-              </div>
-
-              <div className="max-w-md rounded-lg border border-border bg-bg-elevated p-4">
-                <label className="flex items-center justify-between text-sm cursor-pointer">
-                  <span className="font-medium text-text-primary">Auto-save</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.defaults.autoSaveEnabled}
-                    onChange={(e) => updateDefaults.mutate({ autoSaveEnabled: e.target.checked })}
-                    className="h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500"
-                  />
-                </label>
-                <div className={cn("mt-3 flex items-center gap-2", !settings.defaults.autoSaveEnabled && "opacity-50 pointer-events-none")}>
-                  <span className="text-sm text-text-secondary">Save every</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={settings.defaults.autoSaveIntervalMinutes}
-                    onChange={(e) => updateDefaults.mutate({ autoSaveIntervalMinutes: Number(e.target.value) })}
-                    className="h-8 w-20 rounded-md border border-border bg-bg-surface px-2 text-sm focus:border-brand-500 focus:outline-none"
-                    disabled={!settings.defaults.autoSaveEnabled}
-                  />
-                  <span className="text-sm text-text-secondary">minutes</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
 
           {activeTab === "storage" ? (
             <div className="max-w-3xl space-y-6">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-base font-semibold text-text-primary">DVC Storage Profiles</h3>
-                <span className="text-xs text-text-tertiary">{dvcProfiles.length} configured</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-base font-semibold text-text-primary">DVC Storage Profiles</h3>
+                  <span className="text-xs font-medium text-text-tertiary bg-bg-sunken px-2 py-0.5 rounded-full border border-border">{dvcProfiles.length} configured</span>
+                </div>
+                <p className="text-sm text-text-secondary max-w-2xl">
+                  DVC Profiles cho phép bạn cấu hình nơi lưu trữ dữ liệu (Dataset, Model) từ các Workspace của NeuralSpace. 
+                  Bạn có thể tạo profile kết nối với kho lưu trữ riêng, hoặc sử dụng profile mặc định của máy chủ.
+                </p>
               </div>
 
               <div className="grid gap-3">
@@ -367,22 +270,34 @@ export default function SettingsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium text-text-primary">{profile.name}</p>
+                            <p className="font-medium text-text-primary">
+                              {profile.is_environment_default ? "NeuralSpace Server Default" : profile.name}
+                            </p>
                             <span className={cn(
                               "rounded px-1.5 py-0.5 text-xs font-medium",
                               profile.status === "ready" ? "bg-emerald-500/10 text-emerald-600" : "bg-error-500/10 text-error-500"
                             )}>
                               {profile.status}
                             </span>
-                            {profile.is_default ? <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-medium text-brand-600">Default</span> : null}
-                            {profile.is_environment_default ? <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-medium text-emerald-600">No setup needed</span> : null}
+                            {profile.is_default && !profile.is_environment_default ? <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-medium text-brand-600">Default</span> : null}
+                            {profile.is_environment_default ? <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-medium text-brand-600 border border-brand-500/20">System Provided</span> : null}
                           </div>
-                          <p className="mt-1 truncate text-xs text-text-secondary">
-                            {profile.is_environment_default ? "Configured by the server administrator" : profile.repo_mode === "managed_git" ? profile.git_repo_url || "Managed Git repo" : profile.repo_path}
+                          <p className="mt-1.5 text-xs text-text-secondary leading-relaxed">
+                            {profile.is_environment_default 
+                              ? "Profile lưu trữ mặc định do hệ thống cấp phát. Dữ liệu được quản lý tự động, không yêu cầu thiết lập thêm từ người dùng." 
+                              : profile.repo_mode === "managed_git" 
+                                ? `Kết nối qua GitHub Repository: ${profile.git_repo_url || "Managed Git repo"}` 
+                                : `Đường dẫn máy chủ nội bộ: ${profile.repo_path}`}
                           </p>
-                          <p className="mt-1 text-xs text-text-tertiary">
-                            {profile.scope}{profile.scope_id ? `:${profile.scope_id}` : ""} · {profile.repo_mode === "managed_git" ? `branch ${profile.git_branch}` : "server path"} · remote {profile.remote_name}
-                          </p>
+                          {!profile.is_environment_default && (
+                            <p className="mt-1 text-xs text-text-tertiary flex items-center gap-1.5">
+                              <span>Scope: {profile.scope}{profile.scope_id ? `:${profile.scope_id}` : ""}</span>
+                              <span>·</span>
+                              <span>{profile.repo_mode === "managed_git" ? `Branch: ${profile.git_branch}` : "Local path"}</span>
+                              <span>·</span>
+                              <span>Remote: {profile.remote_name}</span>
+                            </p>
+                          )}
                         </div>
                         {profile.remote_url ? <p className="max-w-xs truncate text-xs text-text-tertiary">{profile.remote_url}</p> : null}
                         
@@ -433,107 +348,32 @@ export default function SettingsPage() {
                 )}
               </div>
 
-              <div className="space-y-4 rounded-lg border border-border p-4">
-                <h4 className="text-sm font-medium text-text-primary">Add DVC profile</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="Name">
-                    <input
-                      value={dvcProfileForm.name}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, name: e.target.value }))}
-                      className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                    />
-                  </Field>
-                  <Field label="Repository source">
-                    <Select value={dvcProfileForm.repoMode} onChange={(e) => setDvcProfileForm((current) => ({ ...current, repoMode: e.target.value as DvcRepoMode }))}>
-                      <option value="managed_git">Managed Git repo</option>
-                      <option value="existing_path">Existing server path</option>
-                    </Select>
-                  </Field>
-                  <Field label="Scope">
-                    <Select value={dvcProfileForm.scope} onChange={(e) => setDvcProfileForm((current) => ({ ...current, scope: e.target.value as DvcProfileScope }))}>
-                      <option value="user">Personal</option>
-                      <option value="workspace">Workspace</option>
-                      <option value="team">Team</option>
-                      <option value="global">Global</option>
-                    </Select>
-                  </Field>
-                  <Field label="Scope ID">
-                    <input
-                      value={dvcProfileForm.scopeId}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, scopeId: e.target.value }))}
-                      placeholder="Optional workspace/team id"
-                      className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                    />
-                  </Field>
-                  {dvcProfileForm.repoMode === "managed_git" ? (
-                    <>
-                      <Field label="Git repo URL">
-                        <input
-                          value={dvcProfileForm.gitRepoUrl}
-                          onChange={(e) => setDvcProfileForm((current) => ({ ...current, gitRepoUrl: e.target.value }))}
-                          placeholder="https://github.com/company/team-a-dvc.git"
-                          className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                        />
-                      </Field>
-                      <Field label="Git branch">
-                        <input
-                          value={dvcProfileForm.gitBranch}
-                          onChange={(e) => setDvcProfileForm((current) => ({ ...current, gitBranch: e.target.value }))}
-                          className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                        />
-                      </Field>
-                    </>
-                  ) : (
-                    <Field label="Repo path">
-                      <input
-                        value={dvcProfileForm.repoPath}
-                        onChange={(e) => setDvcProfileForm((current) => ({ ...current, repoPath: e.target.value }))}
-                        placeholder="/srv/dvc-repos/team-a"
-                        className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                      />
-                    </Field>
-                  )}
-                  <Field label="Remote name">
-                    <input
-                      value={dvcProfileForm.remoteName}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, remoteName: e.target.value }))}
-                      className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                    />
-                  </Field>
-                  <Field label="Remote URL">
-                    <input
-                      value={dvcProfileForm.remoteUrl}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, remoteUrl: e.target.value }))}
-                      placeholder="s3://dvc-data/team-a"
-                      className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                    />
-                  </Field>
-                  <Field label="Endpoint URL">
-                    <input
-                      value={dvcProfileForm.endpointUrl}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, endpointUrl: e.target.value }))}
-                      placeholder="http://minio:9000"
-                      className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none"
-                    />
-                  </Field>
-                  <label className="flex items-center gap-2 self-end text-sm text-text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={dvcProfileForm.isDefault}
-                      onChange={(e) => setDvcProfileForm((current) => ({ ...current, isDefault: e.target.checked }))}
-                      className="h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500"
-                    />
-                    Use as default for this scope
-                  </label>
+              <div className="relative overflow-hidden rounded-xl border border-brand-200 dark:border-brand-500/20 bg-gradient-to-br from-brand-50/80 to-bg-surface dark:from-brand-950/30 dark:to-bg-surface p-6 shadow-sm group transition-all hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/40">
+                <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transform group-hover:scale-110 transition-transform duration-700">
+                  <svg viewBox="0 0 16 16" className="w-40 h-40 fill-current text-brand-600 dark:text-brand-400">
+                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                  </svg>
                 </div>
-                {createDvcProfile.error ? (
-                  <p className="text-xs text-error-500">
-                    {(createDvcProfile.error as Error).message ?? "Unable to save DVC profile"}
-                  </p>
-                ) : null}
-                <Button size="sm" loading={createDvcProfile.isPending} onClick={() => void submitDvcProfile()}>
-                  Save DVC profile
-                </Button>
+                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+                  <div className="flex-1">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 dark:bg-brand-500/20 px-2.5 py-0.5 mb-3 border border-brand-200 dark:border-brand-500/30">
+                      <span className="flex h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
+                      <span className="text-[10px] font-semibold tracking-wide text-brand-700 dark:text-brand-300 uppercase">Recommended</span>
+                    </div>
+                    <h4 className="text-lg font-semibold text-text-primary flex items-center gap-2">
+                      GitHub Connect Wizard
+                    </h4>
+                    <p className="mt-1.5 text-sm text-text-secondary leading-relaxed max-w-md">
+                      Tự động thiết lập Managed Git DVC Profile. Chúng tôi sẽ cấu hình OAuth và quản lý SSH Deploy Keys an toàn cho bạn chỉ với vài cú click.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => setIsWizardOpen(true)}
+                    className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium shadow-sm shadow-brand-500/30 transition-all active:scale-95"
+                  >
+                    Open Wizard <span aria-hidden="true">→</span>
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -794,6 +634,17 @@ export default function SettingsPage() {
           {toastMsg}
         </div>
       ) : null}
+
+      <Suspense fallback={null}>
+        <CreateProfileWizard 
+          open={isWizardOpen} 
+          onClose={() => setIsWizardOpen(false)} 
+          onOpen={() => {
+            setActiveTab("storage");
+            setIsWizardOpen(true);
+          }} 
+        />
+      </Suspense>
     </div>
   );
 }

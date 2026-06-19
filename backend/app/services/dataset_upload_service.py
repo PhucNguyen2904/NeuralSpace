@@ -311,6 +311,8 @@ class DatasetUploadService:
                 raw=raw,
                 dvc_repo_path=profile.repo_path,
                 dvc_remote_name=profile.remote_name,
+                ssh_key_encrypted=profile.ssh_key_encrypted,
+                git_ssh_url=profile.git_ssh_url,
             )
             public_dataset, _mlops_dataset, dataset_version = await self.version_service.create_upload_version(
                 dataset_id=dataset_id,
@@ -377,9 +379,16 @@ class DatasetUploadService:
         raw: bytes,
         dvc_repo_path: str,
         dvc_remote_name: str,
+        ssh_key_encrypted: bytes | None = None,
+        git_ssh_url: str | None = None,
     ) -> DVCTrackResult:
         try:
-            dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
+            dvc_client = DVCClient(
+                dvc_repo_path,
+                remote_name=dvc_remote_name,
+                ssh_key_encrypted=ssh_key_encrypted,
+                git_ssh_url=git_ssh_url,
+            )
         except DVCRepositoryError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

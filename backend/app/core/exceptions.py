@@ -100,3 +100,23 @@ class ProvisioningError(AppException):
     def __init__(self, message: str) -> None:
         """Initialize with error message."""
         super().__init__(f"Workspace provisioning failed: {message}", detail=message)
+
+
+class GitAuthError(AppException):
+    """Raised when Git authentication fails."""
+
+    status_code = 403
+    error_code = "git_auth_error"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Git authentication error: {message}")
+
+
+class GitPushError(AppException):
+    """Raised when Git push fails."""
+
+    status_code = 422
+    error_code = "git_push_error"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(f"Git push failed: {message}")

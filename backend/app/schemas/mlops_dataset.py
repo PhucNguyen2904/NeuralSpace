@@ -163,6 +163,12 @@ class DVCProfileCreateRequest(BaseModel):
     is_default: bool = False
 
 
+class DVCProfilePatchRequest(BaseModel):
+    name: str | None = None
+    status: Literal["ready", "inactive"] | None = None
+    is_default: bool | None = None
+
+
 class DVCProfileResponse(BaseModel):
     id: str
     name: str

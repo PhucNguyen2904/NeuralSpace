@@ -104,9 +104,20 @@ export const getSettings = async () => {
 
 export const updateProfile = async (payload: Partial<UserProfile>) => {
   try {
-    const { data } = await apiClient.patch<UserProfile>("/settings/profile", payload);
-    return data;
-  } catch {
+    // Map frontend camelCase field → backend snake_case field
+    const body: Record<string, unknown> = {};
+    if (payload.fullName !== undefined) body.full_name = payload.fullName;
+    if (payload.avatarUrl !== undefined) body.avatar_url = payload.avatarUrl;
+
+    const { data } = await apiClient.patch<{ full_name: string }>("/auth/profile", body);
+    // Map snake_case response back to camelCase
+    const result: Partial<UserProfile> = { fullName: data.full_name };
+    mockSettings.profile = { ...mockSettings.profile, ...result };
+    return structuredClone(mockSettings.profile);
+  } catch (err: unknown) {
+    // Only fall back to mock if it's a network error (no response), not a server error
+    const hasResponse = err && typeof err === "object" && "response" in err && (err as { response: unknown }).response;
+    if (hasResponse) throw err;
     await wait(180);
     mockSettings.profile = { ...mockSettings.profile, ...payload };
     return structuredClone(mockSettings.profile);

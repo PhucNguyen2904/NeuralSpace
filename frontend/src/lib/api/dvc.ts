@@ -184,6 +184,20 @@ export async function createDvcProfile(payload: DvcProfileCreatePayload): Promis
   return response.data;
 }
 
+export async function updateDvcProfile(
+  profileId: string,
+  payload: { name?: string; status?: "ready" | "inactive"; is_default?: boolean }
+): Promise<DvcProfile> {
+  const response = await apiClient.patch<DvcProfile>(`/dvc/profiles/${profileId}`, payload);
+  return response.data;
+}
+
+export async function deleteDvcProfile(profileId: string, deleteFiles: boolean = false): Promise<void> {
+  await apiClient.delete(`/dvc/profiles/${profileId}`, {
+    params: { delete_files: deleteFiles }
+  });
+}
+
 // ─── Existing helpers ─────────────────────────────────────────────────────────
 
 export async function updateDatasetVersionStatus(

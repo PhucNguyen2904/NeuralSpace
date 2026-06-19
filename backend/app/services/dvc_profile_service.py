@@ -6,14 +6,15 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.dependencies import UserContext
-from app.models.mlops_tracking import DVCProfile, MLDataset
-from app.schemas.mlops_dataset import DVCProfileCreateRequest
+from app.models.mlops_tracking import DatasetVersion, DVCProfile, MLDataset
+from app.schemas.mlops_dataset import DVCProfileCreateRequest, DVCProfilePatchRequest
 from src.integrations.dvc.exceptions import DVCRepositoryError
+import shutil
 
 
 ENV_DEFAULT_DVC_PROFILE_ID = "__env_default__"
@@ -55,9 +56,10 @@ class DVCProfileService:
 
     async def list_profiles(self, user: UserContext) -> list[dict]:
         stmt = select(DVCProfile).where(
-            (DVCProfile.scope == "global")
+            ((DVCProfile.scope == "global")
             | (DVCProfile.created_by == user.user_id)
-            | ((DVCProfile.scope == "user") & (DVCProfile.scope_id == user.user_id))
+            | ((DVCProfile.scope == "user") & (DVCProfile.scope_id == user.user_id)))
+            & (DVCProfile.status != "archived")
         )
         rows = list((await self.db.execute(stmt.order_by(DVCProfile.is_default.desc(), DVCProfile.name.asc()))).scalars().all())
         items = [environment_dvc_profile(self.settings)]
@@ -116,6 +118,72 @@ class DVCProfileService:
         await self.db.commit()
         await self.db.refresh(row)
         return row
+
+    async def update_profile(self, profile_id: str, payload: DVCProfilePatchRequest, user: UserContext) -> DVCProfile:
+        if profile_id == ENV_DEFAULT_DVC_PROFILE_ID:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot modify the server default profile")
+            
+        profile = await self.db.get(DVCProfile, profile_id)
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DVC profile not found")
+            
+        self._check_access(profile, user)
+        
+        if payload.name is not None:
+            profile.name = payload.name.strip()
+        if payload.status is not None:
+            profile.status = payload.status
+        if payload.is_default is not None:
+            profile.is_default = payload.is_default
+            if profile.is_default:
+                await self._clear_default(profile.scope, profile.scope_id)
+                
+        await self.db.commit()
+        await self.db.refresh(profile)
+        return profile
+
+    async def delete_profile(self, profile_id: str, user: UserContext, delete_files: bool = False) -> None:
+        if profile_id == ENV_DEFAULT_DVC_PROFILE_ID:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete the server default profile")
+
+        profile = await self.db.get(DVCProfile, profile_id)
+        if profile is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DVC profile not found")
+
+        self._check_access(profile, user)
+
+        # Check usages
+        dataset_count = await self.db.scalar(
+            select(func.count()).select_from(MLDataset).where(MLDataset.dvc_profile_id == profile_id)
+        )
+        version_count = await self.db.scalar(
+            select(func.count()).select_from(DatasetVersion).where(DatasetVersion.dvc_profile_id == profile_id)
+        )
+
+        if dataset_count or version_count:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "message": "DVC profile is in use. Disable it instead.",
+                    "datasets_count": dataset_count or 0,
+                    "versions_count": version_count or 0,
+                }
+            )
+
+        repo_mode = profile.repo_mode
+        repo_path = profile.repo_path
+
+        await self.db.delete(profile)
+        await self.db.commit()
+
+        if repo_mode == "managed_git" and delete_files and repo_path:
+            managed_root = Path(self.settings.DVC_MANAGED_REPO_ROOT).resolve()
+            try:
+                target_path = Path(repo_path).resolve()
+                if managed_root in target_path.parents:
+                    shutil.rmtree(target_path, ignore_errors=True)
+            except Exception:
+                pass
 
     async def resolve_for_dataset(
         self,
@@ -243,15 +311,22 @@ class DVCProfileService:
 
     @staticmethod
     async def _run(command: list[str], *, cwd: str | None, allow_failure: bool = False) -> None:
+        import os
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        
         proc = await asyncio.create_subprocess_exec(
             *command,
             cwd=cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0 and not allow_failure:
             detail = (stderr or stdout).decode(errors="ignore").strip()
+            if "terminal prompts disabled" in detail or "could not read Username" in detail:
+                raise DVCRepositoryError("Git authentication failed. For private repositories, please include credentials in the URL (e.g. https://<token>@github.com/...) or use SSH.")
             raise DVCRepositoryError(detail or f"command failed: {' '.join(command)}")
 
     @staticmethod

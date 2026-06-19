@@ -29,6 +29,14 @@ class MeResponse(BaseModel):
     token_expires_at: datetime
 
 
+class UpdateProfileRequest(BaseModel):
+    full_name: str
+
+
+class UpdateProfileResponse(BaseModel):
+    full_name: str
+
+
 def _auth_response(user_id: str, email: str, full_name: str | None = None, created_at: datetime | None = None) -> AuthTokenResponse:
     settings = get_settings()
     expires_in = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
@@ -181,6 +189,22 @@ async def get_me(current_user: UserContext = Depends(get_current_user)) -> MeRes
         roles=state_user.roles,
         token_expires_at=token_expires_at,
     )
+
+
+@router.patch("/auth/profile", response_model=UpdateProfileResponse)
+async def update_profile(
+    payload: UpdateProfileRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> UpdateProfileResponse:
+    """Update the authenticated user's display name."""
+    full_name = payload.full_name.strip()
+    if len(full_name) < 2:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Name must be at least 2 characters")
+    await UserRepository.update_full_name(db, current_user.user_id, full_name)
+    await db.commit()
+    audit_event(logger, "auth.profile_updated", user_id=current_user.user_id)
+    return UpdateProfileResponse(full_name=full_name)
 
 
 @router.get("/workspaces/{id}/token", response_model=WorkspaceTokenResponse)

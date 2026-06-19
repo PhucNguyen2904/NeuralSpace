@@ -5,12 +5,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createDatasetVersion,
   createDvcProfile,
+  deleteDvcProfile,
   diffDatasetVersions,
   getDatasetVersionById,
   getDatasetVersions,
   getDvcProfiles,
   trackDatasetVersion,
+  updateDvcProfile,
   validateDatasetVersion,
+  type DvcProfile,
   type DvcProfileCreatePayload,
   type DvcVersionStatus,
 } from "@/lib/api/dvc";
@@ -432,6 +435,38 @@ export function useCreateDvcProfile() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: DvcProfileCreatePayload) => createDvcProfile(payload),
+    onSuccess: (newProfile) => {
+      // Cập nhật cache ngay lập tức với profile mới (không cần chờ refetch)
+      queryClient.setQueryData<DvcProfile[]>(
+        ["dvc-profiles"],
+        (old) => {
+          if (!old) return [newProfile];
+          const exists = old.some((p) => p.id === newProfile.id);
+          return exists ? old : [...old, newProfile];
+        }
+      );
+      // Vẫn invalidate để sync với server (không await để không block UI)
+      void queryClient.invalidateQueries({ queryKey: ["dvc-profiles"] });
+    },
+  });
+}
+
+export function useUpdateDvcProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: { name?: string; status?: "ready" | "inactive"; is_default?: boolean } }) => 
+      updateDvcProfile(id, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dvc-profiles"] });
+    },
+  });
+}
+
+export function useDeleteDvcProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, deleteFiles }: { id: string; deleteFiles?: boolean }) => 
+      deleteDvcProfile(id, deleteFiles),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["dvc-profiles"] });
     },

@@ -23,7 +23,7 @@ import {
   useUpdateProfile,
   useUpdateWorkspaceDefaults
 } from "@/lib/hooks/useSettings";
-import { useCreateDvcProfile, useDvcProfiles } from "@/lib/hooks/useDatasetVersions";
+import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcProfile } from "@/lib/hooks/useDatasetVersions";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
 
@@ -68,6 +68,9 @@ function Field({ label, children, error }: { label: string; children: ReactNode;
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteProfileModalOpen, setDeleteProfileModalOpen] = useState(false);
+  const [profileToDelete, setProfileToDelete] = useState<{ id: string; name: string; repoMode: string; repoPathOrUrl: string } | null>(null);
+  const [deleteFilesChecked, setDeleteFilesChecked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [dvcProfileForm, setDvcProfileForm] = useState({
@@ -93,11 +96,28 @@ export default function SettingsPage() {
   const updateNotifications = useUpdateNotifications();
   const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
   const createDvcProfile = useCreateDvcProfile();
+  const updateDvcProfile = useUpdateDvcProfile();
+  const deleteDvcProfile = useDeleteDvcProfile();
 
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: { fullName: user?.name || settings?.profile?.fullName || "" }
   });
+
+  const updateProfileWithFeedback = (values: { fullName: string }) => {
+    updateProfile.mutate(
+      { fullName: values.fullName },
+      {
+        onSuccess: () => {
+          updateUser({ name: values.fullName });
+          setToastMsg("Profile saved successfully");
+        },
+        onError: () => {
+          setToastMsg("Failed to save profile. Please try again.");
+        }
+      }
+    );
+  };
 
   const passwordForm = useForm<z.infer<typeof passwordSchema>>({
     resolver: zodResolver(passwordSchema),
@@ -147,32 +167,36 @@ export default function SettingsPage() {
       setToastMsg(isManagedGit ? "Name and Git repo URL are required" : "Name and repo path are required");
       return;
     }
-    await createDvcProfile.mutateAsync({
-      name: dvcProfileForm.name.trim(),
-      scope: dvcProfileForm.scope,
-      scope_id: dvcProfileForm.scopeId.trim() || undefined,
-      repo_mode: dvcProfileForm.repoMode,
-      git_repo_url: dvcProfileForm.gitRepoUrl.trim() || undefined,
-      git_branch: dvcProfileForm.gitBranch.trim() || "main",
-      repo_path: dvcProfileForm.repoPath.trim() || undefined,
-      remote_name: dvcProfileForm.remoteName.trim() || "minio",
-      remote_url: dvcProfileForm.remoteUrl.trim() || undefined,
-      endpoint_url: dvcProfileForm.endpointUrl.trim() || undefined,
-      is_default: dvcProfileForm.isDefault
-    });
-    setDvcProfileForm((current) => ({
-      ...current,
-      name: "",
-      scopeId: "",
-      gitRepoUrl: "",
-      gitBranch: "main",
-      repoPath: "",
-      remoteName: "minio",
-      remoteUrl: "",
-      endpointUrl: "",
-      isDefault: false
-    }));
-    setToastMsg("DVC profile saved");
+    try {
+      await createDvcProfile.mutateAsync({
+        name: dvcProfileForm.name.trim(),
+        scope: dvcProfileForm.scope,
+        scope_id: dvcProfileForm.scopeId.trim() || undefined,
+        repo_mode: dvcProfileForm.repoMode,
+        git_repo_url: dvcProfileForm.gitRepoUrl.trim() || undefined,
+        git_branch: dvcProfileForm.gitBranch.trim() || "main",
+        repo_path: dvcProfileForm.repoPath.trim() || undefined,
+        remote_name: dvcProfileForm.remoteName.trim() || "minio",
+        remote_url: dvcProfileForm.remoteUrl.trim() || undefined,
+        endpoint_url: dvcProfileForm.endpointUrl.trim() || undefined,
+        is_default: dvcProfileForm.isDefault
+      });
+      setDvcProfileForm((current) => ({
+        ...current,
+        name: "",
+        scopeId: "",
+        gitRepoUrl: "",
+        gitBranch: "main",
+        repoPath: "",
+        remoteName: "minio",
+        remoteUrl: "",
+        endpointUrl: "",
+        isDefault: false
+      }));
+      setToastMsg("DVC profile saved");
+    } catch {
+      // Lỗi đã được hiển thị qua createDvcProfile.error trong UI
+    }
   };
 
   if (!settings) {
@@ -259,10 +283,7 @@ export default function SettingsPage() {
 
               <form
                 className="grid max-w-xl gap-4"
-                onSubmit={profileForm.handleSubmit((values) => {
-                  updateProfile.mutate(values);
-                  updateUser({ name: values.fullName });
-                })}
+                onSubmit={profileForm.handleSubmit(updateProfileWithFeedback)}
               >
                 <Field label="Display name" error={profileForm.formState.errors.fullName?.message}>
                   <input {...profileForm.register("fullName")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
@@ -364,6 +385,47 @@ export default function SettingsPage() {
                           </p>
                         </div>
                         {profile.remote_url ? <p className="max-w-xs truncate text-xs text-text-tertiary">{profile.remote_url}</p> : null}
+                        
+                        <div className="flex shrink-0 items-center gap-2 w-full md:w-auto">
+                          {!profile.is_environment_default && (
+                            <>
+                              {!profile.is_default && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  onClick={() => updateDvcProfile.mutate({ id: profile.id, payload: { is_default: true } })}
+                                  loading={updateDvcProfile.isPending}
+                                >
+                                  Set default
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => updateDvcProfile.mutate({ id: profile.id, payload: { status: profile.status === "ready" ? "inactive" : "ready" } })}
+                                loading={updateDvcProfile.isPending}
+                              >
+                                {profile.status === "ready" ? "Disable" : "Enable"}
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => {
+                                  setProfileToDelete({
+                                    id: profile.id,
+                                    name: profile.name,
+                                    repoMode: profile.repo_mode,
+                                    repoPathOrUrl: profile.repo_mode === "managed_git" ? (profile.git_repo_url || "Managed Git") : profile.repo_path
+                                  });
+                                  setDeleteFilesChecked(false);
+                                  setDeleteProfileModalOpen(true);
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                       {profile.status_message ? <p className="mt-2 text-xs text-text-tertiary">{profile.status_message}</p> : null}
                     </div>
@@ -466,7 +528,7 @@ export default function SettingsPage() {
                 </div>
                 {createDvcProfile.error ? (
                   <p className="text-xs text-error-500">
-                    {(createDvcProfile.error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Unable to save DVC profile"}
+                    {(createDvcProfile.error as Error).message ?? "Unable to save DVC profile"}
                   </p>
                 ) : null}
                 <Button size="sm" loading={createDvcProfile.isPending} onClick={() => void submitDvcProfile()}>
@@ -674,6 +736,56 @@ export default function SettingsPage() {
         }
       >
         <p className="text-sm text-text-secondary">This action cannot be undone. All of your data will be deleted immediately.</p>
+      </Modal>
+
+      <Modal
+        open={deleteProfileModalOpen}
+        onClose={() => setDeleteProfileModalOpen(false)}
+        size="md"
+        title={<span className="inline-flex items-center gap-2"><ShieldAlert size={18} className="text-error-500" /> Delete DVC Profile</span>}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setDeleteProfileModalOpen(false)}>Cancel</Button>
+            <Button size="sm" variant="danger" loading={deleteDvcProfile.isPending} onClick={async () => {
+              if (!profileToDelete) return;
+              try {
+                await deleteDvcProfile.mutateAsync({ id: profileToDelete.id, deleteFiles: deleteFilesChecked });
+                setDeleteProfileModalOpen(false);
+                setToastMsg("DVC profile deleted successfully");
+              } catch (err: any) {
+                const detail = err.response?.data?.detail;
+                if (err.response?.status === 409 && detail?.datasets_count !== undefined) {
+                  setToastMsg(`Profile is used by ${detail.datasets_count} datasets and ${detail.versions_count} versions. Disable it instead.`);
+                } else {
+                  setToastMsg(detail?.message || detail || "Failed to delete profile");
+                }
+                setDeleteProfileModalOpen(false);
+              }
+            }}>Delete profile</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-secondary">Are you sure you want to delete this DVC profile? This action cannot be undone.</p>
+          {profileToDelete && (
+            <div className="rounded-lg border border-border bg-bg-sunken p-3 text-sm">
+              <p><span className="font-medium text-text-primary">Name:</span> {profileToDelete.name}</p>
+              <p><span className="font-medium text-text-primary">Type:</span> {profileToDelete.repoMode}</p>
+              <p><span className="font-medium text-text-primary">Path/URL:</span> {profileToDelete.repoPathOrUrl}</p>
+            </div>
+          )}
+          {profileToDelete?.repoMode === "managed_git" && (
+            <label className="flex items-center gap-2 text-sm font-medium text-error-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={deleteFilesChecked}
+                onChange={(e) => setDeleteFilesChecked(e.target.checked)}
+                className="h-4 w-4 rounded border-border text-error-600 focus:ring-error-500"
+              />
+              Also delete cloned repository files from the server
+            </label>
+          )}
+        </div>
       </Modal>
 
       {toastMsg ? (

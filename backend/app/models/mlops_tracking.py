@@ -37,7 +37,7 @@ link_type_enum = Enum("train", "val", "test", "eval", name="mlops_link_type")
 approval_target_stage_enum = Enum("Staging", "Production", name="mlops_approval_target_stage")
 approval_status_enum = Enum("pending", "approved", "rejected", "cancelled", name="mlops_approval_status")
 dvc_profile_scope_enum = Enum("global", "team", "user", "workspace", name="mlops_dvc_profile_scope")
-dvc_profile_status_enum = Enum("ready", "inactive", "error", name="mlops_dvc_profile_status")
+dvc_profile_status_enum = Enum("ready", "inactive", "error", "archived", name="mlops_dvc_profile_status")
 dvc_profile_repo_mode_enum = Enum("managed_git", "existing_path", name="mlops_dvc_profile_repo_mode")
 
 

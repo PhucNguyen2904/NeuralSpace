@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.dependencies import UserContext, get_current_user, get_db
-from app.schemas.mlops_dataset import DVCProfileCreateRequest
+from app.schemas.mlops_dataset import DVCProfileCreateRequest, DVCProfilePatchRequest
 from app.services.dvc_profile_service import DVCProfileService
 
 
@@ -30,3 +30,26 @@ async def create_dvc_profile(
     service = DVCProfileService(db, get_settings())
     row = await service.create_profile(payload, current_user)
     return service._to_payload(row)
+
+
+@router.patch("/profiles/{profile_id}")
+async def update_dvc_profile(
+    profile_id: str,
+    payload: DVCProfilePatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    service = DVCProfileService(db, get_settings())
+    row = await service.update_profile(profile_id, payload, current_user)
+    return service._to_payload(row)
+
+
+@router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def delete_dvc_profile(
+    profile_id: str,
+    delete_files: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+):
+    service = DVCProfileService(db, get_settings())
+    await service.delete_profile(profile_id, current_user, delete_files=delete_files)

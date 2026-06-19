@@ -11,7 +11,7 @@ export const API_BASE_URL = resolveApiBaseUrl();
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 10000,
+  timeout: 60000, // 60s – DVC operations (clone, push) can be slow
   paramsSerializer: {
     indexes: null
   }

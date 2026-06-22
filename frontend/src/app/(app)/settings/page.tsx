@@ -29,16 +29,14 @@ import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcP
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
 
-type TabKey = "profile" | "storage" | "runtime" | "notifications" | "appearance" | "security";
+type TabKey = "profile" | "storage" | "notifications" | "appearance" | "security";
 type ThemePreference = "system" | "light" | "dark";
 type DvcProfileScope = "global" | "team" | "user" | "workspace";
 type DvcRepoMode = "managed_git" | "existing_path";
 
 const tabs: Array<{ key: TabKey; label: string; icon: ComponentType<{ size?: string | number; className?: string }> }> = [
   { key: "profile", label: "Profile", icon: UserRound },
-
   { key: "storage", label: "Storage", icon: Database },
-  { key: "runtime", label: "Runtime / Colab", icon: TerminalSquare },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "appearance", label: "Appearance", icon: Brush },
   { key: "security", label: "Security", icon: ShieldAlert }
@@ -77,6 +75,15 @@ export default function SettingsPage() {
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash) {
+      const hash = window.location.hash.replace("#", "");
+      if (tabs.some((t) => t.key === hash)) {
+        setActiveTab(hash as TabKey);
+      }
+    }
+  }, []);
 
   const { data: settings } = useSettings();
   const { user, updateUser } = useAuthStore();
@@ -163,7 +170,10 @@ export default function SettingsPage() {
           {tabs.map((tab) => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key);
+                window.history.replaceState(null, "", `#${tab.key}`);
+              }}
               className={cn(
                 "mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
                 activeTab === tab.key
@@ -179,10 +189,13 @@ export default function SettingsPage() {
 
         <section className="rounded-xl border border-border bg-bg-surface p-5">
           {activeTab === "profile" ? (
-            <div className="space-y-6">
-              <h3 className="text-base font-semibold text-text-primary">Profile</h3>
+            <div className="space-y-8">
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-text-primary">Personal Information</h3>
+                <p className="text-sm text-text-secondary">Update your photo and personal details.</p>
+              </div>
               
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6 pb-6 border-b border-border/50">
                 <button
                   type="button"
                   className="rounded-full border border-border p-1 hover:border-brand-500 transition-colors"
@@ -191,12 +204,20 @@ export default function SettingsPage() {
                   <Avatar
                     name={user?.name || settings.profile.fullName}
                     src={settings.profile.avatarUrl}
-                    className="h-16 w-16 text-lg"
+                    className="h-20 w-20 text-xl"
                   />
                 </button>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-text-primary">Avatar</p>
-                  <p className="text-xs text-text-secondary">Click the image to update it (max 5MB)</p>
+                <div className="space-y-2">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium text-text-primary">Profile Picture</p>
+                    <p className="text-xs text-text-secondary">PNG, JPG or WEBP up to 5MB.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => avatarInputRef.current?.click()}>Upload new</Button>
+                    {settings.profile.avatarUrl && (
+                      <Button size="sm" variant="ghost" className="text-error-500 hover:text-error-600 hover:bg-error-50 dark:hover:bg-error-500/10">Remove</Button>
+                    )}
+                  </div>
                 </div>
                 <input
                   ref={avatarInputRef}
@@ -233,36 +254,95 @@ export default function SettingsPage() {
               </div>
 
               <form
-                className="grid max-w-xl gap-4"
+                className="grid max-w-xl gap-6"
                 onSubmit={profileForm.handleSubmit(updateProfileWithFeedback)}
               >
-                <Field label="Display name" error={profileForm.formState.errors.fullName?.message}>
-                  <input {...profileForm.register("fullName")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
-                </Field>
-                <Field label="Email">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Field label="Display name" error={profileForm.formState.errors.fullName?.message}>
+                    <input {...profileForm.register("fullName")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  </Field>
+                  <Field label="Job Title (Optional)">
+                    <input placeholder="e.g. Data Scientist" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                  </Field>
+                </div>
+                
+                <Field label="Email address">
                   <input value={user?.email || settings.profile.email} readOnly className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm text-text-tertiary cursor-not-allowed" />
+                  <p className="text-xs text-text-tertiary mt-1">Your email cannot be changed as it is tied to your login provider.</p>
                 </Field>
-                <div className="pt-2"><Button size="sm" loading={updateProfile.isPending} type="submit">Save information</Button></div>
+                
+                <Field label="Bio">
+                  <textarea rows={3} placeholder="Tell us a little about yourself..." className="w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                </Field>
+                
+                <div className="pt-2">
+                  <Button size="sm" loading={updateProfile.isPending} type="submit">Save profile information</Button>
+                </div>
               </form>
+
+              <div className="space-y-4 pt-6 border-t border-border/50 max-w-xl">
+                <h4 className="text-sm font-semibold text-text-primary">Connected Accounts</h4>
+                <div className="flex items-center justify-between rounded-lg border border-border p-4 bg-bg-sunken">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border">
+                      <svg viewBox="0 0 16 16" className="w-4 h-4 fill-current"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">GitHub</p>
+                      <p className="text-xs text-text-secondary">Connected as @{user?.name || "developer"}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setToastMsg("Cannot disconnect primary account")}>Disconnect</Button>
+                </div>
+              </div>
             </div>
           ) : null}
 
 
           {activeTab === "storage" ? (
-            <div className="max-w-3xl space-y-6">
+            <div className="max-w-3xl space-y-8">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-base font-semibold text-text-primary">DVC Storage Profiles</h3>
                   <span className="text-xs font-medium text-text-tertiary bg-bg-sunken px-2 py-0.5 rounded-full border border-border">{dvcProfiles.length} configured</span>
                 </div>
                 <p className="text-sm text-text-secondary max-w-2xl">
-                  DVC Profiles cho phép bạn cấu hình nơi lưu trữ dữ liệu (Dataset, Model) từ các Workspace của NeuralSpace. 
-                  Bạn có thể tạo profile kết nối với kho lưu trữ riêng, hoặc sử dụng profile mặc định của máy chủ.
+                  Quản lý các kho lưu trữ dữ liệu (Dataset, Model) để sử dụng trong NeuralSpace.
                 </p>
               </div>
 
-              <div className="grid gap-3">
-                {isLoadingDvcProfiles ? (
+              <div className="rounded-xl border border-border bg-bg-surface p-5 space-y-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold text-text-primary">Storage Quota</h4>
+                    <p className="text-xs text-text-secondary mt-0.5">Your total usage across all datasets and models</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-lg font-bold text-text-primary">2.4 GB</span>
+                    <span className="text-sm text-text-secondary"> / 10 GB</span>
+                  </div>
+                </div>
+                
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-bg-sunken border border-border/50">
+                  <div className="flex h-full">
+                    <div className="bg-brand-500" style={{ width: '18%' }} title="Datasets: 1.8GB" />
+                    <div className="bg-brand-300 dark:bg-brand-400" style={{ width: '6%' }} title="Models: 0.6GB" />
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-text-secondary pt-1">
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-brand-500" /> Datasets (1.8 GB)</div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-brand-300 dark:bg-brand-400" /> Models (0.6 GB)</div>
+                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-bg-sunken border border-border/50" /> Free Space (7.6 GB)</div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-medium text-text-primary mb-3">
+                  Tuỳ chọn lưu trữ khả dụng
+                </h4>
+                <div className="grid gap-3">
+                  {isLoadingDvcProfiles ? (
                   <p className="text-sm text-text-secondary">Loading DVC profiles...</p>
                 ) : (
                   dvcProfiles.map((profile) => (
@@ -347,8 +427,9 @@ export default function SettingsPage() {
                   ))
                 )}
               </div>
+            </div>
 
-              <div className="relative overflow-hidden rounded-xl border border-brand-200 dark:border-brand-500/20 bg-gradient-to-br from-brand-50/80 to-bg-surface dark:from-brand-950/30 dark:to-bg-surface p-6 shadow-sm group transition-all hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/40">
+            <div className="relative overflow-hidden rounded-xl border border-brand-200 dark:border-brand-500/20 bg-gradient-to-br from-brand-50/80 to-bg-surface dark:from-brand-950/30 dark:to-bg-surface p-6 shadow-sm group transition-all hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/40">
                 <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transform group-hover:scale-110 transition-transform duration-700">
                   <svg viewBox="0 0 16 16" className="w-40 h-40 fill-current text-brand-600 dark:text-brand-400">
                     <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
@@ -378,153 +459,156 @@ export default function SettingsPage() {
             </div>
           ) : null}
 
-          {activeTab === "runtime" ? (
-            <div className="max-w-2xl space-y-6">
-              <h3 className="text-base font-semibold text-text-primary">Runtime & Colab</h3>
-              
-              <div className="space-y-4">
-                <Card className="p-4 bg-bg-elevated border-border">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-md bg-brand-50 dark:bg-brand-500/10">
-                      <TerminalSquare size={18} className="text-brand-600 dark:text-brand-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-text-primary">Colab Connection Token</p>
-                      <p className="text-xs text-text-secondary">Token used to connect Google Colab with NeuralSpace</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <input 
-                      type="text" 
-                      readOnly 
-                      value="nsk_********************************" 
-                      className="h-9 flex-1 rounded-md border border-border bg-bg-sunken px-3 text-sm font-mono text-text-tertiary focus:outline-none" 
-                    />
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      onClick={() => setToastMsg("Token viewing is under development")}
-                    >
-                      Reveal
-                    </Button>
-                  </div>
-                </Card>
-
-                <Card className="p-4 border-border">
-                  <h4 className="text-sm font-medium text-text-primary mb-1">Session Settings</h4>
-                  <p className="text-xs text-text-secondary mb-4">Runtime settings are applied automatically to each session</p>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-sm text-text-secondary">Default session TTL</span>
-                      <span className="text-sm font-medium">24 hours</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-border/50">
-                      <span className="text-sm text-text-secondary">Automatic dependency updates</span>
-                      <span className="text-sm font-medium">Enabled</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-sm text-text-secondary">Network Access</span>
-                      <span className="text-sm font-medium">Restricted (Internal Only)</span>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          ) : null}
-
           {activeTab === "notifications" ? (
-            <div className="max-w-xl space-y-4">
-              <h3 className="text-base font-semibold text-text-primary">Notification options</h3>
-              <p className="text-sm text-text-secondary mb-4">Manage how the system sends notifications to you</p>
-              
-              <div className="space-y-2">
-                {[
-                  { key: "workspaceReady", label: "Workspace ready", desc: "Receive notifications when a workspace has started and is ready to connect." },
-                  { key: "idleWarning", label: "Idle warning", desc: "Warn 5 minutes before the system automatically closes an idle workspace." },
-                  { key: "autoStopped", label: "Workspace auto-stop", desc: "Notify after your workspace is closed to save resources." },
-                  { key: "weeklyUsage", label: "Weekly usage report", desc: "Send a summary report of the time and resources you used." },
-                  { key: "platformUpdates", label: "Platform updates", desc: "Receive news about new features and system maintenance." }
-                ].map((item) => (
-                  <label key={item.key} className="flex items-start justify-between rounded-lg border border-border p-4 hover:bg-bg-elevated transition-colors cursor-pointer">
-                    <div className="flex items-start gap-3 pr-4">
-                      <Bell size={16} className="mt-0.5 text-text-secondary" />
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">{item.label}</p>
-                        <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">{item.desc}</p>
-                      </div>
-                    </div>
-                    <div className="pt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications[item.key as keyof typeof settings.notifications]}
-                        onChange={(e) => updateNotifications.mutate({ [item.key]: e.target.checked })}
-                        className="h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500"
-                      />
-                    </div>
-                  </label>
-                ))}
+            <div className="max-w-2xl space-y-8">
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-text-primary">Notification Preferences</h3>
+                <p className="text-sm text-text-secondary">Manage how and when the system sends notifications to you.</p>
               </div>
-            </div>
-          ) : null}
-
-          {activeTab === "appearance" ? (
-            <div className="max-w-xl space-y-6">
-              <h3 className="text-base font-semibold text-text-primary">Appearance</h3>
               
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-text-primary">Theme mode</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <button
-                    type="button"
-                    onClick={() => updateTheme("light")}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition-all",
-                      themePreference === "light"
-                        ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500"
-                        : "border-border hover:bg-bg-elevated"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-text-primary mb-1">Light</p>
-                    <p className="text-xs text-text-secondary">Light background, high contrast</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateTheme("dark")}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition-all",
-                      themePreference === "dark"
-                        ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500"
-                        : "border-border hover:bg-bg-elevated"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-text-primary mb-1">Dark</p>
-                    <p className="text-xs text-text-secondary">Reduce glare when working at night</p>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateTheme("system")}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition-all",
-                      themePreference === "system"
-                        ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500"
-                        : "border-border hover:bg-bg-elevated"
-                    )}
-                  >
-                    <p className="text-sm font-medium text-text-primary mb-1">System</p>
-                    <p className="text-xs text-text-secondary">Automatically follow the operating system</p>
-                  </button>
+              <div className="space-y-6">
+                <div>
+                  <h4 className="text-sm font-medium text-text-primary mb-3">Email Notifications</h4>
+                  <div className="space-y-3">
+                    {[
+                      { key: "weeklyUsage", label: "Weekly usage report", desc: "Send a summary report of the time and resources you used." },
+                      { key: "platformUpdates", label: "Platform updates", desc: "Receive news about new features and system maintenance." }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-start justify-between rounded-lg border border-border p-4 hover:border-brand-500/50 transition-colors cursor-pointer bg-bg-surface">
+                        <div className="flex items-start gap-3.5 pr-4">
+                          <div className="p-2 rounded-md bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                            <Mail size={16} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-primary">{item.label}</p>
+                            <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">{item.desc}</p>
+                          </div>
+                        </div>
+                        <div className="pt-1.5">
+                          <input type="checkbox" checked={settings.notifications[item.key as keyof typeof settings.notifications]} onChange={(e) => updateNotifications.mutate({ [item.key]: e.target.checked })} className="h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500" />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-medium text-text-primary mb-3">In-App Alerts</h4>
+                  <div className="space-y-3">
+                    {[
+                      { key: "workspaceReady", label: "Workspace ready", desc: "Receive notifications when a workspace has started and is ready to connect." },
+                      { key: "idleWarning", label: "Idle warning", desc: "Warn 5 minutes before the system automatically closes an idle workspace." },
+                      { key: "autoStopped", label: "Workspace auto-stop", desc: "Notify after your workspace is closed to save resources." }
+                    ].map((item) => (
+                      <label key={item.key} className="flex items-start justify-between rounded-lg border border-border p-4 hover:border-brand-500/50 transition-colors cursor-pointer bg-bg-surface">
+                        <div className="flex items-start gap-3.5 pr-4">
+                          <div className="p-2 rounded-md bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400">
+                            <Bell size={16} />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-primary">{item.label}</p>
+                            <p className="text-xs text-text-secondary mt-0.5 leading-relaxed">{item.desc}</p>
+                          </div>
+                        </div>
+                        <div className="pt-1.5">
+                          <input type="checkbox" checked={settings.notifications[item.key as keyof typeof settings.notifications]} onChange={(e) => updateNotifications.mutate({ [item.key]: e.target.checked })} className="h-4 w-4 rounded border-border text-brand-600 focus:ring-brand-500" />
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
           ) : null}
 
+          {activeTab === "appearance" ? (
+            <div className="max-w-2xl space-y-8">
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-text-primary">Appearance</h3>
+                <p className="text-sm text-text-secondary">Customize the look and feel of the application.</p>
+              </div>
+              
+              <div className="space-y-4">
+                <p className="text-sm font-medium text-text-primary">Theme mode</p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <button type="button" onClick={() => updateTheme("light")} className={cn("rounded-xl border p-5 text-left transition-all", themePreference === "light" ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500" : "border-border bg-bg-surface hover:bg-bg-elevated hover:border-brand-300")}>
+                    <p className="text-sm font-semibold text-text-primary mb-1.5">Light</p>
+                    <p className="text-xs text-text-secondary leading-relaxed">Light background, high contrast</p>
+                  </button>
+                  <button type="button" onClick={() => updateTheme("dark")} className={cn("rounded-xl border p-5 text-left transition-all", themePreference === "dark" ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500" : "border-border bg-bg-surface hover:bg-bg-elevated hover:border-brand-300")}>
+                    <p className="text-sm font-semibold text-text-primary mb-1.5">Dark</p>
+                    <p className="text-xs text-text-secondary leading-relaxed">Reduce glare when working at night</p>
+                  </button>
+                  <button type="button" onClick={() => updateTheme("system")} className={cn("rounded-xl border p-5 text-left transition-all", themePreference === "system" ? "border-brand-500 bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-500" : "border-border bg-bg-surface hover:bg-bg-elevated hover:border-brand-300")}>
+                    <p className="text-sm font-semibold text-text-primary mb-1.5">System</p>
+                    <p className="text-xs text-text-secondary leading-relaxed">Automatically follow the OS theme</p>
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-border/50">
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Editor Theme</p>
+                  <p className="text-xs text-text-secondary mt-0.5">Select the color theme for the code editor in Workspaces.</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="flex items-center gap-3 p-4 border border-brand-500 ring-1 ring-brand-500 bg-brand-50/50 dark:bg-brand-500/5 rounded-xl cursor-pointer">
+                    <input type="radio" name="editorTheme" defaultChecked className="text-brand-600 focus:ring-brand-500" />
+                    <span className="text-sm font-medium text-text-primary">VS Code Dark (Default)</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-4 border border-border bg-bg-surface rounded-xl cursor-pointer hover:border-brand-300 hover:bg-bg-elevated">
+                    <input type="radio" name="editorTheme" className="text-brand-600 focus:ring-brand-500" />
+                    <span className="text-sm font-medium text-text-primary">Monokai</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6 border-t border-border/50">
+                <div>
+                  <p className="text-sm font-medium text-text-primary">Interface Language</p>
+                  <p className="text-xs text-text-secondary mt-0.5">Change the language of the application interface.</p>
+                </div>
+                <select className="h-10 w-full sm:w-64 rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary">
+                  <option>English (US)</option>
+                  <option>Vietnamese (Tiếng Việt)</option>
+                </select>
+              </div>
+            </div>
+          ) : null}
+
           {activeTab === "security" ? (
-            <div className="max-w-xl space-y-8">
-              <div>
-                <h3 className="text-base font-semibold text-text-primary mb-4">Change password</h3>
+            <div className="max-w-2xl space-y-8">
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-text-primary">Security Settings</h3>
+                <p className="text-sm text-text-secondary">Manage your password and account security.</p>
+              </div>
+
+              <div className="rounded-xl border border-border p-5 bg-bg-surface space-y-5">
+                <div>
+                  <h4 className="text-sm font-medium text-text-primary">Two-Factor Authentication (2FA)</h4>
+                  <p className="mt-0.5 text-xs text-text-secondary">Add an extra layer of security to your account.</p>
+                </div>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border border-border rounded-lg bg-bg-sunken gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-error-500/10 text-error-500 rounded-full">
+                      <ShieldAlert size={16} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">2FA is not enabled</p>
+                      <p className="text-xs text-text-secondary">We highly recommend enabling 2FA.</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setToastMsg("2FA setup is coming soon")}>Enable 2FA</Button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border p-5 bg-bg-surface space-y-5">
+                <div>
+                  <h3 className="text-sm font-medium text-text-primary">Change password</h3>
+                  <p className="text-xs text-text-secondary mt-0.5">Ensure your account is using a long, random password to stay secure.</p>
+                </div>
                 <form
-                  className="grid gap-4 rounded-xl border border-border p-5 bg-bg-elevated"
+                  className="grid max-w-md gap-4"
                   onSubmit={passwordForm.handleSubmit(async (values) => {
                     await changePassword.mutateAsync({ currentPassword: values.currentPassword, newPassword: values.newPassword });
                     passwordForm.reset();
@@ -532,13 +616,13 @@ export default function SettingsPage() {
                   })}
                 >
                   <Field label="Current password" error={passwordForm.formState.errors.currentPassword?.message}>
-                    <input type="password" {...passwordForm.register("currentPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                    <input type="password" {...passwordForm.register("currentPassword")} className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
                   <Field label="New password" error={passwordForm.formState.errors.newPassword?.message}>
-                    <input type="password" {...passwordForm.register("newPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                    <input type="password" {...passwordForm.register("newPassword")} className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
                   <Field label="Confirm password" error={passwordForm.formState.errors.confirmPassword?.message}>
-                    <input type="password" {...passwordForm.register("confirmPassword")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+                    <input type="password" {...passwordForm.register("confirmPassword")} className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
                   <div className="pt-2">
                     <Button size="sm" loading={changePassword.isPending} type="submit">Update password</Button>
@@ -546,7 +630,7 @@ export default function SettingsPage() {
                 </form>
               </div>
 
-              <div>
+              <div className="pt-4 border-t border-border/50">
                 <h3 className="text-base font-semibold text-error-500 mb-4 flex items-center gap-2">
                   <ShieldAlert size={18} /> Danger zone
                 </h3>

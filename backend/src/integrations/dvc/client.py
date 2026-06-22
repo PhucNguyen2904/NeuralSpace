@@ -106,6 +106,60 @@ class DVCClient:
             size_bytes=info.size_bytes,
         )
 
+    async def remove_dataset(self, dataset_name: str, commit_message: str) -> None:
+        """Completely remove the dataset folder from the Git repository."""
+        dataset_path = self.repo_path / dataset_name
+        if not dataset_path.exists():
+            return
+
+        rel_data_path = self._relpath(dataset_path)
+        
+        await self._run_command([*self._git_cmd, "rm", "-r", "-f", rel_data_path], cwd=self.repo_path)
+        await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
+        
+        import shutil
+        shutil.rmtree(dataset_path, ignore_errors=True)
+        
+        if self.git_ssh_url and self.ssh_key_encrypted:
+            from app.utils.ssh_key_manager import temp_ssh_key_file
+            from app.core.exceptions import GitPushError
+            with temp_ssh_key_file(self.ssh_key_encrypted) as key_path:
+                extra_env = {
+                    "GIT_SSH_COMMAND": f"ssh -i {key_path} -o StrictHostKeyChecking=no -o BatchMode=yes",
+                    "GIT_TERMINAL_PROMPT": "0",
+                }
+                try:
+                    await self._run_command(
+                        [*self._git_cmd, "push", self.git_ssh_url, "HEAD"],
+                        cwd=self.repo_path,
+                        extra_env=extra_env,
+                    )
+                except DVCCommandError as exc:
+                    msg = (exc.stderr or exc.stdout or "").lower()
+                    if "permission denied" in msg:
+                        raise GitPushError("SSH key bị từ chối bởi GitHub. Deploy Key có thể đã bị xóa hoặc thu hồi.")
+                    elif "repository not found" in msg:
+                        raise GitPushError("Không tìm thấy repository trên GitHub.")
+                    else:
+                        raise GitPushError(f"Git push thất bại: {msg}")
+        else:
+            try:
+                await self._run_command([*self._git_cmd, "push", "origin", "HEAD"], cwd=self.repo_path)
+            except DVCCommandError as exc:
+                msg = (exc.stderr or exc.stdout or "").lower()
+                if "does not appear to be a git repository" in msg or "no configured push destination" in msg:
+                    pass
+                else:
+                    if "terminal prompts disabled" in msg or "could not read username" in msg:
+                        raise DVCCommandError(
+                            exc.cmd,
+                            exc.returncode,
+                            exc.stdout,
+                            "Git authentication failed. Please configure the Git URL with credentials.",
+                        )
+                    raise
+
+
     async def get_version_info(self, dvc_file_path: str) -> DVCVersionInfo:
         parsed = self._parse_dvc_file(dvc_file_path)
         out0 = parsed["outs"][0]

@@ -240,11 +240,37 @@ class DVCProfileService:
 
         await self.db.commit()
 
+        # 4. Clone repo and initialize DVC
+        try:
+            from app.utils.ssh_key_manager import temp_ssh_key_file
+            with temp_ssh_key_file(encrypted_private_key) as key_path:
+                extra_env = {
+                    "GIT_SSH_COMMAND": f"ssh -i {key_path} -o StrictHostKeyChecking=no -o BatchMode=yes",
+                }
+                await self._clone_managed_repo(profile.repo_path, profile.git_ssh_url, profile.git_branch or "main", extra_env=extra_env)
+                await self._ensure_dvc_repo(profile.repo_path)
+                
+                remote_url = profile.remote_url or f"s3://dvc-{profile_id}"
+                endpoint_url = profile.endpoint_url or self.settings.MINIO_ENDPOINT
+                await self._configure_remote(profile.repo_path, profile.remote_name, remote_url, endpoint_url)
+                
+                await self._run(["git", "push", "-u", "origin", "HEAD"], cwd=profile.repo_path, extra_env=extra_env)
+                
+                if not profile.remote_url:
+                    profile.remote_url = remote_url
+                    await self.db.commit()
+
+        except Exception as e:
+            profile.status = "error"
+            profile.status_message = f"Failed to initialize repository: {e}"
+            await self.db.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to initialize repository: {e}")
+
         return SetupRepoResponse(
             profile_id=profile_id,
             status="active",
             repo=f"{payload.repo_owner}/{payload.repo_name}",
-            message="Deploy key added and profile is active.",
+            message="Deploy key added and repository initialized successfully.",
         )
 
     async def delete_profile(self, profile_id: str, user: UserContext, delete_files: bool = False) -> None:
@@ -321,6 +347,20 @@ class DVCProfileService:
         if profile.status not in ("ready", "active"):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"DVC profile is not ready: {profile.status_message or profile.status}")
         self._check_access(profile, user)
+
+        if profile.repo_mode == "managed_git" and not Path(profile.repo_path).exists():
+            try:
+                if profile.ssh_key_encrypted:
+                    from app.utils.ssh_key_manager import temp_ssh_key_file
+                    with temp_ssh_key_file(profile.ssh_key_encrypted) as key_path:
+                        extra_env = {"GIT_SSH_COMMAND": f"ssh -i {key_path} -o StrictHostKeyChecking=no -o BatchMode=yes"}
+                        await self._clone_managed_repo(profile.repo_path, profile.git_ssh_url or profile.git_repo_url, profile.git_branch or "main", extra_env=extra_env)
+                else:
+                    await self._clone_managed_repo(profile.repo_path, profile.git_repo_url, profile.git_branch or "main")
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to auto-clone managed git repo {profile.id}: {e}")
+
         return ResolvedDVCProfile(
             id=profile.id,
             name=profile.name,
@@ -393,14 +433,19 @@ class DVCProfileService:
         except DVCRepositoryError as exc:
             return "error", str(exc)
 
-    async def _clone_managed_repo(self, repo_path: str, git_repo_url: str, git_branch: str) -> None:
+    async def _clone_managed_repo(self, repo_path: str, git_repo_url: str, git_branch: str, extra_env: dict | None = None) -> None:
         path = Path(repo_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists() and (path / ".git").exists():
             return
         if path.exists() and any(path.iterdir()):
             raise DVCRepositoryError(f"managed repo path is not empty: {repo_path}")
-        await self._run(["git", "clone", "--branch", git_branch, git_repo_url, repo_path], cwd=None)
+            
+        await self._run(["git", "clone", git_repo_url, repo_path], cwd=None, extra_env=extra_env)
+        try:
+            await self._run(["git", "checkout", git_branch], cwd=repo_path, extra_env=extra_env)
+        except DVCRepositoryError:
+            await self._run(["git", "checkout", "-b", git_branch], cwd=repo_path, extra_env=extra_env)
 
     async def _ensure_dvc_repo(self, repo_path: str) -> None:
         path = Path(repo_path)
@@ -417,7 +462,13 @@ class DVCProfileService:
         await self._run(["dvc", "remote", "add", "-d", remote_name, remote_url], cwd=repo_path, allow_failure=True)
         await self._run(["dvc", "remote", "modify", remote_name, "url", remote_url], cwd=repo_path, allow_failure=True)
         if endpoint_url:
-            await self._run(["dvc", "remote", "modify", remote_name, "endpointurl", endpoint_url], cwd=repo_path)
+            effective_endpoint = endpoint_url if endpoint_url.startswith("http") else f"http://{endpoint_url}"
+            await self._run(["dvc", "remote", "modify", remote_name, "endpointurl", effective_endpoint], cwd=repo_path)
+        
+        # Configure credentials locally so dvc push can authenticate
+        await self._run(["dvc", "remote", "modify", "--local", remote_name, "access_key_id", self.settings.MINIO_ACCESS_KEY], cwd=repo_path)
+        await self._run(["dvc", "remote", "modify", "--local", remote_name, "secret_access_key", self.settings.MINIO_SECRET_KEY], cwd=repo_path)
+        
         await self._run(["git", "add", ".dvc/config"], cwd=repo_path)
         await self._run(["git", "commit", "-m", "chore: configure dvc remote"], cwd=repo_path, allow_failure=True)
 
@@ -455,7 +506,7 @@ class DVCProfileService:
             pass
 
     @staticmethod
-    async def _run(command: list[str], *, cwd: str | None, allow_failure: bool = False) -> None:
+    async def _run(command: list[str], *, cwd: str | None, allow_failure: bool = False, extra_env: dict | None = None) -> None:
         import os
         env = os.environ.copy()
         env["GIT_TERMINAL_PROMPT"] = "0"
@@ -464,6 +515,9 @@ class DVCProfileService:
         env.setdefault("GIT_AUTHOR_EMAIL", "noreply@neuralspace.local")
         env.setdefault("GIT_COMMITTER_NAME", "NeuralSpace")
         env.setdefault("GIT_COMMITTER_EMAIL", "noreply@neuralspace.local")
+        
+        if extra_env:
+            env.update(extra_env)
         
         proc = await asyncio.create_subprocess_exec(
             *command,

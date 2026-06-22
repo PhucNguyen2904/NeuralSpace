@@ -76,7 +76,7 @@ async def github_oauth_callback(
         logger.error(f"GitHub OAuth ValueError: {e}", exc_info=True)
         return RedirectResponse(
             url=(
-                f"{settings.FRONTEND_URL}/dvc-profiles/new"
+                f"{settings.FRONTEND_URL}/settings"
                 f"?oauth=error&profile_id={profile_id}"
             )
         )
@@ -85,7 +85,7 @@ async def github_oauth_callback(
         # Redirect về frontend với error state
         return RedirectResponse(
             url=(
-                f"{settings.FRONTEND_URL}/dvc-profiles/new"
+                f"{settings.FRONTEND_URL}/settings"
                 f"?oauth=error&profile_id={profile_id}"
             )
         )
@@ -101,7 +101,7 @@ async def github_oauth_callback(
     # Redirect về Next.js
     return RedirectResponse(
         url=(
-            f"{settings.FRONTEND_URL}/dvc-profiles/new"
-            f"?oauth=success&profile_id={profile_id}"
+            f"{settings.FRONTEND_URL}/settings"
+            f"?oauth=success&profile_id={profile_id}#storage"
         )
     )

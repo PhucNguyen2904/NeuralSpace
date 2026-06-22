@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   WizardState,
   WizardStep,
@@ -26,6 +27,7 @@ export function useCreateProfileWizard(onClose?: () => void, onOpen?: () => void
   const searchParams = useSearchParams();
   const [state, setState] = useState<WizardState>(INITIAL_STATE);
   const deleteDvcProfile = useDeleteDvcProfile();
+  const queryClient = useQueryClient();
 
   // Xử lý OAuth callback:
   // Sau khi GitHub redirect về, URL có dạng:
@@ -37,12 +39,21 @@ export function useCreateProfileWizard(onClose?: () => void, onOpen?: () => void
 
     if (oauthStatus === "success" && profileId) {
       if (onOpen) onOpen();
-      setState((prev) => ({
-        ...prev,
-        currentStep: "select_repo",
-        profileId,
-        error: null,
-      }));
+      
+      // Clean up the URL using Next.js router so the effect doesn't re-trigger
+      router.replace(window.location.pathname + window.location.hash, { scroll: false });
+      
+      setState((prev) => {
+        // Prevent downgrading the step if the user has already progressed
+        if (prev.currentStep === "success") return prev;
+        
+        return {
+          ...prev,
+          currentStep: "select_repo",
+          profileId,
+          error: null,
+        };
+      });
     }
 
     if (oauthStatus === "error") {
@@ -123,10 +134,12 @@ export function useCreateProfileWizard(onClose?: () => void, onOpen?: () => void
 
   const handleFinish = useCallback(() => {
     setState(INITIAL_STATE);
-    // Remove query params
-    window.history.replaceState(null, "", window.location.pathname);
+    // Remove query params but preserve hash
+    window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    // Refetch the profiles list to update the table status from pending to active
+    queryClient.invalidateQueries({ queryKey: ["dvc-profiles"] });
     if (onClose) onClose();
-  }, [onClose]);
+  }, [onClose, queryClient]);
 
   const handleBack = useCallback(() => {
     const backMap: Partial<Record<WizardStep, WizardStep>> = {
@@ -152,7 +165,8 @@ export function useCreateProfileWizard(onClose?: () => void, onOpen?: () => void
        deleteDvcProfile.mutate({ id: state.profileId, deleteFiles: false });
     }
     setState(INITIAL_STATE);
-    window.history.replaceState(null, "", window.location.pathname);
+    // Remove query params but preserve hash
+    window.history.replaceState(null, "", window.location.pathname + window.location.hash);
     if (onClose) onClose();
   }, [state.profileId, state.currentStep, deleteDvcProfile, onClose]);
 

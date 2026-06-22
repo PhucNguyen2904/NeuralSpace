@@ -37,10 +37,10 @@ export function WizardStepIndicator({ currentStep }: { currentStep: WizardStep }
         return (
           <div key={step.key} className="flex items-center flex-1 last:flex-none">
             {/* Circle */}
-            <div className="flex flex-col items-center gap-1.5">
+            <div className="relative flex flex-col items-center">
               <div className={`
                 w-8 h-8 rounded-full flex items-center justify-center
-                text-xs font-semibold border transition-all duration-300
+                text-xs font-semibold border transition-all duration-300 z-10
                 ${isCompleted ? "bg-brand-500/10 border-brand-500 text-brand-600 dark:text-brand-400" : ""}
                 ${isActive    ? "bg-brand-600 border-brand-600 text-white shadow-sm shadow-brand-500/30" : ""}
                 ${isUpcoming  ? "bg-transparent border-border text-text-tertiary" : ""}
@@ -48,7 +48,7 @@ export function WizardStepIndicator({ currentStep }: { currentStep: WizardStep }
                 {isCompleted ? "✓" : index + 1}
               </div>
               <span className={`
-                text-[11px] whitespace-nowrap transition-colors duration-300
+                absolute top-10 text-[11px] whitespace-nowrap transition-colors duration-300
                 ${isActive    ? "text-text-primary font-medium" : ""}
                 ${isCompleted ? "text-brand-600/70 dark:text-brand-400/70" : ""}
                 ${isUpcoming  ? "text-text-tertiary" : ""}
@@ -60,8 +60,8 @@ export function WizardStepIndicator({ currentStep }: { currentStep: WizardStep }
             {/* Connector line */}
             {index < STEPS.length - 1 && (
               <div className={`
-                h-px flex-1 mx-3 mb-5 transition-all duration-500
-                ${index < currentIndex ? "bg-brand-500/40" : "bg-border"}
+                h-px flex-1 mx-2 transition-all duration-500
+                ${index < currentIndex ? "bg-brand-500 opacity-40" : "bg-border"}
               `} />
             )}
           </div>

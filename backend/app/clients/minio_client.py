@@ -139,6 +139,22 @@ class MinIOClient:
         public = settings.MINIO_PUBLIC_ENDPOINT
         return url.replace(f"http://{internal}", f"{'https' if settings.MINIO_PUBLIC_SECURE else 'http'}://{public}", 1)
 
+    async def get_object_data(self, object_name: str, bucket: str | None = None) -> bytes:
+        """Fetch an object's raw bytes from MinIO."""
+        target = bucket or self._bucket
+
+        def _get() -> bytes:
+            response = None
+            try:
+                response = self._client.get_object(target, object_name)
+                return response.read()
+            finally:
+                if response:
+                    response.close()
+                    response.release_conn()
+
+        return await asyncio.to_thread(_get)
+
     # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------

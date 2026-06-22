@@ -24,6 +24,7 @@ function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
     status: (params.get("status") as DatasetFilters["status"]) ?? "all",
     sort: (params.get("sort") as DatasetFilters["sort"]) ?? "newest",
     view: (params.get("view") as DatasetFilters["view"]) ?? "grid",
+    archiveStatus: (params.get("archiveStatus") as DatasetFilters["archiveStatus"]) ?? "active",
     tags: params.getAll("tag"),
     createdWithin: (params.get("created") as DatasetFilters["createdWithin"]) ?? "all",
     ...(sizeMin ? { sizeMin: parseInt(sizeMin, 10) } : {}),
@@ -64,6 +65,7 @@ export default function DatasetsPage() {
     if (filters.status !== "all") params.set("status", filters.status);
     if (filters.sort !== "newest") params.set("sort", filters.sort);
     if (filters.view !== "grid") params.set("view", filters.view);
+    if (filters.archiveStatus !== "active") params.set("archiveStatus", filters.archiveStatus);
     if (filters.createdWithin !== "all") params.set("created", filters.createdWithin);
     if (filters.sizeMin > 0) params.set("sizeMin", filters.sizeMin.toString());
     if (filters.sizeMax < 50 * 1024 * 1024 * 1024) params.set("sizeMax", filters.sizeMax.toString());
@@ -117,6 +119,10 @@ export default function DatasetsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-text-secondary">{activeCount > 0 ? `Showing ${datasets.length} / ${total} datasets` : `Showing ${total} results`}</p>
             <div className="flex items-center gap-2">
+              <div className="flex rounded-md border border-border p-1">
+                 <button onClick={() => setFilters({ archiveStatus: "active" })} className={filters.archiveStatus === "active" ? "rounded bg-[#ECFDF5] px-3 py-1 text-xs font-medium text-emerald-700" : "rounded px-3 py-1 text-xs text-text-secondary hover:bg-bg-muted"}>Active</button>
+                 <button onClick={() => setFilters({ archiveStatus: "archived" })} className={filters.archiveStatus === "archived" ? "rounded bg-[#ECFDF5] px-3 py-1 text-xs font-medium text-emerald-700" : "rounded px-3 py-1 text-xs text-text-secondary hover:bg-bg-muted"}>Archived</button>
+              </div>
               <select value={filters.sort} onChange={(e) => setFilters({ sort: e.target.value as DatasetFilters["sort"] })} className="h-9 rounded-md border border-border px-3 text-sm">
                 <option value="newest">Newest</option>
                 <option value="oldest">Oldest</option>

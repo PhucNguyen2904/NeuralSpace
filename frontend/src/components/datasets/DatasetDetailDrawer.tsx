@@ -2,7 +2,7 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { AlertTriangle, Download, GitBranch, Pencil, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Archive, Download, GitBranch, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Button, Modal } from "@/components/ui";
@@ -109,25 +109,39 @@ export function DatasetDetailDrawer({
             <h2 className="text-xl font-bold text-text-primary">{dataset.name}</h2>
             <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setMetadataModalOpen(true)}>
+          <div className="flex flex-wrap items-center justify-end gap-1">
+            <Button size="sm" variant="outline" className="px-2.5" onClick={() => setMetadataModalOpen(true)} title="Edit">
               <Pencil size={14} className="mr-1" /> Edit
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)}>
+            <Button size="sm" variant="ghost" className="px-2.5" onClick={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)} title="Versions">
               <GitBranch size={14} className="mr-1" /> Versions
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => {
+            <Button size="sm" variant="ghost" className="px-2" onClick={() => {
               const a = document.createElement("a");
               a.href = "data:text/plain;charset=utf-8,Mock%20Dataset%20Content";
               a.download = `${dataset.name}.zip`;
               a.click();
-            }}>
-              <Download size={14} className="mr-1" /> Download
+            }} title="Download">
+              <Download size={14} />
             </Button>
-            <Button size="sm" variant="ghost" className="text-error-600 hover:text-error-700" onClick={() => setDeleteModalOpen(true)}>
+            {dataset.status === "archived" ? (
+              <Button size="sm" variant="ghost" className="px-2" disabled={updateDataset.isPending} onClick={() => {
+                void updateDataset.mutateAsync({ datasetId: dataset.id, payload: { status: "active" } });
+              }} title="Restore">
+                <RefreshCw size={14} />
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" className="px-2" disabled={updateDataset.isPending} onClick={() => {
+                void updateDataset.mutateAsync({ datasetId: dataset.id, payload: { status: "archived" } });
+              }} title="Archive">
+                <Archive size={14} />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" className="px-2 text-error-600 hover:text-error-700 hover:bg-error-50" onClick={() => setDeleteModalOpen(true)} title="Delete permanently">
               <Trash2 size={14} />
             </Button>
-            <Button size="sm" variant="ghost" onClick={onClose}><X size={16} /></Button>
+            <div className="mx-0.5 h-4 w-px bg-border" />
+            <Button size="sm" variant="ghost" className="px-2" onClick={onClose} title="Close"><X size={16} /></Button>
           </div>
         </div>
         <div className="border-b border-border px-5 py-2">

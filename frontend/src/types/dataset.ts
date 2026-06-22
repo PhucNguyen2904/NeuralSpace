@@ -18,6 +18,7 @@ export interface Dataset {
   thumbnail_url?: string;
   storage_path: string;
   version?: string;
+  status?: "active" | "archived" | "ready";
 }
 
 export interface DatasetUploadIssue {
@@ -134,6 +135,7 @@ export interface UpdateDatasetPayload {
   label_status?: LabelStatus;
   class_count?: number | null;
   custom_metadata?: Record<string, string>;
+  status?: "active" | "archived" | "ready";
 }
 
 export interface DatasetListParams {
@@ -145,6 +147,7 @@ export interface DatasetListParams {
   tags?: string[];
   created_after?: string;
   sort?: "newest" | "oldest" | "name" | "size";
+  archive_status?: "all" | "active" | "archived";
   page?: number;
   limit?: number;
 }
@@ -158,5 +161,6 @@ export interface DatasetFilters {
   createdWithin: "all" | "today" | "7d" | "30d" | "3m";
   tags: string[];
   sort: "newest" | "oldest" | "name" | "size";
+  archiveStatus: "all" | "active" | "archived";
   view: "grid" | "list";
 }

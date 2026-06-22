@@ -66,6 +66,7 @@ def _to_payload(row: Dataset) -> dict:
         "updated_at": row.updated_at.isoformat(),
         "thumbnail_url": None,
         "storage_path": row.storage_path or "",
+        "status": row.status,
     }
 
 
@@ -87,6 +88,7 @@ def _mlops_to_payload(row: MLDataset) -> dict:
         "thumbnail_url": None,
         "storage_path": row.storage_path or "",
         "dvc_profile_id": row.dvc_profile_id,
+        "status": row.status,
     }
 
 
@@ -202,6 +204,7 @@ async def list_datasets(
     tags: list[str] | None = Query(default=None),
     created_after: datetime | None = Query(default=None),
     sort: str | None = Query(default=None),
+    archive_status: str | None = Query(default="active"),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ) -> dict:
@@ -221,6 +224,11 @@ async def list_datasets(
     if tags:
         for tag in tags:
             filters.append(Dataset.tags.contains([tag]))
+
+    if archive_status == "active":
+        filters.append(Dataset.status != "archived")
+    elif archive_status == "archived":
+        filters.append(Dataset.status == "archived")
 
     stmt = select(Dataset)
     count_stmt = select(func.count(Dataset.id))
@@ -287,6 +295,16 @@ async def update_dataset(
             )
         row.label_status = label_status
 
+    if "status" in payload and payload["status"] is not None:
+        allowed_statuses = {"ready", "active", "archived"}
+        status_val = str(payload["status"])
+        if status_val not in allowed_statuses:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"status must be one of {sorted(allowed_statuses)}",
+            )
+        row.status = "archived" if status_val == "archived" else "ready"
+
     if "class_count" in payload:
         source_payload = dict(row.source_payload or {})
         class_count = payload["class_count"]
@@ -328,6 +346,8 @@ async def update_dataset(
     mlops_dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
     mlops_dataset.description = row.description
     mlops_dataset.tags = row.tags or []
+    if "status" in payload and payload["status"] is not None:
+        mlops_dataset.status = "archived" if str(payload["status"]) == "archived" else "active"
 
     await db.commit()
     await db.refresh(row)
@@ -381,8 +401,77 @@ async def delete_dataset(
             ).scalars().all()
         )
 
+        if mlops_dataset.dvc_profile_id:
+            from app.config import get_settings
+            from app.services.dvc_profile_service import DVCProfileService
+            from src.integrations.dvc.client import DVCClient
+            import logging
+
+            settings = get_settings()
+            try:
+                profile = await DVCProfileService(db, settings).resolve_for_dataset(
+                    dataset=mlops_dataset,
+                    user=current_user,
+                    requested_profile_id=mlops_dataset.dvc_profile_id
+                )
+                dvc_client = DVCClient(
+                    repo_path=profile.repo_path,
+                    remote_name=profile.remote_name,
+                    ssh_key_encrypted=profile.ssh_key_encrypted,
+                    git_ssh_url=profile.git_ssh_url,
+                )
+                await dvc_client.remove_dataset(
+                    dataset_name=dataset_id,
+                    commit_message=f"chore(data): hard delete dataset {mlops_dataset.name}"
+                )
+            except Exception as exc:
+                logging.warning(f"Failed to remove dataset from DVC repository: {exc}")
+
     minio = get_minio_client()
     deleted_objects = 0
+    
+    dvc_bucket = minio._bucket
+    if mlops_dataset and mlops_dataset.dvc_profile_id:
+        try:
+            from app.models.mlops_tracking import DVCProfile
+            profile_row = await db.get(DVCProfile, mlops_dataset.dvc_profile_id)
+            if profile_row and profile_row.remote_url:
+                match = re.match(r"s3://([^/]+)", profile_row.remote_url.strip())
+                if match:
+                    dvc_bucket = match.group(1)
+        except Exception:
+            pass
+
+    md5_set = set()
+    for v in versions:
+        if not v.dvc_md5:
+            continue
+        dvc_md5 = v.dvc_md5.strip()
+        if not dvc_md5:
+            continue
+        md5_set.add(dvc_md5)
+        if dvc_md5.endswith(".dir"):
+            dir_obj_name = f"files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
+            try:
+                import json
+                raw_data = await minio.get_object_data(dir_obj_name, bucket=dvc_bucket)
+                dir_data = json.loads(raw_data.decode("utf-8"))
+                for item in dir_data:
+                    if isinstance(item, dict) and "md5" in item:
+                        md5_set.add(item["md5"])
+            except Exception as exc:
+                import logging
+                logging.warning(f"Could not parse .dir file {dvc_md5} from MinIO during hard delete: {exc}")
+
+    for md5 in md5_set:
+        obj_name = f"files/md5/{md5[:2]}/{md5[2:]}"
+        try:
+            await minio.delete_object(obj_name, bucket=dvc_bucket)
+            deleted_objects += 1
+        except Exception as exc:
+            import logging
+            logging.warning(f"Failed to delete DVC chunk {md5} from MinIO: {exc}")
+
     for bucket, object_name in _dataset_minio_refs(row, mlops_dataset, versions):
         if object_name.endswith(".dvc"):
             continue

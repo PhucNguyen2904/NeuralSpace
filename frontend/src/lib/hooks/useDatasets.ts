@@ -16,6 +16,7 @@ export const defaultDatasetFilters: DatasetFilters = {
   createdWithin: "all",
   tags: [],
   sort: "newest",
+  archiveStatus: "active",
   view: "grid"
 };
 
@@ -50,6 +51,7 @@ function toParams(filters: DatasetFilters): DatasetListParams {
     tags: filters.tags.length ? filters.tags : undefined,
     created_after: createdAfterFromFilter(filters.createdWithin),
     sort: filters.sort,
+    archive_status: filters.archiveStatus,
     page: 1,
     limit: 24
   };

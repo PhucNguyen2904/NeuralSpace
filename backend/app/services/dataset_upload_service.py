@@ -348,17 +348,7 @@ class DatasetUploadService:
                 storage_provider_id=storage_provider_id,
             )
 
-            # Allow user to access the .dvc metadata file on MinIO
-            if not storage_provider_id:
-                dvc_file_abs = Path(profile.repo_path) / dvc_result.dvc_file_path
-                if dvc_file_abs.exists():
-                    await self.storage.upload_raw(
-                        dataset_id=dataset_id,
-                        version=normalized_version,
-                        filename=f"{filename}.dvc",
-                        data=dvc_file_abs.read_bytes(),
-                        content_type="text/plain",
-                    )
+
 
             public_dataset, _mlops_dataset, dataset_version = await self.version_service.create_upload_version(
                 dataset_id=dataset_id,

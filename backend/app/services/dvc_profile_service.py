@@ -13,6 +13,9 @@ from sqlalchemy.exc import IntegrityError
 from app.config import Settings
 from app.dependencies import UserContext
 from app.models.mlops_tracking import DatasetVersion, DVCProfile, MLDataset
+from app.models.git_integration import GitRepository, GitAccount
+from app.core.security import decrypt_token
+import urllib.parse
 from app.schemas.mlops_dataset import (
     DVCProfileCreateRequest,
     DVCProfilePatchRequest,
@@ -311,6 +314,15 @@ class DVCProfileService:
         if requested_profile_id:
             profile = await self.db.get(DVCProfile, requested_profile_id)
             if profile is None:
+                from sqlalchemy.orm import selectinload
+                repo = await self.db.execute(
+                    select(GitRepository)
+                    .options(selectinload(GitRepository.account))
+                    .where(GitRepository.id == requested_profile_id)
+                )
+                repo_obj = repo.scalar_one_or_none()
+                if repo_obj:
+                    return await self._resolve_git_repository(repo_obj, user)
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DVC profile not found")
             self._check_access(profile, user)
         elif dataset.dvc_profile_id:
@@ -353,6 +365,64 @@ class DVCProfileService:
             remote_url=profile.remote_url,
             git_ssh_url=profile.git_ssh_url,
             ssh_key_encrypted=profile.ssh_key_encrypted,
+        )
+
+    async def _resolve_git_repository(self, repo: GitRepository, user: UserContext) -> ResolvedDVCProfile:
+        import logging
+        from app.models.mlops_tracking import DVCProfile
+        
+        access_token = decrypt_token(repo.account.access_token)
+        username = urllib.parse.quote_plus(repo.account.username)
+        encoded_token = urllib.parse.quote_plus(access_token)
+        
+        parsed_url = urllib.parse.urlparse(repo.repo_url)
+        auth_url = f"{parsed_url.scheme}://{username}:{encoded_token}@{parsed_url.netloc}{parsed_url.path}"
+        
+        managed_root = Path(self.settings.DVC_MANAGED_REPO_ROOT).resolve()
+        repo_path = str(managed_root / f"git_repo_{repo.id}")
+        
+        if not Path(repo_path).exists():
+            try:
+                branch = repo.tracked_branch or "main"
+                await self._clone_managed_repo(repo_path, auth_url, branch)
+                
+                await self._run(["git", "config", "user.name", repo.account.username], cwd=repo_path)
+                await self._run(["git", "config", "user.email", f"{repo.account.username}@users.noreply.github.com"], cwd=repo_path)
+            except Exception as e:
+                logging.error(f"Failed to auto-clone git repo {repo.id}: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to clone repository: {e}")
+        
+        # Mirror GitRepository as a DVCProfile to satisfy foreign key constraints
+        profile = await self.db.get(DVCProfile, repo.id)
+        if not profile:
+            profile = DVCProfile(
+                id=repo.id,
+                name=f"Git Integration: {repo.repo_name}",
+                scope="user",
+                scope_id=user.user_id,
+                repo_mode="managed_git",
+                git_repo_url=auth_url,
+                git_branch=repo.tracked_branch or "main",
+                repo_path=repo_path,
+                remote_name=self.settings.DVC_REMOTE_NAME,
+                status="ready",
+                created_by=user.user_id,
+            )
+            self.db.add(profile)
+            try:
+                await self.db.commit()
+            except Exception as e:
+                await self.db.rollback()
+                logging.error(f"Failed to sync GitRepository to DVCProfile: {e}")
+
+        return ResolvedDVCProfile(
+            id=repo.id,
+            name=repo.repo_name,
+            repo_path=repo_path,
+            remote_name=self.settings.DVC_REMOTE_NAME,
+            remote_url=auth_url,
+            git_ssh_url=None,
+            ssh_key_encrypted=None,
         )
 
     async def _clear_default(self, scope: str, scope_id: str | None) -> None:

@@ -356,7 +356,7 @@ export default function SettingsPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-semibold text-text-primary">Storage Providers (Cloud & On-Premise)</h3>
-                    <p className="text-sm text-text-secondary">Cấu hình các nhà cung cấp lưu trữ như MinIO, S3, hoặc Google Drive để chọn khi upload dataset.</p>
+                    <p className="text-sm text-text-secondary">Configure storage providers such as MinIO, S3, or Google Drive for dataset uploads.</p>
                   </div>
                   <Button size="sm" onClick={() => setProviderModalOpen(true)}>Add Provider</Button>
                 </div>
@@ -462,7 +462,7 @@ export default function SettingsPage() {
             <div className="max-w-3xl space-y-8">
               <div className="space-y-1">
                 <h3 className="text-base font-semibold text-text-primary">Git Integration</h3>
-                <p className="text-sm text-text-secondary">Quản lý kết nối tới các tài khoản Git và danh sách repository cho MLOps tracking.</p>
+                <p className="text-sm text-text-secondary">Manage Git account connections and tracked repositories for MLOps.</p>
               </div>
 
               <div className="space-y-4">

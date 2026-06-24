@@ -36,6 +36,18 @@ class DVCSyncService:
     ) -> DatasetVersion:
         try:
             version = version or await self._next_version(str(dataset_id))
+            latest_version = (await self.db.execute(
+                select(DatasetVersion)
+                .where(DatasetVersion.dataset_id == str(dataset_id), DatasetVersion.is_latest.is_(True))
+            )).scalar_one_or_none()
+
+            inherited_format = latest_version.format if latest_version else None
+            inherited_task_type = latest_version.task_type if latest_version else None
+            resolved_item_count = item_count if item_count > 0 else (latest_version.item_count if latest_version else 0)
+            inherited_metadata_uri = latest_version.metadata_uri if latest_version else None
+            inherited_validation_report_uri = latest_version.validation_report_uri if latest_version else None
+            inherited_metadata_snapshot = latest_version.metadata_snapshot if latest_version else None
+
             await self.db.execute(
                 update(DatasetVersion)
                 .where(DatasetVersion.dataset_id == str(dataset_id), DatasetVersion.is_latest.is_(True))
@@ -50,12 +62,17 @@ class DVCSyncService:
                 dvc_commit=dvc_track_result.git_commit,
                 storage_path=dvc_track_result.dvc_file_path,
                 size_bytes=dvc_track_result.size_bytes,
-                item_count=item_count,
+                item_count=resolved_item_count,
                 status=status,
                 split_info=split_info or {},
                 schema_snapshot=schema_snapshot or {},
                 created_by=str(created_by),
                 changelog=changelog,
+                format=inherited_format,
+                task_type=inherited_task_type,
+                metadata_uri=inherited_metadata_uri,
+                validation_report_uri=inherited_validation_report_uri,
+                metadata_snapshot=inherited_metadata_snapshot,
                 is_latest=True,
             )
             self.db.add(row)

@@ -24,11 +24,13 @@ const INITIAL_FORM = {
 export function DatasetUploadModal({
   open,
   onClose,
-  onUploaded
+  onUploaded,
+  initialDatasetName
 }: {
   open: boolean;
   onClose: () => void;
   onUploaded: () => void;
+  initialDatasetName?: string;
 }) {
   const [mode, setMode] = React.useState<UploadMode>("yolo");
   const [file, setFile] = React.useState<File | null>(null);
@@ -65,7 +67,7 @@ export function DatasetUploadModal({
     setInspectResult(null);
     setResult(null);
     setIssues({ errors: [], warnings: [] });
-    setForm({ ...INITIAL_FORM });
+    setForm({ ...INITIAL_FORM, name: initialDatasetName || "" });
     setDvcMode("default");
     setGitAccountId("");
     setGitRepoId("");
@@ -74,13 +76,15 @@ export function DatasetUploadModal({
     if (inputRef.current) {
       inputRef.current.value = "";
     }
-  }, []);
+  }, [initialDatasetName]);
 
   React.useEffect(() => {
     if (!open) {
       resetState();
+    } else if (initialDatasetName) {
+      setForm(prev => ({ ...prev, name: initialDatasetName }));
     }
-  }, [open, resetState]);
+  }, [open, resetState, initialDatasetName]);
 
   const accept = mode === "yolo" ? ".zip,application/zip" : ".csv,.json,.parquet,.zip";
 
@@ -314,7 +318,13 @@ export function DatasetUploadModal({
           <p className="mt-1 text-xs text-text-secondary">{mode === "yolo" ? "ZIP with data.yaml, images, and labels" : "CSV, JSON, Parquet, or custom ZIP"}</p>
         </button>
 
-        <CommonFields form={form} setForm={setForm} setVersionTouched={setVersionTouched} mode={mode} />
+        <CommonFields
+          form={form}
+          setForm={setForm}
+          setVersionTouched={setVersionTouched}
+          mode={mode}
+          initialDatasetName={initialDatasetName}
+        />
         <IssueList title="Errors" issues={issues.errors} tone="error" />
         <IssueList title="Warnings" issues={issues.warnings} tone="warning" />
         {inspectResult && !result ? <InspectPreview result={inspectResult} /> : null}
@@ -420,17 +430,25 @@ function CommonFields({
   form,
   setForm,
   setVersionTouched,
-  mode
+  mode,
+  initialDatasetName
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   setVersionTouched: React.Dispatch<React.SetStateAction<boolean>>;
   mode: UploadMode;
+  initialDatasetName?: string;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field label="Dataset name">
-        <input className={inputCls()} value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} placeholder="Inferred from file if empty" />
+        <input 
+          className={inputCls()} 
+          value={form.name} 
+          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} 
+          placeholder="Inferred from file if empty" 
+          disabled={!!initialDatasetName}
+        />
       </Field>
       <Field label="Version">
         <input

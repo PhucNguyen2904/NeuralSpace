@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { VersionDetail } from "@/components/datasets/versions/VersionDetail";
 import { VersionList } from "@/components/datasets/versions/VersionList";
-import { TrackVersionModal } from "@/components/datasets/versions/TrackVersionModal";
+import { DatasetUploadModal } from "@/components/datasets/upload/DatasetUploadModal";
 import { Button } from "@/components/ui";
 import { useDatasetDetail } from "@/lib/hooks/useDatasets";
 import { useTrackVersion, useVersionDetail, useVersionDiff, useVersionList } from "@/lib/hooks/useDatasetVersions";
@@ -18,7 +18,7 @@ export default function DatasetDetailPage() {
   const versionIdFromUrl = searchParams.get("version");
   const [search, setSearch] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
-  const [trackModalOpen, setTrackModalOpen] = useState(false);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   const datasetDetail = useDatasetDetail(datasetId);
   const listQuery = useVersionList(datasetId);
@@ -32,7 +32,6 @@ export default function DatasetDetailPage() {
   const activeVersionId = selectedVersionId ?? versionIdFromUrl ?? filteredVersions[0]?.id ?? "";
   const detailQuery = useVersionDetail(datasetId, activeVersionId);
   const diffState = useVersionDiff(datasetId, activeVersionId);
-  const tracker = useTrackVersion();
 
   return (
     <div className="space-y-4">
@@ -54,10 +53,7 @@ export default function DatasetDetailPage() {
           errorMessage={versionListError}
           onSearchChange={setSearch}
           onSelectVersion={(version) => setSelectedVersionId(version.id)}
-          onTrack={() => {
-            tracker.reset();
-            setTrackModalOpen(true);
-          }}
+          onUpdate={() => setUploadModalOpen(true)}
         />
 
         {detailQuery.data ? (
@@ -74,14 +70,16 @@ export default function DatasetDetailPage() {
         )}
       </div>
 
-      <TrackVersionModal
-        open={trackModalOpen}
-        onClose={() => setTrackModalOpen(false)}
-        datasetId={datasetId}
-        onSuccess={() => {
-          // Auto-select the newly created version (first in refetched list)
+
+      <DatasetUploadModal
+        open={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        onUploaded={() => {
+          setUploadModalOpen(false);
+          listQuery.refetch();
           setSelectedVersionId(null);
         }}
+        initialDatasetName={datasetDetail.detail.data?.name ?? undefined}
       />
     </div>
   );

@@ -224,7 +224,9 @@ class DatasetUploadService:
         dvc_profile_id: str | None = None,
         storage_provider_id: str | None = None,
     ) -> dict:
-        dataset_id = f"ds_{uuid4().hex[:10]}"
+        from sqlalchemy import select
+        from app.models.dataset import Dataset
+        
         embedded_metadata = parsed.details.get("embedded_metadata") if isinstance(parsed.details, dict) else None
         if not isinstance(embedded_metadata, dict):
             embedded_metadata = {}
@@ -235,6 +237,10 @@ class DatasetUploadService:
         parsed.name = self._clean_name(name) or metadata_name or parsed.name
         resolved_description = description if description not in (None, "") else metadata_description
         resolved_tags = tags or metadata_tags
+        
+        existing_dataset = (await self.db.execute(select(Dataset.id).where(Dataset.name == parsed.name))).scalar_one_or_none()
+        dataset_id = existing_dataset or f"ds_{uuid4().hex[:10]}"
+        
         normalized_version = await self._resolve_upload_version(
             dataset_name=parsed.name,
             requested=version,
@@ -486,7 +492,7 @@ class DatasetUploadService:
                         await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "gdrive_service_account_json_file_path", provider.config.get("service_account_json_path")], cwd=dvc_client.repo_path)
 
         safe_filename = Path(filename).name or "upload"
-        staging_dir = Path(dvc_repo_path) / dataset_id / version
+        staging_dir = Path(dvc_repo_path) / dataset_name
         staging_dir.mkdir(parents=True, exist_ok=True)
         staging_file = staging_dir / safe_filename
         await asyncio.to_thread(staging_file.write_bytes, raw)

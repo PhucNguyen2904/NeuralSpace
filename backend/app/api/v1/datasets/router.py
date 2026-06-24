@@ -125,6 +125,31 @@ def _version_payload(row: DatasetVersion, linked_models: list[dict] | None = Non
     }
 
 
+async def _resolve_user_names(db: AsyncSession, items: list[dict], keys: list[str] | None = None) -> None:
+    if keys is None:
+        keys = ["created_by"]
+    from app.models.user import User
+    import uuid
+    user_ids = set()
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val != "system":
+                try:
+                    uuid.UUID(str(val))
+                    user_ids.add(val)
+                except ValueError:
+                    pass
+    if not user_ids:
+        return
+    rows = (await db.execute(select(User.id, User.full_name).where(User.id.in_(list(user_ids))))).all()
+    mapping = {str(r.id): r.full_name or "Unknown User" for r in rows}
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val in mapping:
+                item[key] = mapping[val]
+
 def _parse_tags(value: str | None) -> list[str]:
     if not value:
         return []
@@ -249,14 +274,18 @@ async def list_datasets(
     stmt = stmt.offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
-    return {"items": [_to_payload(row) for row in rows], "total": total, "page": page, "pageSize": limit}
+    payloads = [_to_payload(row) for row in rows]
+    await _resolve_user_names(db, payloads)
+    return {"items": payloads, "total": total, "page": page, "pageSize": limit}
 
 
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
     row = await db.get(Dataset, dataset_id)
     if row is not None:
-        return _to_payload(row)
+        payload = _to_payload(row)
+        await _resolve_user_names(db, [payload])
+        return payload
 
     mlops_row = None
     if re.fullmatch(r"[0-9a-fA-F-]{36}", dataset_id):
@@ -267,7 +296,9 @@ async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user
         ).scalar_one_or_none()
     if mlops_row is None:
         return {}
-    return _mlops_to_payload(mlops_row)
+    payload = _mlops_to_payload(mlops_row)
+    await _resolve_user_names(db, [payload])
+    return payload
 
 
 @router.patch("/{dataset_id}")
@@ -536,8 +567,10 @@ async def list_dataset_versions(
     stmt = stmt.order_by(DatasetVersion.created_at.desc()).offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
+    payloads = [_version_payload(row) for row in rows]
+    await _resolve_user_names(db, payloads)
     return {
-        "items": [_version_payload(row) for row in rows],
+        "items": payloads,
         "total": total,
         "page": page,
         "pageSize": limit,
@@ -659,9 +692,8 @@ async def track_dataset_version(
                 detail="schema_snapshot must be valid JSON",
             )
 
-    # ── Read file bytes ───────────────────────────────────────────────────
-    file_bytes = await file.read()
-    if not file_bytes:
+    # ── Verify file size constraint ───────────────────────────────────────
+    if not getattr(file, "size", 1) or file.size == 0:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Uploaded file is empty",
@@ -679,8 +711,7 @@ async def track_dataset_version(
     svc = DatasetService(db)
     new_version = await svc.track_new_version(
         dataset=dataset,
-        file_bytes=file_bytes,
-        filename=file.filename or "upload",
+        file=file,
         version=version,
         commit_message=commit_message,
         changelog=changelog,
@@ -692,9 +723,13 @@ async def track_dataset_version(
         dvc_repo_path=profile.repo_path,
         dvc_remote_name=profile.remote_name,
         dvc_profile_id=profile.id,
+        ssh_key_encrypted=profile.ssh_key_encrypted,
+        git_ssh_url=profile.git_ssh_url,
     )
 
-    return _version_payload(new_version)
+    payload = _version_payload(new_version)
+    await _resolve_user_names(db, [payload])
+    return payload
 
 
 @router.post("/uploads/yolo", status_code=status.HTTP_201_CREATED)

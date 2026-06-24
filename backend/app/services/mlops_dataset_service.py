@@ -162,8 +162,7 @@ class DatasetService:
         self,
         *,
         dataset: MLDataset,
-        file_bytes: bytes,
-        filename: str,
+        file: UploadFile,
         version: str | None,
         commit_message: str,
         changelog: str,
@@ -175,9 +174,11 @@ class DatasetService:
         dvc_repo_path: str,
         dvc_remote_name: str,
         dvc_profile_id: str | None = None,
+        ssh_key_encrypted: bytes | None = None,
+        git_ssh_url: str | None = None,
     ) -> DatasetVersion:
         """
-        Upload *file_bytes* into the DVC working repo, run `dvc add` + `git commit`
+        Upload *file* into the DVC working repo, run `dvc add` + `git commit`
         + `dvc push`, then persist a new DatasetVersion row in Postgres.
         """
         requested_version = self._normalize_version(version) if version else None
@@ -196,6 +197,19 @@ class DatasetService:
                     detail=f"Dataset version already exists: {requested_version}",
                 )
 
+        if not requested_version:
+            existing_all = (
+                await self.db.execute(
+                    select(DatasetVersion.version).where(DatasetVersion.dataset_id == dataset.id)
+                )
+            ).scalars().all()
+            majors = []
+            for value in existing_all:
+                token = str(value or "").lower().removeprefix("v").split(".", 1)[0]
+                if token.isdigit():
+                    majors.append(int(token))
+            requested_version = f"v{(max(majors) if majors else 0) + 1}.0"
+
         # ── 1. Validate DVC repo & Setup Google Drive Token ─────────────────────────────
         try:
             from app.services.gdrive_service import GDriveTokenManager
@@ -204,7 +218,12 @@ class DatasetService:
             settings = get_settings()
             gdrive_manager = GDriveTokenManager(self.db, settings)
             
-            dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
+            dvc_client = DVCClient(
+                dvc_repo_path, 
+                remote_name=dvc_remote_name,
+                ssh_key_encrypted=ssh_key_encrypted,
+                git_ssh_url=git_ssh_url,
+            )
             
             # If the remote is Google Drive, we need to prepare the credentials file
             # Wait, mlops_dataset_service doesn't easily know if the remote is GDrive without reading dvc config.
@@ -229,14 +248,48 @@ class DatasetService:
                 detail=f"DVC repo not ready: {exc}",
             ) from exc
 
+        from app.models.dataset import Dataset
+        public_dataset_id = (
+            await self.db.execute(select(Dataset.id).where(Dataset.name == dataset.name))
+        ).scalar_one_or_none()
+        folder_id = public_dataset_id or dataset.id
+
         # ── 2. Write file to a safe staging path inside the DVC repo ────────
-        # Structure: <dvc_repo>/{dataset_id}/{upload_uuid}/{original_filename}
-        safe_name = Path(filename).name or "upload"
-        staging_dir = Path(dvc_repo_path) / dataset.id / uuid4().hex
+        # Structure: <dvc_repo>/{folder_id}/{version}/{original_filename}
+        safe_name = Path(file.filename or "upload").name
+        staging_dir = Path(dvc_repo_path) / folder_id / requested_version
         staging_dir.mkdir(parents=True, exist_ok=True)
         staging_file = staging_dir / safe_name
 
-        await asyncio.to_thread(staging_file.write_bytes, file_bytes)
+        def _save_file() -> int:
+            file.file.seek(0)
+            size = 0
+            with staging_file.open("wb") as f:
+                import shutil
+                shutil.copyfileobj(file.file, f)
+            return staging_file.stat().st_size
+
+        file_size = await asyncio.to_thread(_save_file)
+
+        # ── Upload raw file to MinIO manually ─────────────────────────────
+        from app.services.dataset_storage_service import DatasetStorageService
+        storage = DatasetStorageService()
+        try:
+            # We don't have storage_provider_id in this context, so we assume internal MinIO
+            def _get_minio_stream():
+                return staging_file.open("rb")
+
+            with _get_minio_stream() as f:
+                raw_uri = await storage.upload_raw_stream(
+                    dataset_id=folder_id,
+                    version=requested_version,
+                    filename=safe_name,
+                    fileobj=f,
+                    size=file_size,
+                    content_type=file.content_type or "application/octet-stream",
+                )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to upload raw file to MinIO: {e}")
 
         # ── 3. DVC track: add → git commit → push ────────────────────────
         try:
@@ -246,33 +299,44 @@ class DatasetService:
                 commit_message=commit_message or f"chore(data): track version for {dataset.name}",
             )
         except DVCCommandError as exc:
+            await storage.delete_version_prefix(dataset_id=dataset.id, version=requested_version)
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"DVC tracking failed: {exc.stderr or exc}",
             ) from exc
+        except Exception:
+            await storage.delete_version_prefix(dataset_id=dataset.id, version=requested_version)
+            raise
 
-        # ── 4. Sync metadata into DB (marks old version as not-latest) ───
-        sync = DVCSyncService(self.db, dvc_client)
-        new_version = await sync.sync_dataset_version(
-            dataset_id=UUID(dataset.id),
-            dvc_track_result=track_result,
-            created_by=UUID(user.user_id),
-            version=requested_version,
-            changelog=changelog,
-            item_count=item_count,
-            status=version_status,
-            split_info=split_info,
-            schema_snapshot=schema_snapshot,
-        )
+        try:
+            # ── 4. Sync metadata into DB (marks old version as not-latest) ───
+            sync = DVCSyncService(self.db, dvc_client)
+            new_version = await sync.sync_dataset_version(
+                dataset_id=UUID(dataset.id),
+                dvc_track_result=track_result,
+                created_by=UUID(user.user_id),
+                version=requested_version,
+                changelog=changelog,
+                item_count=item_count,
+                status=version_status,
+                split_info=split_info,
+                schema_snapshot=schema_snapshot,
+            )
 
-        # ── 5. Update parent MLDataset metadata ──────────────────────────
-        dataset.storage_path = track_result.dvc_file_path
-        if dvc_profile_id is not None:
-            dataset.dvc_profile_id = dvc_profile_id
-            new_version.dvc_profile_id = dvc_profile_id
-        dataset.updated_at = datetime.now()
-        await self.db.commit()
-        await self.db.refresh(dataset)
+            # ── 5. Update parent MLDataset metadata ──────────────────────────
+            dataset.storage_path = raw_uri
+            new_version.storage_path = raw_uri
+            if dvc_profile_id is not None:
+                dataset.dvc_profile_id = dvc_profile_id
+                new_version.dvc_profile_id = dvc_profile_id
+            dataset.updated_at = datetime.now()
+            await self.db.commit()
+            await self.db.refresh(dataset)
+            await self.db.refresh(new_version)
+        except Exception:
+            await self.db.rollback()
+            await storage.delete_version_prefix(dataset_id=dataset.id, version=requested_version)
+            raise
 
         return new_version
 

@@ -54,7 +54,12 @@ class DVCClient:
         if data_gitignore.exists():
             git_add_paths.append(self._relpath(data_gitignore))
         await self._run_command([*self._git_cmd, "add", *git_add_paths], cwd=self.repo_path)
-        await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
+        
+        # Check if there are staged changes before committing
+        stdout, _, _ = await self._run_command([*self._git_cmd, "diff", "--cached", "--name-only"], cwd=self.repo_path)
+        if stdout.strip():
+            await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
+            
         await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name, rel_dvc_file], cwd=self.repo_path)
 
         if self.git_ssh_url and self.ssh_key_encrypted:

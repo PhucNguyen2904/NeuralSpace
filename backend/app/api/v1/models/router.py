@@ -475,6 +475,31 @@ def _model_version_label(row: ModelVersion) -> str:
     return _format_model_version(row.mlflow_version) or "v1.0"
 
 
+async def _resolve_user_names(db: AsyncSession, items: list[dict], keys: list[str] | None = None) -> None:
+    if keys is None:
+        keys = ["created_by"]
+    from app.models.user import User
+    import uuid
+    user_ids = set()
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val != "system":
+                try:
+                    uuid.UUID(str(val))
+                    user_ids.add(val)
+                except ValueError:
+                    pass
+    if not user_ids:
+        return
+    rows = (await db.execute(select(User.id, User.full_name).where(User.id.in_(list(user_ids))))).all()
+    mapping = {str(r.id): r.full_name or "Unknown User" for r in rows}
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val in mapping:
+                item[key] = mapping[val]
+
 def _to_payload(row: ModelRegistry, latest_version: int | str | None = None) -> dict:
     source_payload = row.source_payload or {}
     return {
@@ -678,8 +703,10 @@ async def list_models(
     rows = (await db.execute(stmt)).scalars().all()
     latest_versions = await _latest_versions_by_model_name(db, [row.name for row in rows])
     total = int((await db.execute(count_stmt)).scalar() or 0)
+    payloads = [_to_payload(row, latest_versions.get(row.name)) for row in rows]
+    await _resolve_user_names(db, payloads)
     return {
-        "items": [_to_payload(row, latest_versions.get(row.name)) for row in rows],
+        "items": payloads,
         "total": total,
         "page": page,
         "pageSize": limit,
@@ -701,6 +728,7 @@ async def get_model(model_id: str, db: AsyncSession = Depends(get_db), _user=Dep
             "files": (row.source_payload or {}).get("files", [{"name": "model.bin", "size": f"{round((row.size_bytes or 0)/1024**2,1)} MB", "type": "weights"}]),
         }
     )
+    await _resolve_user_names(db, [payload])
     return payload
 
 
@@ -732,39 +760,48 @@ async def get_model_versions(model_id: str, db: AsyncSession = Depends(get_db), 
     )
     manual_history = list((row.source_payload or {}).get("version_history") or [])
     if manual_history:
-        return [
+        payloads = [
             {
                 "id": item.get("id") or f"{model_id}-{item.get('version', index)}",
                 "version": item.get("version") or "unknown",
                 "note": item.get("changelog") or "Manual upload",
                 "created_at": item.get("created_at") or row.updated_at.isoformat(),
+                "created_by": item.get("created_by") or "system",
                 "current": item.get("version") == row.version,
             }
             for index, item in enumerate(reversed(manual_history), start=1)
         ]
+        await _resolve_user_names(db, payloads)
+        return payloads
 
     if not rows:
-        return [
+        payload = [
             {
                 "id": f"{model_id}-{row.version or 'v1.0'}",
                 "version": row.version or "v1.0",
-                "note": "Model registry version",
-                "created_at": row.updated_at.isoformat(),
+                "note": "Initial model",
+                "created_at": row.created_at.isoformat(),
+                "created_by": row.created_by or "system",
                 "current": True,
             }
         ]
+        await _resolve_user_names(db, payload)
+        return payload
 
     latest_version = max(item.mlflow_version for item in rows)
-    return [
+    payloads = [
         {
-            "id": item.id,
-            "version": _model_version_label(item),
-            "note": item.description or item.stage,
-            "created_at": item.created_at.isoformat(),
-            "current": item.mlflow_version == latest_version,
+            "id": r.id,
+            "version": _model_version_label(r),
+            "note": r.description or "No description",
+            "created_at": r.created_at.isoformat(),
+            "created_by": getattr(r, "user_id", "system"),
+            "current": r.mlflow_version == getattr(row, "version", None) or (_format_model_version(r.mlflow_version) == getattr(row, "version", None)),
         }
-        for item in rows
+        for r in rows
     ]
+    await _resolve_user_names(db, payloads)
+    return payloads
 
 
 @router.patch("/{model_id}")

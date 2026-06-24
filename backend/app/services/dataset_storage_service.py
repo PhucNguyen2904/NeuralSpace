@@ -11,8 +11,12 @@ class DatasetStorageService:
         self.client = client or get_minio_client()
 
     async def upload_raw(self, *, dataset_id: str, version: str, filename: str, data: bytes, content_type: str) -> str:
-        object_name = f"datasets/{dataset_id}/versions/{version}/raw/{Path(filename).name}"
+        object_name = f"datasets/{dataset_id}/versions/{version}/{Path(filename).name}"
         return await self.client.upload_bytes(object_name, data, content_type=content_type)
+
+    async def upload_raw_stream(self, *, dataset_id: str, version: str, filename: str, fileobj, size: int, content_type: str) -> str:
+        object_name = f"datasets/{dataset_id}/versions/{version}/{Path(filename).name}"
+        return await self.client.upload_fileobj(object_name, fileobj, size, content_type=content_type)
 
     async def upload_json(self, *, dataset_id: str, version: str, filename: str, payload: dict) -> str:
         object_name = f"datasets/{dataset_id}/versions/{version}/{filename}"

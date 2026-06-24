@@ -12,7 +12,7 @@ interface VersionListProps {
   errorMessage?: string;
   onSearchChange: (value: string) => void;
   onSelectVersion: (version: DatasetVersion) => void;
-  onTrack: () => void;
+  onUpdate: () => void;
 }
 
 export function VersionList({
@@ -22,7 +22,7 @@ export function VersionList({
   errorMessage,
   onSearchChange,
   onSelectVersion,
-  onTrack
+  onUpdate
 }: VersionListProps) {
   return (
     <aside className="w-full rounded-lg border border-border bg-bg-surface lg:w-[360px]">
@@ -37,9 +37,11 @@ export function VersionList({
               className="h-9 w-full rounded-md border border-border bg-bg-surface pl-8 pr-3 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
           </div>
-          <Button size="sm" className="h-9 px-3" onClick={onTrack}>
-            + Track
-          </Button>
+          <div className="flex shrink-0 gap-1.5">
+            <Button size="sm" className="h-9 px-2.5" onClick={onUpdate} title="Upload and parse new version">
+              + Update version
+            </Button>
+          </div>
         </div>
       </div>
 

@@ -4,7 +4,10 @@ import * as React from "react";
 import { AlertTriangle, CheckCircle2, FileArchive, Package, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { inspectGeneralModel, inspectYoloModel, uploadGeneralModel, uploadYoloModel } from "@/lib/api/models";
+import { useStorageProviders } from "@/lib/hooks/useStorageProviders";
 import { cn } from "@/lib/utils/cn";
+import { useYoloUploadStore } from "@/lib/stores/yoloUploadStore";
+import { motion } from "framer-motion";
 import type { Model, ModelInspectIssue, ModelInspectResponse } from "@/types/model";
 
 type UploadMode = "yolo" | "general";
@@ -44,6 +47,12 @@ export function ModelUploadModal({
   const [versionTouched, setVersionTouched] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const metadataInputRef = React.useRef<HTMLInputElement | null>(null);
+  
+  const [storageProviderId, setStorageProviderId] = React.useState("");
+  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
+  const selectedProviderId = storageProviderId;
+
+  const { yoloType, setYoloType } = useYoloUploadStore();
 
   const resetState = React.useCallback(() => {
     setMode("yolo");
@@ -57,6 +66,7 @@ export function ModelUploadModal({
     setForm({ ...INITIAL_FORM });
     setImportedMetadata(null);
     setVersionTouched(false);
+    setStorageProviderId("");
     if (inputRef.current) inputRef.current.value = "";
     if (metadataInputRef.current) metadataInputRef.current.value = "";
   }, []);
@@ -79,7 +89,9 @@ export function ModelUploadModal({
     tags: form.tags,
     dataset_version_id: form.dataset_version_id,
     run_id: form.run_id,
-    experiment_id: form.experiment_id
+    experiment_id: form.experiment_id,
+    yolo_type: yoloType,
+    storage_provider_id: selectedProviderId
   });
 
   const selectFile = (selected: File | null) => {
@@ -163,7 +175,9 @@ export function ModelUploadModal({
           tags: form.tags,
           dataset_version_id: form.dataset_version_id,
           run_id: form.run_id,
-          experiment_id: form.experiment_id
+          experiment_id: form.experiment_id,
+          yolo_type: yoloType,
+          storage_provider_id: selectedProviderId
         })
         : await uploadGeneralModel(file, {
           ...(importedMetadata ?? {}),
@@ -176,7 +190,8 @@ export function ModelUploadModal({
           tags,
           primary_metric_name: primaryMetricName,
           primary_metric_value: importedMetrics[primaryMetricName] ?? numericValue(importedMetadata?.primary_metric_value) ?? inspectResult.metadata.primary_metric_value ?? 0,
-          all_metrics: Object.keys(importedMetrics).length ? importedMetrics : (inspectResult.metadata.all_metrics ?? undefined)
+          all_metrics: Object.keys(importedMetrics).length ? importedMetrics : (inspectResult.metadata.all_metrics ?? undefined),
+          storage_provider_id: selectedProviderId
         });
       setUploaded(model);
       const validation = model.custom_metadata?.validation_report;
@@ -256,7 +271,51 @@ export function ModelUploadModal({
           <TabButton active={mode === "general"} onClick={() => switchMode("general", setMode, setFile, setInspectResult, setUploaded, setIssues, setImportedMetadata)} icon={<Package size={15} />} label="General Model" />
         </div>
 
-        {mode === "yolo" ? <YoloPackageHelp /> : <GeneralModelHelp />}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Storage Provider (Data Layer)">
+            <div className="relative">
+              <UploadCloud size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+              <select
+                className={`${inputCls()} w-full pl-9`}
+                value={storageProviderId}
+                onChange={(e) => setStorageProviderId(e.target.value)}
+                disabled={isLoadingStorageProviders}
+              >
+                <option value="">Default (MinIO Internal)</option>
+                {storageProviders.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Field>
+        </div>
+
+        {mode === "yolo" ? (
+          <div className="space-y-3">
+            <div className="flex w-fit rounded-md bg-bg-elevated p-1 shadow-sm">
+              {(["detection", "classification", "segmentation", "pose"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => {
+                    if (file && yoloType !== type) {
+                      setIssues({ errors: [], warnings: [{ code: "TYPE_CHANGED", message: "Changing YOLO type may invalidate current file structure", severity: "warning" }] });
+                    }
+                    setYoloType(type);
+                  }}
+                  className={cn("relative rounded px-3 py-1.5 text-xs font-medium capitalize transition-colors", yoloType === type ? "text-violet-700" : "text-text-secondary hover:text-text-primary")}
+                >
+                  {yoloType === type && (
+                    <motion.div layoutId="yoloTypeTab" className="absolute inset-0 rounded bg-white shadow-sm" style={{ zIndex: 0 }} transition={{ type: "spring", bounce: 0.2, duration: 0.6 }} />
+                  )}
+                  <span className="relative z-10">{type}</span>
+                </button>
+              ))}
+            </div>
+            <YoloPackageHelp type={yoloType} />
+          </div>
+        ) : <GeneralModelHelp />}
 
         <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(event) => selectFile(event.target.files?.[0] ?? null)} />
         <button
@@ -288,6 +347,8 @@ export function ModelUploadModal({
         </div>
 
         <ModelFields form={form} setForm={setForm} setVersionTouched={setVersionTouched} mode={mode} />
+
+
         <IssueList title="Errors" issues={issues.errors} tone="error" />
         <IssueList title="Warnings" issues={issues.warnings} tone="warning" />
         {inspectResult && !uploaded ? <InspectPreview result={inspectResult} /> : null}
@@ -323,18 +384,45 @@ function TabButton({ active, onClick, icon, label }: { active: boolean; onClick:
   );
 }
 
-function YoloPackageHelp() {
-  return (
-    <div className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-sm text-violet-950">
-      <p className="font-medium">YOLO package should include weights/best.pt or weights/last.pt.</p>
-      <pre className="mt-2 overflow-x-auto rounded-md bg-white p-2 text-xs text-slate-700">{`model/
+function YoloPackageHelp({ type }: { type: string }) {
+  const getTemplate = () => {
+    switch (type) {
+      case "classification":
+        return `model/
+├── weights/best.pt
+├── exports/best.onnx
+├── reports/metrics.json
+├── samples/class_preds.jpg
+├── args.yaml
+└── model.metadata.json`;
+      case "segmentation":
+        return `model/
+├── weights/best.pt
+├── masks/
+├── reports/results.csv
+└── model.metadata.json`;
+      case "pose":
+        return `model/
+├── weights/best.pt
+├── reports/results.csv
+└── model.metadata.json`;
+      case "detection":
+      default:
+        return `model/
 ├── weights/best.pt
 ├── exports/best.onnx
 ├── reports/results.csv
 ├── samples/val_batch0_pred.jpg
 ├── args.yaml
-└── model.metadata.json`}</pre>
-    </div>
+└── model.metadata.json`;
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-sm text-violet-950">
+      <p className="font-medium capitalize">YOLO {type} package should include weights/best.pt or weights/last.pt.</p>
+      <pre className="mt-2 overflow-x-auto rounded-md bg-white p-2 text-xs text-slate-700">{getTemplate()}</pre>
+    </motion.div>
   );
 }
 

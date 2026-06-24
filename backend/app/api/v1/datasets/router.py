@@ -431,14 +431,18 @@ async def delete_dataset(
     deleted_objects = 0
     
     dvc_bucket = minio._bucket
+    dvc_prefix = ""
     if mlops_dataset and mlops_dataset.dvc_profile_id:
         try:
             from app.models.mlops_tracking import DVCProfile
             profile_row = await db.get(DVCProfile, mlops_dataset.dvc_profile_id)
             if profile_row and profile_row.remote_url:
-                match = re.match(r"s3://([^/]+)", profile_row.remote_url.strip())
+                match = re.match(r"s3://([^/]+)(/.*)?", profile_row.remote_url.strip())
                 if match:
                     dvc_bucket = match.group(1)
+                    parsed_prefix = match.group(2).strip("/") if match.group(2) else ""
+                    if parsed_prefix:
+                        dvc_prefix = parsed_prefix + "/"
         except Exception:
             pass
 
@@ -451,7 +455,7 @@ async def delete_dataset(
             continue
         md5_set.add(dvc_md5)
         if dvc_md5.endswith(".dir"):
-            dir_obj_name = f"files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
+            dir_obj_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
             try:
                 import json
                 raw_data = await minio.get_object_data(dir_obj_name, bucket=dvc_bucket)
@@ -464,7 +468,7 @@ async def delete_dataset(
                 logging.warning(f"Could not parse .dir file {dvc_md5} from MinIO during hard delete: {exc}")
 
     for md5 in md5_set:
-        obj_name = f"files/md5/{md5[:2]}/{md5[2:]}"
+        obj_name = f"{dvc_prefix}files/md5/{md5[:2]}/{md5[2:]}"
         try:
             await minio.delete_object(obj_name, bucket=dvc_bucket)
             deleted_objects += 1
@@ -603,6 +607,7 @@ async def track_dataset_version(
     split_info: str | None = Form(default=None, description="JSON string: {train, val, test} split ratios"),
     schema_snapshot: str | None = Form(default=None, description="JSON string: column/feature schema snapshot"),
     dvc_profile_id: str | None = Form(default=None, description="Optional DVC storage profile id"),
+    git_repository_id: str | None = Form(default=None, description="Optional Git repository id"),
     # ── Dependencies ─────────────────────────────────────────────────────────
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
@@ -631,7 +636,7 @@ async def track_dataset_version(
     profile = await DVCProfileService(db, settings).resolve_for_dataset(
         dataset=dataset,
         user=current_user,
-        requested_profile_id=dvc_profile_id,
+        requested_profile_id=dvc_profile_id or git_repository_id,
     )
 
     # ── Parse optional JSON form fields ──────────────────────────────────
@@ -700,6 +705,8 @@ async def upload_yolo_dataset(
     description: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
     dvc_profile_id: str | None = Form(default=None),
+    git_repository_id: str | None = Form(default=None),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -712,7 +719,8 @@ async def upload_yolo_dataset(
         version=version,
         description=description,
         tags=_parse_tags(tags),
-        dvc_profile_id=dvc_profile_id,
+        dvc_profile_id=dvc_profile_id or git_repository_id,
+        storage_provider_id=storage_provider_id,
     )
 
 
@@ -748,6 +756,7 @@ async def upload_general_dataset(
     label_column: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
     dvc_profile_id: str | None = Form(default=None),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -764,6 +773,7 @@ async def upload_general_dataset(
         tags=_parse_tags(tags),
         label_column=label_column,
         dvc_profile_id=dvc_profile_id,
+        storage_provider_id=storage_provider_id,
     )
 
 
@@ -993,7 +1003,8 @@ async def upload_dataset(
     try:
         mlops_dataset = await _resolve_mlops_dataset(db, payload.id, current_user)
         mlops_dataset_id = mlops_dataset.id
-        requested_profile_id = parsed.get("dvc_profile_id") if isinstance(parsed.get("dvc_profile_id"), str) else None
+        requested_profile_id = parsed.get("dvc_profile_id") or parsed.get("git_repository_id")
+        requested_profile_id = requested_profile_id if isinstance(requested_profile_id, str) else None
         profile = await DVCProfileService(db, get_settings()).resolve_for_dataset(
             dataset=mlops_dataset,
             user=current_user,

@@ -65,16 +65,17 @@ class Settings(BaseSettings):
     DVC_REMOTE_NAME: str = "minio"
     DVC_MANAGED_REPO_ROOT: str = "/srv/dvc-repos"
 
-    # GitHub App
-    GITHUB_APP_NAME: str = "neuralspace"
-    GITHUB_APP_ID: str = ""
-    GITHUB_APP_CLIENT_ID: str = ""
-    GITHUB_APP_CLIENT_SECRET: str = ""
-    GITHUB_APP_PRIVATE_KEY: str = ""
+    # GitHub OAuth App
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    GITHUB_REDIRECT_URI: str = "http://localhost:8000/api/v1/git/accounts/oauth/callback"
     SSH_KEY_ENCRYPTION_KEY: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
     BACKEND_URL: str = ""
-    NGROK_AUTHTOKEN: str = ""
+    # Google OAuth App
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/storage/google/oauth/callback"
 
     def __init__(self, **data):
         """Initialize settings with environment-based docs visibility."""

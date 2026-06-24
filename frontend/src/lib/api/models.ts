@@ -30,7 +30,12 @@ export async function uploadModel(file: File, metadata?: Record<string, unknown>
   const formData = new FormData();
   formData.append("file", file);
   if (metadata) {
-    formData.append("metadata", JSON.stringify(metadata));
+    const metaCopy = { ...metadata };
+    if (metaCopy.storage_provider_id) {
+      formData.append("storage_provider_id", String(metaCopy.storage_provider_id));
+      delete metaCopy.storage_provider_id;
+    }
+    formData.append("metadata", JSON.stringify(metaCopy));
   }
   const response = await apiClient.post<Model>("/models/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" }
@@ -42,7 +47,12 @@ export async function uploadGeneralModel(file: File, metadata?: Record<string, u
   const formData = new FormData();
   formData.append("file", file);
   if (metadata) {
-    formData.append("metadata", JSON.stringify(metadata));
+    const metaCopy = { ...metadata };
+    if (metaCopy.storage_provider_id) {
+      formData.append("storage_provider_id", String(metaCopy.storage_provider_id));
+      delete metaCopy.storage_provider_id;
+    }
+    formData.append("metadata", JSON.stringify(metaCopy));
   }
   const response = await apiClient.post<Model>("/models/general/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" }
@@ -91,7 +101,12 @@ export async function uploadModelVersion(modelId: string, file: File, metadata?:
   const formData = new FormData();
   formData.append("file", file);
   if (metadata) {
-    formData.append("metadata", JSON.stringify(metadata));
+    const metaCopy = { ...metadata as Record<string, unknown> };
+    if (metaCopy.storage_provider_id) {
+      formData.append("storage_provider_id", String(metaCopy.storage_provider_id));
+      delete metaCopy.storage_provider_id;
+    }
+    formData.append("metadata", JSON.stringify(metaCopy));
   }
   const response = await apiClient.post<Model>(`/models/${modelId}/versions`, formData, {
     headers: { "Content-Type": "multipart/form-data" }

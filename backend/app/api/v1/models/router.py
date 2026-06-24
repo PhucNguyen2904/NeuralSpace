@@ -252,7 +252,9 @@ async def _dataset_classes_for_version(db: AsyncSession, dataset_version_id: str
     return _class_names_from_dataset_snapshot(row.metadata_snapshot) or _class_names_from_dataset_snapshot(row.schema_snapshot)
 
 
-def _analyze_yolo_package(raw: bytes, filename: str) -> dict:
+from app.services.validators.yolo_validators import get_validator
+
+def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection") -> dict:
     warnings: list[dict] = []
     errors: list[dict] = []
     try:
@@ -270,8 +272,11 @@ def _analyze_yolo_package(raw: bytes, filename: str) -> dict:
         best_path = "weights/best.pt" if "weights/best.pt" in names else next((name for name in names if name.endswith("/weights/best.pt")), None)
         last_path = "weights/last.pt" if "weights/last.pt" in names else next((name for name in names if name.endswith("/weights/last.pt")), None)
         primary_artifact = best_path or last_path
-        if not primary_artifact:
-            errors.append(_issue("YOLO_WEIGHT_MISSING", "Package must include weights/best.pt or weights/last.pt.", "error"))
+        
+        validator = get_validator(yolo_type)
+        validation_errors = validator.validate(names, filename)
+        if validation_errors:
+            errors.extend(validation_errors)
 
         metadata: dict = {}
         metadata_path = "model.metadata.json" if "model.metadata.json" in names else next((name for name in names if name.endswith("/model.metadata.json")), None)
@@ -904,18 +909,37 @@ async def delete_model(
             refs.add(ref)
 
     # Delete storage objects — errors are logged but do NOT abort the DB delete
-    minio = get_minio_client()
+    storage_provider_id = (row.source_payload or {}).get("storage_provider_id")
+    provider = None
+    if storage_provider_id:
+        from app.models.storage_provider import StorageProvider
+        from app.services.storage.factory import get_storage_provider
+        provider_model = await db.get(StorageProvider, storage_provider_id)
+        if provider_model:
+            provider = get_storage_provider(provider_model)
+
     deleted_objects = 0
-    for bucket, object_name in refs:
+    
+    if provider:
+        for bucket, object_name in refs:
+            try:
+                # `object_name` retains `gdrive://` prefix for Google Drive due to _object_from_storage_path
+                await provider.delete(object_name)
+                deleted_objects += 1
+            except Exception as exc:
+                logger.warning("Failed to delete storage object", object_name=object_name, error=str(exc))
+    else:
+        minio = get_minio_client()
+        for bucket, object_name in refs:
+            try:
+                await minio.delete_object(object_name, bucket=bucket)
+                deleted_objects += 1
+            except Exception as exc:
+                logger.warning("Failed to delete MinIO object", object_name=object_name, error=str(exc))
         try:
-            await minio.delete_object(object_name, bucket=bucket)
-            deleted_objects += 1
+            deleted_objects += await minio.delete_prefix(f"models/{row.id}/")
         except Exception as exc:
-            logger.warning("Failed to delete MinIO object", object_name=object_name, error=str(exc))
-    try:
-        deleted_objects += await minio.delete_prefix(f"models/{row.id}/")
-    except Exception as exc:
-        logger.warning("Failed to delete MinIO prefix", prefix=f"models/{row.id}/", error=str(exc))
+            logger.warning("Failed to delete MinIO prefix", prefix=f"models/{row.id}/", error=str(exc))
 
     # Delete DB records in dependency order
     try:
@@ -949,6 +973,7 @@ async def upload_model_version(
     model_id: str,
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -970,12 +995,22 @@ async def upload_model_version(
     file_md5 = md5_hex(raw)
     content_type = file.content_type or "application/octet-stream"
     object_name = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
-    minio = get_minio_client()
-    storage_path = await minio.upload_bytes(
-        object_name=object_name,
-        data=raw,
-        content_type=content_type,
-    )
+    
+    if storage_provider_id:
+        from app.models.storage_provider import StorageProvider
+        from app.services.storage.factory import get_storage_provider
+        provider_model = await db.get(StorageProvider, storage_provider_id)
+        if not provider_model:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
+        provider = get_storage_provider(provider_model)
+        storage_path = await provider.upload_bytes(data=raw, dest_path=object_name, content_type=content_type)
+    else:
+        minio = get_minio_client()
+        storage_path = await minio.upload_bytes(
+            object_name=object_name,
+            data=raw,
+            content_type=content_type,
+        )
 
     primary_name, primary_value, metrics = _coerce_metrics(parsed)
     if primary_name is not None:
@@ -1012,6 +1047,7 @@ async def upload_model_version(
             "output_shape": parsed.get("output_shape"),
             "minio_object": object_name,
             "md5": file_md5,
+            "storage_provider_id": storage_provider_id,
             "files": [file_info],
             "version_history": [*version_history, history_item],
         },
@@ -1037,6 +1073,7 @@ async def upload_model_version(
 async def upload_model(
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -1055,17 +1092,27 @@ async def upload_model(
         parsed = _metadata_from_model_zip(raw)
     parsed = _flatten_model_metadata(parsed)
 
-    # --- Upload to MinIO ---
-    minio = get_minio_client()
+    # --- Upload to Storage ---
     version = str(parsed.get("version") or "v1.0")
     safe_version = _safe_filename(version)
     object_name = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
     content_type = file.content_type or "application/octet-stream"
-    storage_path = await minio.upload_bytes(
-        object_name=object_name,
-        data=raw,
-        content_type=content_type,
-    )
+    
+    if storage_provider_id:
+        from app.models.storage_provider import StorageProvider
+        from app.services.storage.factory import get_storage_provider
+        provider_model = await db.get(StorageProvider, storage_provider_id)
+        if not provider_model:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
+        provider = get_storage_provider(provider_model)
+        storage_path = await provider.upload_bytes(data=raw, dest_path=object_name, content_type=content_type)
+    else:
+        minio = get_minio_client()
+        storage_path = await minio.upload_bytes(
+            object_name=object_name,
+            data=raw,
+            content_type=content_type,
+        )
 
     # --- Persist metadata to DB ---
     row = ModelRegistry(
@@ -1092,6 +1139,7 @@ async def upload_model(
             "training_duration_seconds": parsed.get("training_duration_seconds"),
             "minio_object": object_name,
             "md5": file_md5,
+            "storage_provider_id": storage_provider_id,
             "description": parsed.get("description"),
             "files": [_file_payload(safe_filename, file_size, content_type, storage_path, file_md5)],
             "version_history": [
@@ -1132,10 +1180,11 @@ async def upload_model(
 async def upload_general_model(
     file: UploadFile = File(...),
     metadata: str | None = Form(default=None),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
-    return await upload_model(file=file, metadata=metadata, db=db, current_user=current_user)
+    return await upload_model(file=file, metadata=metadata, storage_provider_id=storage_provider_id, db=db, current_user=current_user)
 
 
 @router.post("/general/inspect")
@@ -1226,8 +1275,8 @@ async def inspect_yolo_model(
     task: str | None = Form(default=None),
     tags: str | None = Form(default=None),
     dataset_version_id: str | None = Form(default=None),
-    run_id: str | None = Form(default=None),
     experiment_id: str | None = Form(default=None),
+    yolo_type: str = Form(default="detection"),
     db: AsyncSession = Depends(get_db),
     _current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -1253,7 +1302,7 @@ async def inspect_yolo_model(
             "validation_report": {"status": "failed", "summary": {"error_count": 1, "warning_count": 0}, "errors": errors, "warnings": warnings},
         }
 
-    analysis = _analyze_yolo_package(raw, safe_filename)
+    analysis = _analyze_yolo_package(raw, safe_filename, yolo_type)
     errors = list(analysis.get("errors") or [])
     warnings = list(analysis.get("warnings") or [])
     metadata = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
@@ -1344,8 +1393,9 @@ async def upload_yolo_model(
     task: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
     dataset_version_id: str | None = Form(default=None),
-    run_id: str | None = Form(default=None),
     experiment_id: str | None = Form(default=None),
+    yolo_type: str = Form(default="detection"),
+    storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -1375,7 +1425,7 @@ async def upload_yolo_model(
             },
         )
 
-    analysis = _analyze_yolo_package(raw, safe_filename)
+    analysis = _analyze_yolo_package(raw, safe_filename, yolo_type)
     errors = list(analysis.get("errors") or [])
     warnings = list(analysis.get("warnings") or [])
     metadata = analysis.get("metadata") if isinstance(analysis.get("metadata"), dict) else {}
@@ -1434,13 +1484,23 @@ async def upload_yolo_model(
     file_md5 = md5_hex(raw)
     resolved_version = str(version or _nested_string(model_info, "version") or "v1.0")
     safe_version = _safe_filename(resolved_version)
-    object_name = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
-    minio = get_minio_client()
-    storage_path = await minio.upload_bytes(
-        object_name=object_name,
-        data=raw,
-        content_type=file.content_type or "application/zip",
-    )
+    minio_object = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
+    
+    if storage_provider_id:
+        from app.models.storage_provider import StorageProvider
+        from app.services.storage.factory import get_storage_provider
+        provider_model = await db.get(StorageProvider, storage_provider_id)
+        if not provider_model:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
+        provider = get_storage_provider(provider_model)
+        storage_path = await provider.upload_bytes(data=raw, dest_path=minio_object, content_type="application/zip")
+    else:
+        minio = get_minio_client()
+        storage_path = await minio.upload_bytes(
+            object_name=minio_object,
+            data=raw,
+            content_type="application/zip",
+        )
 
     all_metrics = {str(key): float(value) for key, value in metrics.items() if isinstance(value, (int, float))}
     primary_metric_name = "mAP50_95" if "mAP50_95" in all_metrics else "mAP50" if "mAP50" in all_metrics else next(iter(all_metrics), "metric")
@@ -1484,7 +1544,8 @@ async def upload_yolo_model(
             "output_shape": "-",
             "dataset_id": resolved_dataset_version_id,
             "description": description or _nested_string(model_info, "description") or "",
-            "minio_object": object_name,
+            "minio_object": minio_object,
+            "storage_provider_id": storage_provider_id,
             "md5": file_md5,
             "custom_metadata": {
                 "package_type": "yolo_model",
@@ -1506,7 +1567,7 @@ async def upload_yolo_model(
                     "changelog": "Initial YOLO model package upload",
                     "metrics": all_metrics,
                     "storage_path": storage_path,
-                    "object_name": object_name,
+                    "object_name": minio_object,
                     "created_at": now.isoformat(),
                     "created_by": str(getattr(current_user, "user_id", "upload-user")),
                 }

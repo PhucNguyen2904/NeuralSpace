@@ -4,7 +4,8 @@ import * as React from "react";
 import { AlertTriangle, CheckCircle2, Database, FileArchive, FileSpreadsheet, Info, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { inspectGeneralDataset, inspectYoloDataset, uploadGeneralDataset, uploadYoloDataset } from "@/lib/api/datasets";
-import { useDvcProfiles } from "@/lib/hooks/useDatasetVersions";
+import { useGitAccounts, useGitRepositories } from "@/lib/hooks/useGitIntegration";
+import { useStorageProviders } from "@/lib/hooks/useStorageProviders";
 import { cn } from "@/lib/utils/cn";
 import type { DatasetInspectResponse, DatasetUploadIssue, DatasetUploadResponse } from "@/types/dataset";
 
@@ -38,12 +39,22 @@ export function DatasetUploadModal({
   const [result, setResult] = React.useState<DatasetUploadResponse | null>(null);
   const [issues, setIssues] = React.useState<{ errors: DatasetUploadIssue[]; warnings: DatasetUploadIssue[] }>({ errors: [], warnings: [] });
   const [form, setForm] = React.useState({ ...INITIAL_FORM });
-  const [dvcProfileId, setDvcProfileId] = React.useState("");
   const [versionTouched, setVersionTouched] = React.useState(false);
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
-  const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
-  const readyDvcProfiles = dvcProfiles.filter((profile) => profile.status === "ready");
-  const selectedDvcProfileId = dvcProfileId || readyDvcProfiles.find((profile) => profile.is_environment_default)?.id || readyDvcProfiles[0]?.id || "";
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const [dvcMode, setDvcMode] = React.useState<"default" | "git">("default");
+  const [gitAccountId, setGitAccountId] = React.useState("");
+  const [gitRepoId, setGitRepoId] = React.useState("");
+  
+  const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
+  const selectedGitAccountId = gitAccountId || gitAccounts[0]?.id || "";
+  
+  const { data: gitRepos = [], isLoading: isLoadingGitRepos } = useGitRepositories(selectedGitAccountId);
+  const trackedGitRepos = React.useMemo(() => gitRepos.filter((r) => r.is_tracked), [gitRepos]);
+  const selectedGitRepoId = gitRepoId || trackedGitRepos[0]?.id || "";
+
+  const [storageProviderId, setStorageProviderId] = React.useState("");
+  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
+  const selectedProviderId = storageProviderId;
 
   const resetState = React.useCallback(() => {
     setMode("yolo");
@@ -55,7 +66,10 @@ export function DatasetUploadModal({
     setResult(null);
     setIssues({ errors: [], warnings: [] });
     setForm({ ...INITIAL_FORM });
-    setDvcProfileId("");
+    setDvcMode("default");
+    setGitAccountId("");
+    setGitRepoId("");
+    setStorageProviderId("");
     setVersionTouched(false);
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -103,7 +117,8 @@ export function DatasetUploadModal({
     dataset_type: form.dataset_type,
     task: form.task,
     label_column: form.label_column,
-    dvc_profile_id: selectedDvcProfileId
+    git_repository_id: dvcMode === "git" ? selectedGitRepoId : "",
+    storage_provider_id: selectedProviderId
   });
 
   const inspect = async () => {
@@ -175,7 +190,7 @@ export function DatasetUploadModal({
                 <Button variant="outline" onClick={() => void inspect()} disabled={!file || inspecting || submitting} loading={inspecting}>
                   Read
                 </Button>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || !selectedDvcProfileId || submitting || inspecting} loading={submitting}>
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || (dvcMode === "git" && !selectedGitRepoId) || submitting || inspecting} loading={submitting}>
                   Upload
                 </Button>
               </>
@@ -190,24 +205,88 @@ export function DatasetUploadModal({
           <TabButton active={mode === "general"} onClick={() => { setMode("general"); setFile(null); setInspectResult(null); setResult(null); setIssues({ errors: [], warnings: [] }); }} icon={<FileSpreadsheet size={15} />} label="General Dataset" />
         </div>
 
-        <Field label="DVC storage">
-          <div className="relative">
-            <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
-            <select
-              className={`${inputCls()} w-full pl-9`}
-              value={selectedDvcProfileId}
-              onChange={(event) => setDvcProfileId(event.target.value)}
-              disabled={submitting || isLoadingDvcProfiles || readyDvcProfiles.length === 0}
-            >
-              {readyDvcProfiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>
-                  {profile.is_environment_default ? `${profile.name} · no setup needed` : `${profile.name} · ${profile.remote_name}`}
-                </option>
-              ))}
-            </select>
+        <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Version Control Storage">
+              <div className="relative">
+                <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                <select
+                  className={`${inputCls()} w-full pl-9`}
+                  value={dvcMode}
+                  onChange={(event) => setDvcMode(event.target.value as "default" | "git")}
+                  disabled={submitting}
+                >
+                  <option value="default">Server Default (Internal Git)</option>
+                  <option value="git">External Git Repository</option>
+                </select>
+              </div>
+            </Field>
+
+            <Field label="Storage Provider (Data Layer)">
+              <div className="relative">
+                <UploadCloud size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                <select
+                  className={`${inputCls()} w-full pl-9`}
+                  value={selectedProviderId}
+                  onChange={(event) => setStorageProviderId(event.target.value)}
+                  disabled={submitting || isLoadingStorageProviders || storageProviders.length === 0}
+                >
+                  <option value="">Default (MinIO internal)</option>
+                  {storageProviders.map((provider) => (
+                    <option key={provider.id} value={provider.id}>
+                      {provider.name} ({provider.type})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </Field>
           </div>
-          {readyDvcProfiles.length === 0 ? <span className="text-xs text-red-600">No ready DVC storage profile is available.</span> : null}
-        </Field>
+
+          {dvcMode === "git" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-lg border border-border bg-bg-surface/50 p-3">
+              <Field label="Git Account (Version Layer)">
+                <div className="relative">
+                  <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                  <select
+                    className={`${inputCls()} w-full pl-9`}
+                    value={selectedGitAccountId}
+                    onChange={(event) => {
+                      setGitAccountId(event.target.value);
+                      setGitRepoId(""); // Reset repo when account changes
+                    }}
+                    disabled={submitting || isLoadingGitAccounts || gitAccounts.length === 0}
+                  >
+                    {gitAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.provider} (@{account.username})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {gitAccounts.length === 0 ? <span className="text-xs text-red-600">No connected Git accounts.</span> : null}
+              </Field>
+              
+              <Field label="Git Repository">
+                <div className="relative">
+                  <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                  <select
+                    className={`${inputCls()} w-full pl-9`}
+                    value={selectedGitRepoId}
+                    onChange={(event) => setGitRepoId(event.target.value)}
+                    disabled={submitting || isLoadingGitRepos || trackedGitRepos.length === 0 || !selectedGitAccountId}
+                  >
+                    {trackedGitRepos.map((repo) => (
+                      <option key={repo.id} value={repo.id}>
+                        {repo.repo_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {selectedGitAccountId && trackedGitRepos.length === 0 ? <span className="text-xs text-amber-600">No tracked repositories. Please track a repo in Settings.</span> : null}
+              </Field>
+            </div>
+          )}
+        </div>
 
         {mode === "yolo" ? <YoloHelp /> : <GeneralForm form={form} setForm={setForm} />}
 

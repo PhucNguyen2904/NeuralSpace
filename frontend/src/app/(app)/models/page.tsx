@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { BrainCircuit, Plus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -45,7 +45,7 @@ function parseFilters(params: URLSearchParams): Partial<ModelFilters> {
   };
 }
 
-export default function ModelsPage() {
+function ModelsPageContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -202,6 +202,14 @@ export default function ModelsPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function ModelsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-text-secondary">Loading...</div>}>
+      <ModelsPageContent />
+    </Suspense>
   );
 }
 

@@ -55,7 +55,7 @@ class DVCClient:
             git_add_paths.append(self._relpath(data_gitignore))
         await self._run_command([*self._git_cmd, "add", *git_add_paths], cwd=self.repo_path)
         await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
-        await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name], cwd=self.repo_path)
+        await self._run_command([*self._dvc_cmd, "push", "-r", self.remote_name, rel_dvc_file], cwd=self.repo_path)
 
         if self.git_ssh_url and self.ssh_key_encrypted:
             from app.utils.ssh_key_manager import temp_ssh_key_file
@@ -98,6 +98,25 @@ class DVCClient:
 
         info = await self.get_version_info(rel_dvc_file)
         stdout, _, _ = await self._run_command([*self._git_cmd, "rev-parse", "HEAD"], cwd=self.repo_path)
+        
+        # Cleanup local file and DVC cache to save server disk space
+        try:
+            local_abs.unlink(missing_ok=True)
+            if info.md5 and len(info.md5) >= 2:
+                cache_path = self.repo_path / ".dvc" / "cache" / "files" / "md5" / info.md5[:2] / info.md5[2:]
+                cache_path.unlink(missing_ok=True)
+                try:
+                    cache_path.parent.rmdir()
+                except OSError:
+                    pass
+            try:
+                local_abs.parent.rmdir()
+            except OSError:
+                pass
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to clean up local DVC cache for {local_abs}: {e}")
+
         return DVCTrackResult(
             dataset_name=dataset_name,
             md5=info.md5,
@@ -270,8 +289,59 @@ class DVCClient:
         stdout = stdout_b.decode("utf-8", errors="replace")
         stderr = stderr_b.decode("utf-8", errors="replace")
         if proc.returncode != 0:
+            msg = stderr.lower()
+            if hasattr(self, "on_auth_error") and self.on_auth_error and ("expired" in msg or "invalid_grant" in msg or "refresherror" in msg or "unauthorized" in msg or "credentials" in msg):
+                success = await self.on_auth_error()
+                if success:
+                    return await self._run_command_impl(cmd, cwd, extra_env)
             raise DVCCommandError(cmd, int(proc.returncode), stdout, stderr)
         return stdout, stderr, int(proc.returncode)
+
+    async def _run_command_impl(self, cmd: list[str], cwd: Path, extra_env: dict | None = None) -> tuple[str, str, int]:
+        env = os.environ.copy()
+        env.update(
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "safe.directory",
+                "GIT_CONFIG_VALUE_0": str(self.repo_path),
+                "GIT_AUTHOR_NAME": env.get("GIT_AUTHOR_NAME") or "NeuralSpace",
+                "GIT_AUTHOR_EMAIL": env.get("GIT_AUTHOR_EMAIL") or "noreply@neuralspace.local",
+                "GIT_COMMITTER_NAME": env.get("GIT_COMMITTER_NAME") or "NeuralSpace",
+                "GIT_COMMITTER_EMAIL": env.get("GIT_COMMITTER_EMAIL") or "noreply@neuralspace.local",
+            }
+        )
+        if extra_env:
+            env.update(extra_env)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise DVCCommandError(cmd, -1, "", "Command timed out")
+        
+        stdout = stdout_b.decode("utf-8", errors="replace")
+        stderr = stderr_b.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            raise DVCCommandError(cmd, int(proc.returncode), stdout, stderr)
+        return stdout, stderr, int(proc.returncode)
+
+    async def _run_command(self, cmd: list[str], cwd: Path, extra_env: dict | None = None) -> tuple[str, str, int]:
+        try:
+            return await self._run_command_impl(cmd, cwd, extra_env)
+        except DVCCommandError as exc:
+            msg = exc.stderr.lower()
+            if hasattr(self, "on_auth_error") and self.on_auth_error and ("expired" in msg or "invalid_grant" in msg or "refresherror" in msg or "unauthorized" in msg or "credentials" in msg):
+                success = await self.on_auth_error()
+                if success:
+                    return await self._run_command_impl(cmd, cwd, extra_env)
+            raise
 
     def _parse_dvc_file(self, dvc_file_path: str) -> dict:
         file_path = (self.repo_path / dvc_file_path).resolve()

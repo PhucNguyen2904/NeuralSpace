@@ -21,7 +21,7 @@ from app.schemas.mlops_dataset import (
     SetupRepoRequest,
     SetupRepoResponse,
 )
-from app.utils.github_app import GitHubAppAuth
+
 from app.utils.ssh_key_manager import generate_ssh_keypair
 from src.integrations.dvc.exceptions import DVCRepositoryError
 import shutil
@@ -192,7 +192,7 @@ class DVCProfileService:
             )
 
         # Tạo connect URL, truyền state là profile_id để callback biết
-        connect_url = GitHubAppAuth.get_install_url(state=profile_id)
+        connect_url = f"/api/v1/git/accounts/oauth/login"
 
         return CreateManagedGitProfileResponse(
             profile_id=profile_id,
@@ -217,16 +217,9 @@ class DVCProfileService:
                 status_code=400, detail="Missing installation ID. Connect GitHub first."
             )
 
-        auth = GitHubAppAuth(profile.github_installation_id)
-
-        # 1. Tạo Deploy Key
-        encrypted_private_key, public_key = generate_ssh_keypair()
-
-        # 2. Đăng ký lên GitHub
-        title = f"NeuralSpace Managed DVC - {profile.name} ({profile_id})"
-        key_id = await auth.add_deploy_key(
-            payload.repo_owner, payload.repo_name, title, public_key
-        )
+        # Đã chuyển sang OAuth, logic setup deploy key phải gọi qua OAuth Token nếu cần.
+        # Tạm thời throw NotImplementedError
+        raise NotImplementedError("Managed Git setup via GitHub App is deprecated. Use standard Git Integration.")
 
         # 3. Update DB
         profile.git_repo_owner = payload.repo_owner
@@ -289,17 +282,8 @@ class DVCProfileService:
         repo_path = profile.repo_path
 
         # Thu hồi Deploy Key nếu có
-        if profile.github_installation_id and profile.github_deploy_key_id and profile.git_repo_owner and profile.git_repo_name:
-            try:
-                auth = GitHubAppAuth(profile.github_installation_id)
-                await auth.remove_deploy_key(
-                    profile.git_repo_owner,
-                    profile.git_repo_name,
-                    profile.github_deploy_key_id,
-                )
-            except Exception as e:
-                # Log error but continue deletion
-                print(f"Failed to remove deploy key: {e}")
+        # GitHub App is deprecated. We no longer revoke deploy keys automatically via App.
+        # User must revoke manually or we implement it via OAuth token in the future.
 
         await self.db.delete(profile)
         await self.db.commit()
@@ -457,17 +441,27 @@ class DVCProfileService:
     async def _configure_remote(self, repo_path: str, remote_name: str, remote_url: str | None, endpoint_url: str | None) -> None:
         if not remote_url:
             return
-        # Auto-create the S3/MinIO bucket if it does not exist yet.
-        await asyncio.to_thread(self._ensure_s3_bucket, remote_url, endpoint_url)
+            
+        if not remote_url.startswith("gdrive://"):
+            # Auto-create the S3/MinIO bucket if it does not exist yet.
+            await asyncio.to_thread(self._ensure_s3_bucket, remote_url, endpoint_url)
+            
         await self._run(["dvc", "remote", "add", "-d", remote_name, remote_url], cwd=repo_path, allow_failure=True)
         await self._run(["dvc", "remote", "modify", remote_name, "url", remote_url], cwd=repo_path, allow_failure=True)
-        if endpoint_url:
-            effective_endpoint = endpoint_url if endpoint_url.startswith("http") else f"http://{endpoint_url}"
-            await self._run(["dvc", "remote", "modify", remote_name, "endpointurl", effective_endpoint], cwd=repo_path)
         
-        # Configure credentials locally so dvc push can authenticate
-        await self._run(["dvc", "remote", "modify", "--local", remote_name, "access_key_id", self.settings.MINIO_ACCESS_KEY], cwd=repo_path)
-        await self._run(["dvc", "remote", "modify", "--local", remote_name, "secret_access_key", self.settings.MINIO_SECRET_KEY], cwd=repo_path)
+        if remote_url.startswith("gdrive://"):
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "gdrive_client_id", self.settings.GOOGLE_CLIENT_ID], cwd=repo_path)
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "gdrive_client_secret", self.settings.GOOGLE_CLIENT_SECRET], cwd=repo_path)
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "gdrive_use_service_account", "false"], cwd=repo_path)
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "gdrive_user_credentials_file", ".dvc/gdrive_credentials.json"], cwd=repo_path)
+        else:
+            if endpoint_url:
+                effective_endpoint = endpoint_url if endpoint_url.startswith("http") else f"http://{endpoint_url}"
+                await self._run(["dvc", "remote", "modify", remote_name, "endpointurl", effective_endpoint], cwd=repo_path)
+            
+            # Configure credentials locally so dvc push can authenticate
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "access_key_id", self.settings.MINIO_ACCESS_KEY], cwd=repo_path)
+            await self._run(["dvc", "remote", "modify", "--local", remote_name, "secret_access_key", self.settings.MINIO_SECRET_KEY], cwd=repo_path)
         
         await self._run(["git", "add", ".dvc/config"], cwd=repo_path)
         await self._run(["git", "commit", "-m", "chore: configure dvc remote"], cwd=repo_path, allow_failure=True)

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.dependencies import UserContext
 from app.models.mlops_tracking import DatasetVersion, MLDataset
+from app.models.storage_provider import StorageProvider
 from app.services.dataset_storage_service import DatasetStorageService
 from app.services.dataset_upload_models import ParsedDataset, ValidationResult
 from app.services.dataset_version_service import DatasetVersionService
@@ -107,6 +108,7 @@ class DatasetUploadService:
         description: str | None,
         tags: list[str],
         dvc_profile_id: str | None = None,
+        storage_provider_id: str | None = None,
     ) -> dict:
         filename = Path(file.filename or "upload.zip").name
         if not filename.lower().endswith(".zip"):
@@ -148,6 +150,7 @@ class DatasetUploadService:
                 validation=validation,
                 extracted_root=extract_dir,
                 dvc_profile_id=dvc_profile_id,
+                storage_provider_id=storage_provider_id,
             )
 
     async def upload_general(
@@ -163,6 +166,7 @@ class DatasetUploadService:
         tags: list[str],
         label_column: str | None,
         dvc_profile_id: str | None = None,
+        storage_provider_id: str | None = None,
     ) -> dict:
         filename = Path(file.filename or "upload").name
         raw = await file.read()
@@ -199,6 +203,7 @@ class DatasetUploadService:
                 validation=validation,
                 label_column=label_column,
                 dvc_profile_id=dvc_profile_id,
+                storage_provider_id=storage_provider_id,
             )
 
     async def _persist_upload(
@@ -217,6 +222,7 @@ class DatasetUploadService:
         label_column: str | None = None,
         extracted_root: Path | None = None,
         dvc_profile_id: str | None = None,
+        storage_provider_id: str | None = None,
     ) -> dict:
         dataset_id = f"ds_{uuid4().hex[:10]}"
         embedded_metadata = parsed.details.get("embedded_metadata") if isinstance(parsed.details, dict) else None
@@ -236,29 +242,39 @@ class DatasetUploadService:
         )
 
         try:
-            raw_uri = await self.storage.upload_raw(
-                dataset_id=dataset_id,
-                version=normalized_version,
-                filename=filename,
-                data=raw,
-                content_type=content_type,
-            )
-            storage_payload = {"raw_upload_uri": raw_uri}
-            if extracted_root is not None:
-                storage_payload["dataset_uri"] = await self.storage.upload_directory(
-                    dataset_id=dataset_id,
-                    version=normalized_version,
-                    root=extracted_root,
-                )
+            provider_model = None
+            if storage_provider_id:
+                provider_model = await self.db.get(StorageProvider, storage_provider_id)
 
             report = self.report_generator.generate(validation)
-            report_uri = await self.storage.upload_json(
-                dataset_id=dataset_id,
-                version=normalized_version,
-                filename="validation_report.json",
-                payload=report,
-            )
-            storage_payload["validation_report_uri"] = report_uri
+            raw_uri = ""
+            storage_payload = {"raw_upload_uri": ""}
+            report_uri = ""
+            metadata_uri = ""
+
+            if not provider_model:
+                raw_uri = await self.storage.upload_raw(
+                    dataset_id=dataset_id,
+                    version=normalized_version,
+                    filename=filename,
+                    data=raw,
+                    content_type=content_type,
+                )
+                storage_payload["raw_upload_uri"] = raw_uri
+                if extracted_root is not None:
+                    storage_payload["dataset_uri"] = await self.storage.upload_directory(
+                        dataset_id=dataset_id,
+                        version=normalized_version,
+                        root=extracted_root,
+                    )
+
+                report_uri = await self.storage.upload_json(
+                    dataset_id=dataset_id,
+                    version=normalized_version,
+                    filename="validation_report.json",
+                    payload=report,
+                )
+                storage_payload["validation_report_uri"] = report_uri
 
             metadata = self.metadata_generator.generate(
                 parsed=parsed,
@@ -271,20 +287,36 @@ class DatasetUploadService:
                 tags=resolved_tags,
                 label_column=label_column,
             )
-            metadata_uri = await self.storage.upload_json(
-                dataset_id=dataset_id,
-                version=normalized_version,
-                filename="dataset.metadata.json",
-                payload={**metadata, "storage": {**storage_payload, "metadata_uri": ""}},
-            )
-            metadata["storage"]["metadata_uri"] = metadata_uri
-            await self.storage.upload_json(
-                dataset_id=dataset_id,
-                version=normalized_version,
-                filename="dataset.metadata.json",
-                payload=metadata,
-            )
 
+            if not provider_model:
+                metadata_uri = await self.storage.upload_json(
+                    dataset_id=dataset_id,
+                    version=normalized_version,
+                    filename="dataset.metadata.json",
+                    payload={**metadata, "storage": {**storage_payload, "metadata_uri": ""}},
+                )
+                metadata["storage"]["metadata_uri"] = metadata_uri
+                await self.storage.upload_json(
+                    dataset_id=dataset_id,
+                    version=normalized_version,
+                    filename="dataset.metadata.json",
+                    payload=metadata,
+                )
+            elif provider_model.type in ("minio", "s3"):
+                from app.services.storage.factory import get_storage_provider
+                import json
+                provider = get_storage_provider(provider_model)
+                report_bytes = json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8")
+                report_uri = await provider.upload_bytes(report_bytes, f"datasets/{dataset_id}/versions/{normalized_version}/validation_report.json", "application/json")
+                storage_payload["validation_report_uri"] = report_uri
+                
+                metadata_bytes = json.dumps({**metadata, "storage": {**storage_payload, "metadata_uri": ""}}, ensure_ascii=False, indent=2).encode("utf-8")
+                metadata_uri = await provider.upload_bytes(metadata_bytes, f"datasets/{dataset_id}/versions/{normalized_version}/dataset.metadata.json", "application/json")
+                metadata["storage"]["metadata_uri"] = metadata_uri
+                
+                metadata_bytes2 = json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8")
+                await provider.upload_bytes(metadata_bytes2, f"datasets/{dataset_id}/versions/{normalized_version}/dataset.metadata.json", "application/json")
+                
             class_count = parsed.statistics.get("class_count")
             profile = await DVCProfileService(self.db, get_settings()).resolve_for_dataset(
                 dataset=MLDataset(
@@ -313,7 +345,21 @@ class DatasetUploadService:
                 dvc_remote_name=profile.remote_name,
                 ssh_key_encrypted=profile.ssh_key_encrypted,
                 git_ssh_url=profile.git_ssh_url,
+                storage_provider_id=storage_provider_id,
             )
+
+            # Allow user to access the .dvc metadata file on MinIO
+            if not storage_provider_id:
+                dvc_file_abs = Path(profile.repo_path) / dvc_result.dvc_file_path
+                if dvc_file_abs.exists():
+                    await self.storage.upload_raw(
+                        dataset_id=dataset_id,
+                        version=normalized_version,
+                        filename=f"{filename}.dvc",
+                        data=dvc_file_abs.read_bytes(),
+                        content_type="text/plain",
+                    )
+
             public_dataset, _mlops_dataset, dataset_version = await self.version_service.create_upload_version(
                 dataset_id=dataset_id,
                 dataset_name=parsed.name,
@@ -381,6 +427,7 @@ class DatasetUploadService:
         dvc_remote_name: str,
         ssh_key_encrypted: bytes | None = None,
         git_ssh_url: str | None = None,
+        storage_provider_id: str | None = None,
     ) -> DVCTrackResult:
         try:
             dvc_client = DVCClient(
@@ -394,6 +441,59 @@ class DatasetUploadService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"DVC repo not ready: {exc}",
             ) from exc
+
+        if storage_provider_id:
+            provider = await self.db.get(StorageProvider, storage_provider_id)
+            if provider:
+                new_remote = f"provider_{provider.id}"
+                dvc_client.remote_name = new_remote
+                if provider.type in ("minio", "s3"):
+                    bucket = provider.config.get("bucket", "datasets")
+                    remote_url = f"s3://{bucket}"
+                    endpoint = provider.config.get("endpoint") or provider.config.get("endpoint_url")
+                    if endpoint and not endpoint.startswith("http"):
+                        endpoint = f"http://{endpoint}"
+                    await dvc_client._run_command(["dvc", "remote", "add", "-d", "-f", new_remote, remote_url], cwd=dvc_client.repo_path)
+                    if endpoint:
+                        await dvc_client._run_command(["dvc", "remote", "modify", new_remote, "endpointurl", endpoint], cwd=dvc_client.repo_path)
+                    await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "access_key_id", provider.config.get("access_key", "")], cwd=dvc_client.repo_path)
+                    await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "secret_access_key", provider.config.get("secret_key", "")], cwd=dvc_client.repo_path)
+                elif provider.type == "gdrive":
+                    folder_id = provider.config.get("folder_id", "")
+                    remote_url = f"gdrive://{folder_id}"
+                    await dvc_client._run_command(["dvc", "remote", "add", "-d", "-f", new_remote, remote_url], cwd=dvc_client.repo_path)
+                    
+                    if provider.config.get("refresh_token"):
+                        from app.config import get_settings
+                        import json
+                        settings = get_settings()
+                        creds_dict = {
+                            "access_token": provider.config.get("access_token", ""),
+                            "client_id": settings.GOOGLE_CLIENT_ID,
+                            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                            "refresh_token": provider.config.get("refresh_token"),
+                            "token_expiry": None,
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "user_agent": None,
+                            "revoke_uri": None,
+                            "id_token": None,
+                            "id_token_jwt": None,
+                            "token_response": None,
+                            "scopes": ["https://www.googleapis.com/auth/drive.file"],
+                            "token_info_uri": None,
+                            "invalid": False,
+                            "_class": "OAuth2Credentials",
+                            "_module": "oauth2client.client"
+                        }
+                        creds_path = Path(dvc_client.repo_path) / ".dvc" / f"gdrive_creds_{new_remote}.json"
+                        creds_path.parent.mkdir(parents=True, exist_ok=True)
+                        creds_path.write_text(json.dumps(creds_dict))
+                        
+                        await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "gdrive_use_service_account", "false"], cwd=dvc_client.repo_path)
+                        await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "gdrive_user_credentials_file", str(creds_path.absolute())], cwd=dvc_client.repo_path)
+                    elif provider.config.get("service_account_json_path"):
+                        await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "gdrive_use_service_account", "true"], cwd=dvc_client.repo_path)
+                        await dvc_client._run_command(["dvc", "remote", "modify", "--local", new_remote, "gdrive_service_account_json_file_path", provider.config.get("service_account_json_path")], cwd=dvc_client.repo_path)
 
         safe_filename = Path(filename).name or "upload"
         staging_dir = Path(dvc_repo_path) / dataset_id / version

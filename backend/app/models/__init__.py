@@ -20,6 +20,8 @@ from app.models.runtime_session import ExternalRuntimeSession, RuntimeSessionSta
 from app.models.workspace import Workspace, WorkspaceStatus
 from app.models.workspace_assets import WorkspaceDataset, WorkspaceModel
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
+from app.models.storage_provider import StorageProvider
+from app.models.git_integration import GitAccount, GitRepository
 
 __all__ = [
     "Base",
@@ -47,4 +49,7 @@ __all__ = [
     "WorkspaceEvent",
     "WorkspaceStatus",
     "WorkspaceEventType",
+    "StorageProvider",
+    "GitAccount",
+    "GitRepository",
 ]

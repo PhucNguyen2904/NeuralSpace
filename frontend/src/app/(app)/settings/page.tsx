@@ -9,7 +9,16 @@ import {
   MonitorCog,
   ShieldAlert,
   TerminalSquare,
-  UserRound
+  UserRound,
+  GitBranch,
+  Book,
+  Settings,
+  Trash2,
+  GitCommit,
+  GitPullRequest,
+  AlertCircle,
+  Tag,
+  Plus
 } from "lucide-react";
 import { Suspense, useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useForm } from "react-hook-form";
@@ -23,20 +32,24 @@ import {
   useSettings,
   useUpdateNotifications,
   useUpdateProfile,
-  useUpdateWorkspaceDefaults
+  useUpdateWorkspaceDefaults,
+  useUpdateGitSyncPrefs
 } from "@/lib/hooks/useSettings";
 import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcProfile } from "@/lib/hooks/useDatasetVersions";
+import { useStorageProviders, useCreateStorageProvider, useDeleteStorageProvider, useGoogleOAuthLogin } from "@/lib/hooks/useStorageProviders";
+import { useGitAccounts, useGitOAuthLogin, useDisconnectGitAccount, useGitRepositories, useTrackedRepositories, useUntrackedRepositories, useTrackRepository } from "@/lib/hooks/useGitIntegration";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
 
-type TabKey = "profile" | "storage" | "notifications" | "appearance" | "security";
+type TabKey = "profile" | "storage" | "git" | "notifications" | "appearance" | "security";
 type ThemePreference = "system" | "light" | "dark";
 type DvcProfileScope = "global" | "team" | "user" | "workspace";
 type DvcRepoMode = "managed_git" | "existing_path";
 
 const tabs: Array<{ key: TabKey; label: string; icon: ComponentType<{ size?: string | number; className?: string }> }> = [
   { key: "profile", label: "Profile", icon: UserRound },
-  { key: "storage", label: "Storage", icon: Database },
+  { key: "storage", label: "Storage Providers", icon: Database },
+  { key: "git", label: "Git Integration", icon: GitBranch },
   { key: "notifications", label: "Notifications", icon: Bell },
   { key: "appearance", label: "Appearance", icon: Brush },
   { key: "security", label: "Security", icon: ShieldAlert }
@@ -54,8 +67,21 @@ const passwordSchema = z
   })
   .refine((v) => v.newPassword === v.confirmPassword, { path: ["confirmPassword"], message: "Password confirmation does not match" });
 
+const providerSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  type: z.enum(["minio", "s3", "gdrive"]),
+  endpoint: z.string().optional(),
+  access_key: z.string().optional(),
+  secret_key: z.string().optional(),
+  bucket: z.string().optional(),
+}).refine(data => {
+  if (data.type !== "gdrive") {
+    return !!data.endpoint && !!data.access_key && !!data.secret_key && !!data.bucket;
+  }
+  return true;
+}, { path: ["endpoint"], message: "Endpoint, Access Key, Secret Key, and Bucket are required for MinIO/S3" });
 
-function Field({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
+function Field({ label, children, error }: { label: string; children: ReactNode; error?: string | any }) {
   return (
     <label className="space-y-1 text-sm text-text-secondary">
       <span className="block">{label}</span>
@@ -73,6 +99,7 @@ export default function SettingsPage() {
   const [deleteFilesChecked, setDeleteFilesChecked] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [languagePreference, setLanguagePreference] = useState("en");
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -94,6 +121,46 @@ export default function SettingsPage() {
   const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
   const updateDvcProfile = useUpdateDvcProfile();
   const deleteDvcProfile = useDeleteDvcProfile();
+
+  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
+  const deleteStorageProvider = useDeleteStorageProvider();
+  const createStorageProvider = useCreateStorageProvider();
+  const googleOAuthLogin = useGoogleOAuthLogin();
+  const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
+  const gitOAuthLogin = useGitOAuthLogin();
+  const disconnectGitAccount = useDisconnectGitAccount();
+  const [providerModalOpen, setProviderModalOpen] = useState(false);
+  const providerForm = useForm<z.infer<typeof providerSchema>>({
+    resolver: zodResolver(providerSchema),
+    defaultValues: {
+      name: "",
+      type: "minio",
+      endpoint: "",
+      access_key: "",
+      secret_key: "",
+      bucket: "",
+    }
+  });
+
+  const onSubmitProvider = async (values: any) => {
+    try {
+      await createStorageProvider.mutateAsync({
+        name: values.name,
+        type: values.type,
+        config: {
+          endpoint: values.endpoint,
+          access_key: values.access_key,
+          secret_key: values.secret_key,
+          bucket: values.bucket,
+        }
+      });
+      setProviderModalOpen(false);
+      providerForm.reset();
+      setToastMsg("Storage provider created");
+    } catch (err: any) {
+      setToastMsg(err.message || "Failed to create provider");
+    }
+  };
 
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
@@ -194,7 +261,7 @@ export default function SettingsPage() {
                 <h3 className="text-base font-semibold text-text-primary">Personal Information</h3>
                 <p className="text-sm text-text-secondary">Update your photo and personal details.</p>
               </div>
-              
+
               <div className="flex items-center gap-6 pb-6 border-b border-border/50">
                 <button
                   type="button"
@@ -265,36 +332,20 @@ export default function SettingsPage() {
                     <input placeholder="e.g. Data Scientist" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                   </Field>
                 </div>
-                
+
                 <Field label="Email address">
                   <input value={user?.email || settings.profile.email} readOnly className="h-10 w-full rounded-md border border-border bg-bg-sunken px-3 text-sm text-text-tertiary cursor-not-allowed" />
                   <p className="text-xs text-text-tertiary mt-1">Your email cannot be changed as it is tied to your login provider.</p>
                 </Field>
-                
+
                 <Field label="Bio">
                   <textarea rows={3} placeholder="Tell us a little about yourself..." className="w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
                 </Field>
-                
+
                 <div className="pt-2">
                   <Button size="sm" loading={updateProfile.isPending} type="submit">Save profile information</Button>
                 </div>
               </form>
-
-              <div className="space-y-4 pt-6 border-t border-border/50 max-w-xl">
-                <h4 className="text-sm font-semibold text-text-primary">Connected Accounts</h4>
-                <div className="flex items-center justify-between rounded-lg border border-border p-4 bg-bg-sunken">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border">
-                      <svg viewBox="0 0 16 16" className="w-4 h-4 fill-current"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-text-primary">GitHub</p>
-                      <p className="text-xs text-text-secondary">Connected as @{user?.name || "developer"}</p>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => setToastMsg("Cannot disconnect primary account")}>Disconnect</Button>
-                </div>
-              </div>
             </div>
           ) : null}
 
@@ -303,158 +354,167 @@ export default function SettingsPage() {
             <div className="max-w-3xl space-y-8">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-base font-semibold text-text-primary">DVC Storage Profiles</h3>
-                  <span className="text-xs font-medium text-text-tertiary bg-bg-sunken px-2 py-0.5 rounded-full border border-border">{dvcProfiles.length} configured</span>
-                </div>
-                <p className="text-sm text-text-secondary max-w-2xl">
-                  Quản lý các kho lưu trữ dữ liệu (Dataset, Model) để sử dụng trong NeuralSpace.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-border bg-bg-surface p-5 space-y-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <h4 className="text-sm font-semibold text-text-primary">Storage Quota</h4>
-                    <p className="text-xs text-text-secondary mt-0.5">Your total usage across all datasets and models</p>
+                    <h3 className="text-base font-semibold text-text-primary">Storage Providers (Cloud & On-Premise)</h3>
+                    <p className="text-sm text-text-secondary">Cấu hình các nhà cung cấp lưu trữ như MinIO, S3, hoặc Google Drive để chọn khi upload dataset.</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-lg font-bold text-text-primary">2.4 GB</span>
-                    <span className="text-sm text-text-secondary"> / 10 GB</span>
-                  </div>
+                  <Button size="sm" onClick={() => setProviderModalOpen(true)}>Add Provider</Button>
                 </div>
-                
-                <div className="h-2.5 w-full overflow-hidden rounded-full bg-bg-sunken border border-border/50">
-                  <div className="flex h-full">
-                    <div className="bg-brand-500" style={{ width: '18%' }} title="Datasets: 1.8GB" />
-                    <div className="bg-brand-300 dark:bg-brand-400" style={{ width: '6%' }} title="Models: 0.6GB" />
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-text-secondary pt-1">
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-brand-500" /> Datasets (1.8 GB)</div>
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-brand-300 dark:bg-brand-400" /> Models (0.6 GB)</div>
-                  <div className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded bg-bg-sunken border border-border/50" /> Free Space (7.6 GB)</div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-sm font-medium text-text-primary mb-3">
-                  Tuỳ chọn lưu trữ khả dụng
-                </h4>
                 <div className="grid gap-3">
-                  {isLoadingDvcProfiles ? (
-                  <p className="text-sm text-text-secondary">Loading DVC profiles...</p>
-                ) : (
-                  dvcProfiles.map((profile) => (
-                    <div key={profile.id} className="rounded-lg border border-border bg-bg-elevated p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-medium text-text-primary">
-                              {profile.is_environment_default ? "NeuralSpace Server Default" : profile.name}
-                            </p>
-                            <span className={cn(
-                              "rounded px-1.5 py-0.5 text-xs font-medium",
-                              profile.status === "ready" ? "bg-emerald-500/10 text-emerald-600" : "bg-error-500/10 text-error-500"
-                            )}>
-                              {profile.status}
+                  {isLoadingStorageProviders ? (
+                    <p className="text-sm text-text-secondary">Loading storage providers...</p>
+                  ) : storageProviders.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-bg-surface p-8 text-center">
+                      <Database className="mx-auto h-8 w-8 text-text-tertiary mb-3" />
+                      <h4 className="text-sm font-medium text-text-primary mb-1">No Storage Providers</h4>
+                      <p className="text-xs text-text-secondary max-w-sm mx-auto mb-4">You haven't configured any storage providers yet. Add MinIO, S3, or Google Drive to store datasets.</p>
+                      <Button size="sm" variant="outline" onClick={() => setProviderModalOpen(true)}>Configure first provider</Button>
+                    </div>
+                  ) : (
+                    storageProviders.map((provider) => (
+                      <div key={provider.id} className="rounded-lg border border-border bg-bg-elevated p-4 flex flex-wrap items-start justify-between gap-3 shadow-sm hover:border-brand-500/30 transition-colors">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Database className="h-4 w-4 text-brand-500" />
+                            <p className="font-medium text-text-primary">{provider.name}</p>
+                            <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-semibold text-brand-600 uppercase tracking-wide">
+                              {provider.type}
                             </span>
-                            {profile.is_default && !profile.is_environment_default ? <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-medium text-brand-600">Default</span> : null}
-                            {profile.is_environment_default ? <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-medium text-brand-600 border border-brand-500/20">System Provided</span> : null}
+                            {!provider.is_active && <span className="rounded bg-error-500/10 px-1.5 py-0.5 text-xs font-semibold text-error-500 uppercase tracking-wide">Inactive</span>}
                           </div>
-                          <p className="mt-1.5 text-xs text-text-secondary leading-relaxed">
-                            {profile.is_environment_default 
-                              ? "Profile lưu trữ mặc định do hệ thống cấp phát. Dữ liệu được quản lý tự động, không yêu cầu thiết lập thêm từ người dùng." 
-                              : profile.repo_mode === "managed_git" 
-                                ? `Kết nối qua GitHub Repository: ${profile.git_repo_url || "Managed Git repo"}` 
-                                : `Đường dẫn máy chủ nội bộ: ${profile.repo_path}`}
+                          <p className="text-xs text-text-secondary font-mono bg-bg-sunken px-2 py-1 rounded inline-block mt-1">
+                            {provider.type === "gdrive" ? "Google Drive Integration" : `Bucket: ${provider.config.bucket || "N/A"}`}
                           </p>
-                          {!profile.is_environment_default && (
-                            <p className="mt-1 text-xs text-text-tertiary flex items-center gap-1.5">
-                              <span>Scope: {profile.scope}{profile.scope_id ? `:${profile.scope_id}` : ""}</span>
-                              <span>·</span>
-                              <span>{profile.repo_mode === "managed_git" ? `Branch: ${profile.git_branch}` : "Local path"}</span>
-                              <span>·</span>
-                              <span>Remote: {profile.remote_name}</span>
-                            </p>
-                          )}
                         </div>
-                        {profile.remote_url ? <p className="max-w-xs truncate text-xs text-text-tertiary">{profile.remote_url}</p> : null}
-                        
-                        <div className="flex shrink-0 items-center gap-2 w-full md:w-auto">
-                          {!profile.is_environment_default && (
-                            <>
-                              {!profile.is_default && (
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  onClick={() => updateDvcProfile.mutate({ id: profile.id, payload: { is_default: true } })}
-                                  loading={updateDvcProfile.isPending}
-                                >
-                                  Set default
-                                </Button>
-                              )}
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => updateDvcProfile.mutate({ id: profile.id, payload: { status: profile.status === "ready" ? "inactive" : "ready" } })}
-                                loading={updateDvcProfile.isPending}
-                              >
-                                {profile.status === "ready" ? "Disable" : "Enable"}
-                              </Button>
-                              <Button
-                                variant="danger"
-                                size="sm"
-                                onClick={() => {
-                                  setProfileToDelete({
-                                    id: profile.id,
-                                    name: profile.name,
-                                    repoMode: profile.repo_mode,
-                                    repoPathOrUrl: profile.repo_mode === "managed_git" ? (profile.git_repo_url || "Managed Git") : profile.repo_path
-                                  });
-                                  setDeleteFilesChecked(false);
-                                  setDeleteProfileModalOpen(true);
-                                }}
-                              >
-                                Delete
-                              </Button>
-                            </>
-                          )}
-                        </div>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this provider?")) {
+                              deleteStorageProvider.mutate(provider.id, {
+                                onSuccess: () => setToastMsg("Provider deleted")
+                              });
+                            }
+                          }}
+                        >
+                          Delete
+                        </Button>
                       </div>
-                      {profile.status_message ? <p className="mt-2 text-xs text-text-tertiary">{profile.status_message}</p> : null}
-                    </div>
-                  ))
-                )}
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
 
-            <div className="relative overflow-hidden rounded-xl border border-brand-200 dark:border-brand-500/20 bg-gradient-to-br from-brand-50/80 to-bg-surface dark:from-brand-950/30 dark:to-bg-surface p-6 shadow-sm group transition-all hover:shadow-md hover:border-brand-300 dark:hover:border-brand-500/40">
-                <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transform group-hover:scale-110 transition-transform duration-700">
-                  <svg viewBox="0 0 16 16" className="w-40 h-40 fill-current text-brand-600 dark:text-brand-400">
-                    <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-                  </svg>
-                </div>
-                <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-                  <div className="flex-1">
-                    <div className="inline-flex items-center gap-2 rounded-full bg-brand-100 dark:bg-brand-500/20 px-2.5 py-0.5 mb-3 border border-brand-200 dark:border-brand-500/30">
-                      <span className="flex h-1.5 w-1.5 rounded-full bg-brand-500 animate-pulse" />
-                      <span className="text-[10px] font-semibold tracking-wide text-brand-700 dark:text-brand-300 uppercase">Recommended</span>
+              <Modal
+                open={providerModalOpen}
+                onClose={() => setProviderModalOpen(false)}
+                title="Add Storage Provider"
+                size="md"
+              >
+                <form onSubmit={providerForm.handleSubmit(onSubmitProvider)} className="space-y-4" autoComplete="off">
+                  <Field label="Provider Name" error={providerForm.formState.errors.name?.message}>
+                    <input {...providerForm.register("name")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. Production MinIO" />
+                  </Field>
+                  <Field label="Provider Type" error={providerForm.formState.errors.type?.message}>
+                    <select {...providerForm.register("type")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary">
+                      <option value="minio">MinIO</option>
+                      <option value="s3">Amazon S3</option>
+                      <option value="gdrive">Google Drive</option>
+                    </select>
+                  </Field>
+                  {providerForm.watch("type") !== "gdrive" ? (
+                    <>
+                      <Field label="Endpoint URL" error={providerForm.formState.errors.endpoint?.message}>
+                        <input {...providerForm.register("endpoint")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. http://minio:9000" />
+                      </Field>
+                      <div className="grid grid-cols-2 gap-4">
+                        <Field label="Access Key" error={providerForm.formState.errors.access_key?.message}>
+                          <input {...providerForm.register("access_key")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                        </Field>
+                        <Field label="Secret Key" error={providerForm.formState.errors.secret_key?.message}>
+                          <input type="password" {...providerForm.register("secret_key")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                        </Field>
+                      </div>
+                      <Field label="Bucket Name" error={providerForm.formState.errors.bucket?.message}>
+                        <input {...providerForm.register("bucket")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="datasets" />
+                      </Field>
+                    </>
+                  ) : (
+                    <div className="rounded-lg bg-bg-sunken border border-border p-4 text-center space-y-3">
+                      <p className="text-sm text-text-primary">Click below to connect your Google Drive account via OAuth.</p>
+                      <Button type="button" variant="outline" className="w-full flex justify-center items-center gap-2" onClick={() => googleOAuthLogin.mutate()} loading={googleOAuthLogin.isPending}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="#34A853" fillOpacity="0.2" /><path d="M21.1441 10.3636H12V13.6364H17.2917C17.0601 14.6865 16.4468 15.5891 15.5413 16.1963V18.1704H18.7188C20.5794 16.459 21.6364 13.8824 21.6364 10.8982C21.6364 10.7182 21.6151 10.5401 21.1441 10.3636Z" fill="#4285F4" /><path d="M12 21.8182C14.7083 21.8182 16.9944 20.916 18.7217 19.3855L15.5442 17.4114C14.6111 18.0363 13.4116 18.4091 12 18.4091C9.27116 18.4091 6.96205 16.5615 6.1362 14.0743H2.86311V16.1086C4.54427 19.4526 8.01633 21.8182 12 21.8182Z" fill="#34A853" /><path d="M6.13621 14.0743C5.92429 13.4354 5.80211 12.7297 5.80211 12C5.80211 11.2703 5.92429 10.5646 6.13621 9.92573V7.8914H2.86312C2.1704 9.276 1.77273 10.5985 1.77273 12C1.77273 13.4015 2.1704 14.724 2.86312 16.1086L6.13621 14.0743Z" fill="#FBBC05" /><path d="M12 5.59092C13.4735 5.59092 14.7924 6.09819 15.8344 7.09101L18.7909 4.13455C16.992 2.45909 14.7061 1.45455 12 1.45455C8.01633 1.45455 4.54427 3.82015 2.86311 7.16421L6.1362 9.19851C6.96205 6.71129 9.27116 4.86364 12 4.86364V5.59092Z" fill="#EA4335" /></svg>
+                        Connect Google Drive
+                      </Button>
                     </div>
-                    <h4 className="text-lg font-semibold text-text-primary flex items-center gap-2">
-                      GitHub Connect Wizard
-                    </h4>
-                    <p className="mt-1.5 text-sm text-text-secondary leading-relaxed max-w-md">
-                      Tự động thiết lập Managed Git DVC Profile. Chúng tôi sẽ cấu hình OAuth và quản lý SSH Deploy Keys an toàn cho bạn chỉ với vài cú click.
-                    </p>
+                  )}
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button variant="ghost" type="button" onClick={() => setProviderModalOpen(false)}>Cancel</Button>
+                    <Button type="submit" loading={createStorageProvider.isPending}>Save Provider</Button>
                   </div>
-                  <button 
-                    onClick={() => setIsWizardOpen(true)}
-                    className="shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-medium shadow-sm shadow-brand-500/30 transition-all active:scale-95"
-                  >
-                    Open Wizard <span aria-hidden="true">→</span>
-                  </button>
+                </form>
+              </Modal>
+            </div>
+          ) : null}
+
+          {activeTab === "git" ? (
+            <div className="max-w-3xl space-y-8">
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold text-text-primary">Git Integration</h3>
+                <p className="text-sm text-text-secondary">Quản lý kết nối tới các tài khoản Git và danh sách repository cho MLOps tracking.</p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h4 className="text-sm font-semibold text-text-primary">Connected Git Accounts</h4>
+                  <Button size="sm" onClick={() => gitOAuthLogin.mutate()} loading={gitOAuthLogin.isPending}>Connect GitHub</Button>
                 </div>
+
+                <div className="grid gap-3">
+                  {isLoadingGitAccounts ? (
+                    <p className="text-sm text-text-secondary">Loading accounts...</p>
+                  ) : gitAccounts.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border bg-bg-surface p-8 text-center">
+                      <GitBranch className="mx-auto h-8 w-8 text-text-tertiary mb-3" />
+                      <h4 className="text-sm font-medium text-text-primary mb-1">No Git Accounts Connected</h4>
+                      <p className="text-xs text-text-secondary max-w-sm mx-auto mb-4">You need a connected Git account to track dataset and model versions using DVC.</p>
+                    </div>
+                  ) : (
+                    gitAccounts.map((account) => (
+                      <div key={account.id} className="rounded-lg border border-border bg-bg-elevated p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border">
+                            <svg viewBox="0 0 16 16" className="w-4 h-4 fill-current"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-text-primary capitalize">{account.provider}</p>
+                            <p className="text-xs text-text-secondary">@{account.username}</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm("Disconnect this Git account? This will not delete the repositories.")) {
+                              disconnectGitAccount.mutate(account.id, {
+                                onSuccess: () => setToastMsg("Account disconnected")
+                              });
+                            }
+                          }}
+                        >
+                          Disconnect
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-4">
+                <TrackedRepositories />
+                <SyncPreferences />
+                <RecentActivity />
               </div>
             </div>
           ) : null}
@@ -465,7 +525,7 @@ export default function SettingsPage() {
                 <h3 className="text-base font-semibold text-text-primary">Notification Preferences</h3>
                 <p className="text-sm text-text-secondary">Manage how and when the system sends notifications to you.</p>
               </div>
-              
+
               <div className="space-y-6">
                 <div>
                   <h4 className="text-sm font-medium text-text-primary mb-3">Email Notifications</h4>
@@ -527,7 +587,7 @@ export default function SettingsPage() {
                 <h3 className="text-base font-semibold text-text-primary">Appearance</h3>
                 <p className="text-sm text-text-secondary">Customize the look and feel of the application.</p>
               </div>
-              
+
               <div className="space-y-4">
                 <p className="text-sm font-medium text-text-primary">Theme mode</p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -548,29 +608,19 @@ export default function SettingsPage() {
 
               <div className="space-y-4 pt-6 border-t border-border/50">
                 <div>
-                  <p className="text-sm font-medium text-text-primary">Editor Theme</p>
-                  <p className="text-xs text-text-secondary mt-0.5">Select the color theme for the code editor in Workspaces.</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label className="flex items-center gap-3 p-4 border border-brand-500 ring-1 ring-brand-500 bg-brand-50/50 dark:bg-brand-500/5 rounded-xl cursor-pointer">
-                    <input type="radio" name="editorTheme" defaultChecked className="text-brand-600 focus:ring-brand-500" />
-                    <span className="text-sm font-medium text-text-primary">VS Code Dark (Default)</span>
-                  </label>
-                  <label className="flex items-center gap-3 p-4 border border-border bg-bg-surface rounded-xl cursor-pointer hover:border-brand-300 hover:bg-bg-elevated">
-                    <input type="radio" name="editorTheme" className="text-brand-600 focus:ring-brand-500" />
-                    <span className="text-sm font-medium text-text-primary">Monokai</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-6 border-t border-border/50">
-                <div>
                   <p className="text-sm font-medium text-text-primary">Interface Language</p>
                   <p className="text-xs text-text-secondary mt-0.5">Change the language of the application interface.</p>
                 </div>
-                <select className="h-10 w-full sm:w-64 rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary">
-                  <option>English (US)</option>
-                  <option>Vietnamese (Tiếng Việt)</option>
+                <select 
+                  className="h-10 w-full sm:w-64 rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary"
+                  value={languagePreference}
+                  onChange={(e) => {
+                    setLanguagePreference(e.target.value);
+                    setToastMsg("Language updated successfully");
+                  }}
+                >
+                  <option value="en">English (US)</option>
+                  <option value="vi">Vietnamese (Tiếng Việt)</option>
                 </select>
               </div>
             </div>
@@ -720,15 +770,248 @@ export default function SettingsPage() {
       ) : null}
 
       <Suspense fallback={null}>
-        <CreateProfileWizard 
-          open={isWizardOpen} 
-          onClose={() => setIsWizardOpen(false)} 
+        <CreateProfileWizard
+          open={isWizardOpen}
+          onClose={() => setIsWizardOpen(false)}
           onOpen={() => {
             setActiveTab("storage");
             setIsWizardOpen(true);
-          }} 
+          }}
         />
       </Suspense>
+    </div>
+  );
+}
+
+function TrackedRepositories() {
+  const { data: repos, isLoading } = useTrackedRepositories();
+  const { data: untrackedRepos } = useUntrackedRepositories();
+  const trackRepo = useTrackRepository();
+  const [selectedRepoId, setSelectedRepoId] = useState("");
+
+  const handleUntrack = (repoId: string) => {
+    trackRepo.mutate({ repoId, payload: { is_tracked: false } });
+  };
+
+  const formatTime = (isoString: string | null) => {
+    if (!isoString) return 'never';
+    const date = new Date(isoString);
+    const diff = (Date.now() - date.getTime()) / 1000;
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+    return `${Math.floor(diff / 86400)}d ago`;
+  };
+
+  const handleTrack = () => {
+    if (!selectedRepoId) return;
+    trackRepo.mutate(
+      { repoId: selectedRepoId, payload: { is_tracked: true, tracked_branch: "main" } },
+      { onSuccess: () => setSelectedRepoId("") }
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h4 className="text-[15px] font-semibold text-[#111827] dark:text-white">Tracked repositories (DVC)</h4>
+          <p className="text-[12px] text-[#6B7280] dark:text-gray-400">Repositories tracked by NeuralSpace to be used as Data Version Control (DVC) storage and experiment metadata sync.</p>
+        </div>
+        <span className="shrink-0 whitespace-nowrap rounded-[12px] bg-[#DBEAFE] px-2 py-0.5 text-[11px] font-medium text-[#1E40AF]">{repos?.length || 0} repos</span>
+      </div>
+
+      <div className="border border-[#E5E7EB] dark:border-gray-800 rounded-[8px] bg-[#FFFFFF] dark:bg-gray-900 overflow-hidden">
+        <div className="flex flex-col">
+          {isLoading ? (
+            <div className="p-4 text-sm text-text-secondary">Loading tracked repositories...</div>
+          ) : !repos || repos.length === 0 ? (
+            <div className="p-4 text-sm text-text-secondary">No tracked repositories found. Track a repository to use it as a Dataset Version Control (DVC) storage layer.</div>
+          ) : (
+            repos.map((repo) => (
+              <div key={repo.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 border-b border-[#F3F4F6] dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors gap-3">
+                <div className="flex items-center gap-3">
+                  <Book className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="text-[14px] font-medium text-[#111827] dark:text-gray-200">{repo.repo_name}</p>
+                    <p className="text-[12px] text-[#6B7280] dark:text-gray-500">{repo.tracked_branch} • sync {formatTime(repo.last_sync_time)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className={cn("px-2 py-0.5 rounded-[12px] text-[11px] font-medium",
+                    repo.sync_status === "active" ? "bg-[#D1FAE5] text-[#065F46] dark:bg-[#065F46]/30 dark:text-[#D1FAE5]" :
+                      repo.sync_status === "error" ? "bg-[#FEE2E2] text-[#991B1B] dark:bg-[#991B1B]/30 dark:text-[#FEE2E2]" :
+                        "bg-[#FEF3C7] text-[#92400E] dark:bg-[#92400E]/30 dark:text-[#FEF3C7]"
+                  )}>
+                    {repo.sync_status ? repo.sync_status.charAt(0).toUpperCase() + repo.sync_status.slice(1) : "Pending"}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"><Settings className="w-4 h-4" /></button>
+                    <button className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" onClick={() => handleUntrack(repo.id)}><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+
+          <div className="p-3 bg-gray-50 dark:bg-gray-800/20 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <select
+              className="flex-1 h-9 rounded-md border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-[14px] text-[#111827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#6366F1] focus:border-[#6366F1] w-full"
+              value={selectedRepoId}
+              onChange={(e) => setSelectedRepoId(e.target.value)}
+            >
+              <option value="" disabled>Select a connected repository to track...</option>
+              {untrackedRepos?.map((repo) => (
+                <option key={repo.id} value={repo.id}>{repo.repo_name}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleTrack}
+              disabled={!selectedRepoId || trackRepo.isPending}
+              className="h-9 px-4 rounded-[6px] bg-[#6366F1] text-white text-[14px] font-medium hover:bg-[#4F46E5] disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap flex items-center gap-2 w-full sm:w-auto justify-center"
+            >
+              <Plus className="w-4 h-4" /> Track repo
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SyncPreferences() {
+  const { data: settings } = useSettings();
+  const updateGitSync = useUpdateGitSyncPrefs();
+  const prefs = settings?.gitSync || { autoSync: true, commitCheckpoints: false, createPr: true, syncInterval: "15" };
+
+  const handleUpdate = (key: keyof typeof prefs, value: any) => {
+    updateGitSync.mutate({ ...prefs, [key]: value });
+  };
+
+  const Toggle = ({ checked, onChange }: { checked: boolean, onChange: () => void }) => (
+    <button
+      type="button"
+      onClick={onChange}
+      className={cn("w-[36px] h-[20px] rounded-[10px] relative transition-colors flex-shrink-0 focus:outline-none", checked ? "bg-[#6366F1]" : "bg-[#D1D5DB] dark:bg-gray-600")}
+    >
+      <span className={cn("w-[14px] h-[14px] bg-white rounded-full transition-all shadow-sm absolute top-[3px]", checked ? "left-[19px]" : "left-[3px]")} />
+    </button>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="text-[15px] font-semibold text-[#111827] dark:text-white">Sync preferences</h4>
+        <p className="text-[12px] text-[#6B7280] dark:text-gray-400">Configure automatic synchronization behavior between NeuralSpace and Git.</p>
+      </div>
+
+      <div className="border border-[#E5E7EB] dark:border-gray-800 rounded-[8px] bg-[#FFFFFF] dark:bg-gray-900 overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-[14px] border-b border-[#F3F4F6] dark:border-gray-800 gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+          <div className="flex flex-col">
+            <span className="text-[14px] font-medium text-[#111827] dark:text-gray-200">Auto-sync experiments</span>
+            <span className="text-[12px] text-[#6B7280] dark:text-gray-500 mt-0.5">Automatically sync experiment metadata to Git after each run completes</span>
+          </div>
+          <Toggle checked={prefs.autoSync} onChange={() => handleUpdate("autoSync", !prefs.autoSync)} />
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-[14px] border-b border-[#F3F4F6] dark:border-gray-800 gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+          <div className="flex flex-col">
+            <span className="text-[14px] font-medium text-[#111827] dark:text-gray-200">Commit model checkpoints</span>
+            <span className="text-[12px] text-[#6B7280] dark:text-gray-500 mt-0.5">Push checkpoint files to repository when saving models. Only applies to repos &lt;1GB</span>
+          </div>
+          <Toggle checked={prefs.commitCheckpoints} onChange={() => handleUpdate("commitCheckpoints", !prefs.commitCheckpoints)} />
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-[14px] border-b border-[#F3F4F6] dark:border-gray-800 gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+          <div className="flex flex-col">
+            <span className="text-[14px] font-medium text-[#111827] dark:text-gray-200">Create PR on pipeline completion</span>
+            <span className="text-[12px] text-[#6B7280] dark:text-gray-500 mt-0.5">Automatically create a pull request when the training pipeline successfully completes</span>
+          </div>
+          <Toggle checked={prefs.createPr} onChange={() => handleUpdate("createPr", !prefs.createPr)} />
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-[14px] gap-4 hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+          <div className="flex flex-col">
+            <span className="text-[14px] font-medium text-[#111827] dark:text-gray-200">Sync interval</span>
+            <span className="text-[12px] text-[#6B7280] dark:text-gray-500 mt-0.5">Frequency of checking for remote changes</span>
+          </div>
+          <select
+            value={prefs.syncInterval}
+            onChange={(e) => handleUpdate("syncInterval", e.target.value)}
+            className="flex-shrink-0 h-9 rounded-md border border-[#E5E7EB] dark:border-gray-700 bg-white dark:bg-gray-900 px-3 text-[14px] text-[#111827] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#6366F1] focus:border-[#6366F1] w-full sm:w-auto min-w-[150px]"
+          >
+            <option value="5">Every 5 min</option>
+            <option value="15">Every 15 min</option>
+            <option value="60">Every hour</option>
+            <option value="manual">Manual only</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecentActivity() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="text-[15px] font-semibold text-[#111827] dark:text-white">Recent activity</h4>
+        <button className="text-[13px] text-[#6366F1] hover:text-[#4F46E5] font-medium px-3 py-1.5 rounded-md hover:bg-[#EEF2FF] dark:hover:bg-[#6366F1]/10 transition-colors">
+          View all
+        </button>
+      </div>
+
+      <div className="border border-[#E5E7EB] dark:border-gray-800 rounded-[8px] bg-[#FFFFFF] dark:bg-gray-900 p-[20px] md:p-[24px]">
+        <div className="space-y-6">
+          <div className="flex gap-4">
+            <div className="w-[28px] h-[28px] rounded-full bg-[#D1FAE5] dark:bg-[#065F46]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <GitCommit className="w-4 h-4 text-[#065F46] dark:text-[#D1FAE5]" />
+            </div>
+            <div>
+              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
+                Pushed exp-run-#142 metadata → <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">neural-space-experiments/main</code>
+              </p>
+              <p className="text-[12px] text-[#9CA3AF] mt-1">12 phút trước</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="w-[28px] h-[28px] rounded-full bg-[#DBEAFE] dark:bg-[#1E40AF]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <GitPullRequest className="w-4 h-4 text-[#1E40AF] dark:text-[#DBEAFE]" />
+            </div>
+            <div>
+              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
+                PR #28 opened: "Add ResNet50 baseline" → <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">mlops-pipelines</code>
+              </p>
+              <p className="text-[12px] text-[#9CA3AF] mt-1">47 phút trước</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="w-[28px] h-[28px] rounded-full bg-[#FEE2E2] dark:bg-[#991B1B]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <AlertCircle className="w-4 h-4 text-[#991B1B] dark:text-[#FEE2E2]" />
+            </div>
+            <div>
+              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
+                Sync failed: <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">dataset-versioning/main</code> — permission denied (403)
+              </p>
+              <p className="text-[12px] text-[#9CA3AF] mt-1">1 giờ trước</p>
+            </div>
+          </div>
+
+          <div className="flex gap-4">
+            <div className="w-[28px] h-[28px] rounded-full bg-[#FEF3C7] dark:bg-[#92400E]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <Tag className="w-4 h-4 text-[#92400E] dark:text-[#FEF3C7]" />
+            </div>
+            <div>
+              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
+                Tagged release v0.4.1 sau khi pipeline hoàn tất
+              </p>
+              <p className="text-[12px] text-[#9CA3AF] mt-1">3 giờ trước</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

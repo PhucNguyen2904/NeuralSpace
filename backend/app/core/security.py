@@ -7,6 +7,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from cryptography.fernet import Fernet
 from fastapi import HTTPException, status
 from jose import JWTError, jwt
 from redis.asyncio import Redis
@@ -15,6 +16,23 @@ from app.config import get_settings
 
 PASSWORD_SCHEME = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 260000
+
+def _get_fernet() -> Fernet:
+    settings = get_settings()
+    key_material = settings.SECRET_KEY.encode("utf-8")
+    # Fernet requires a 32-byte url-safe base64-encoded key
+    fernet_key = base64.urlsafe_b64encode(hashlib.sha256(key_material).digest())
+    return Fernet(fernet_key)
+
+def encrypt_token(token: str) -> str:
+    """Encrypt a plaintext token."""
+    fernet = _get_fernet()
+    return fernet.encrypt(token.encode("utf-8")).decode("utf-8")
+
+def decrypt_token(encrypted_token: str) -> str:
+    """Decrypt an encrypted token."""
+    fernet = _get_fernet()
+    return fernet.decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
 
 
 @dataclass

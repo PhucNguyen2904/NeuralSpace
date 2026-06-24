@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 import { Grid2X2, List, Plus, SearchX } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -32,7 +32,7 @@ function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
   };
 }
 
-export default function DatasetsPage() {
+function DatasetsPageContent() {
   const { toast } = useToast();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -181,6 +181,14 @@ export default function DatasetsPage() {
         }}
       />
     </div>
+  );
+}
+
+export default function DatasetsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-text-secondary">Loading...</div>}>
+      <DatasetsPageContent />
+    </Suspense>
   );
 }
 

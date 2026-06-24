@@ -9,6 +9,8 @@ import {
   updateNotificationPrefs,
   updateProfile,
   updateWorkspaceDefaults,
+  updateGitSyncPrefs,
+  type GitSyncPrefs,
   type NotificationPrefs,
   type SettingsPayload,
   type UserProfile,
@@ -124,6 +126,23 @@ export const useRevokeApiKey = () => {
       const prev = queryClient.getQueryData<SettingsPayload>(SETTINGS_KEY);
       queryClient.setQueryData<SettingsPayload | undefined>(SETTINGS_KEY, (old) =>
         patchCache(old, (draft) => ({ ...draft, apiKeys: draft.apiKeys.filter((item) => item.id !== id) }))
+      );
+      return { prev };
+    },
+    onError: (_e, _p, ctx) => queryClient.setQueryData(SETTINGS_KEY, ctx?.prev),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: SETTINGS_KEY })
+  });
+};
+
+export const useUpdateGitSyncPrefs = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: Partial<GitSyncPrefs>) => updateGitSyncPrefs(payload),
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: SETTINGS_KEY });
+      const prev = queryClient.getQueryData<SettingsPayload>(SETTINGS_KEY);
+      queryClient.setQueryData<SettingsPayload | undefined>(SETTINGS_KEY, (old) =>
+        patchCache(old, (draft) => ({ ...draft, gitSync: { ...draft.gitSync, ...payload } }))
       );
       return { prev };
     },

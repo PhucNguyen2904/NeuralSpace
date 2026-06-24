@@ -42,12 +42,20 @@ export type BillingUsage = {
   history7d: Array<{ day: string; hours: number }>;
 };
 
+export type GitSyncPrefs = {
+  autoSync: boolean;
+  commitCheckpoints: boolean;
+  createPr: boolean;
+  syncInterval: string;
+};
+
 export type SettingsPayload = {
   profile: UserProfile;
   defaults: WorkspaceDefaults;
   notifications: NotificationPrefs;
   apiKeys: ApiKeyItem[];
   billing: BillingUsage;
+  gitSync: GitSyncPrefs;
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,6 +97,12 @@ let mockSettings: SettingsPayload = {
       { day: "Sat", hours: 5 },
       { day: "Sun", hours: 4 }
     ]
+  },
+  gitSync: {
+    autoSync: true,
+    commitCheckpoints: false,
+    createPr: true,
+    syncInterval: "15"
   }
 };
 
@@ -184,4 +198,15 @@ export const revokeApiKey = async (id: string) => {
     mockSettings.apiKeys = mockSettings.apiKeys.filter((item) => item.id !== id);
   }
   return true;
+};
+
+export const updateGitSyncPrefs = async (payload: Partial<GitSyncPrefs>) => {
+  try {
+    await apiClient.put("/settings/git-sync", payload);
+    return payload;
+  } catch {
+    await wait(150);
+    mockSettings.gitSync = { ...mockSettings.gitSync, ...payload };
+    return payload;
+  }
 };

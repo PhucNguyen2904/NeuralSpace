@@ -125,9 +125,24 @@ class DatasetService:
         ]
         return run_items, model_items
 
-    async def pull_version(self, version: DatasetVersion, dvc_client: DVCClient, target_path: str) -> dict:
+    async def pull_version(self, version: DatasetVersion, dvc_client: DVCClient, target_path: str, user: UserContext = None) -> dict:
         if not version.storage_path:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Dataset version has no DVC storage_path")
+            
+        if user:
+            from app.services.gdrive_service import GDriveTokenManager
+            from app.config import get_settings
+            gdrive_manager = GDriveTokenManager(self.db, get_settings())
+            gdrive_provider = await gdrive_manager.get_gdrive_provider(user.user_id)
+            if gdrive_provider:
+                await gdrive_manager.write_credentials_file(str(dvc_client.repo_path), gdrive_provider)
+                async def on_auth_error() -> bool:
+                    success = await gdrive_manager.refresh_token(gdrive_provider)
+                    if success:
+                        await gdrive_manager.write_credentials_file(str(dvc_client.repo_path), gdrive_provider)
+                    return success
+                dvc_client.on_auth_error = on_auth_error
+
         await dvc_client.pull(version.storage_path, target_path)
         return {"workspace_path": target_path, "size_bytes": int(version.size_bytes or 0)}
 
@@ -181,9 +196,33 @@ class DatasetService:
                     detail=f"Dataset version already exists: {requested_version}",
                 )
 
-        # ── 1. Validate DVC repo ─────────────────────────────────────────────
+        # ── 1. Validate DVC repo & Setup Google Drive Token ─────────────────────────────
         try:
+            from app.services.gdrive_service import GDriveTokenManager
+            from app.config import get_settings
+            
+            settings = get_settings()
+            gdrive_manager = GDriveTokenManager(self.db, settings)
+            
             dvc_client = DVCClient(dvc_repo_path, remote_name=dvc_remote_name)
+            
+            # If the remote is Google Drive, we need to prepare the credentials file
+            # Wait, mlops_dataset_service doesn't easily know if the remote is GDrive without reading dvc config.
+            # But we can just fetch the GDrive provider and if it exists, assume it might be used.
+            # A cleaner way is to inject an auth error handler that will try to refresh if it's GDrive.
+            
+            gdrive_provider = await gdrive_manager.get_gdrive_provider(user.user_id)
+            if gdrive_provider:
+                await gdrive_manager.write_credentials_file(dvc_repo_path, gdrive_provider)
+                
+                async def on_auth_error() -> bool:
+                    success = await gdrive_manager.refresh_token(gdrive_provider)
+                    if success:
+                        await gdrive_manager.write_credentials_file(dvc_repo_path, gdrive_provider)
+                    return success
+                    
+                dvc_client.on_auth_error = on_auth_error
+                
         except DVCRepositoryError as exc:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

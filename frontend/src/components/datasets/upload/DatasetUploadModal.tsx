@@ -235,8 +235,8 @@ export function DatasetUploadModal({
                   onChange={(event) => setStorageProviderId(event.target.value)}
                   disabled={submitting || isLoadingStorageProviders || storageProviders.length === 0}
                 >
-                  <option value="">Default (MinIO internal)</option>
-                  {storageProviders.map((provider) => (
+                  <option value="">Server Default (Internal MinIO)</option>
+                  {storageProviders.filter(p => p.id !== "server-default-minio").map((provider) => (
                     <option key={provider.id} value={provider.id}>
                       {provider.name} ({provider.type})
                     </option>

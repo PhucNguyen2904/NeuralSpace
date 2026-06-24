@@ -343,7 +343,7 @@ class DatasetUploadService:
             )
             dvc_result = await self._track_dvc_upload(
                 dataset_id=dataset_id,
-                dataset_name=parsed.name,
+                dataset_name=dataset_id,
                 version=normalized_version,
                 filename=filename,
                 raw=raw,

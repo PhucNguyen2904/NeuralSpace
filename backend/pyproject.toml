@@ -37,6 +37,7 @@ dependencies = [
     "opentelemetry-instrumentation-httpx==0.46b0",
     "pytest-asyncio==0.23.7",
     "pytest==8.2.2",
+    "ultralytics>=8.2.0",
 ]
 
 [build-system]

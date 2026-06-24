@@ -278,6 +278,25 @@ def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection
         if validation_errors:
             errors.extend(validation_errors)
 
+        if primary_artifact:
+            import tempfile
+            from pathlib import Path
+            try:
+                import torch
+                from ultralytics import YOLO  # needed for torch.load to unpickle ultralytics classes
+                with tempfile.TemporaryDirectory() as tmp:
+                    target = Path(tmp) / "best.pt"
+                    target.write_bytes(archive.read(rel_to_info[primary_artifact]))
+                    pt_data = torch.load(str(target), map_location='cpu', weights_only=False)
+                    if isinstance(pt_data, dict) and "task" in pt_data:
+                        pt_task = pt_data["task"]
+                        ui_to_task = {"detection": "detect", "segmentation": "segment", "classification": "classify", "pose": "pose"}
+                        expected_task = ui_to_task.get(yolo_type)
+                        if expected_task and pt_task != expected_task:
+                            errors.append(_issue("YOLO_TASK_MISMATCH", f"Selected type is '{yolo_type}', but the model weights are for '{pt_task}'.", "error", primary_artifact))
+            except Exception as e:
+                pass
+
         metadata: dict = {}
         metadata_path = "model.metadata.json" if "model.metadata.json" in names else next((name for name in names if name.endswith("/model.metadata.json")), None)
         if metadata_path:
@@ -1313,6 +1332,7 @@ async def inspect_yolo_model(
     tags: str | None = Form(default=None),
     dataset_version_id: str | None = Form(default=None),
     experiment_id: str | None = Form(default=None),
+    run_id: str | None = Form(default=None),
     yolo_type: str = Form(default="detection"),
     db: AsyncSession = Depends(get_db),
     _current_user: UserContext = Depends(get_current_user),
@@ -1361,8 +1381,6 @@ async def inspect_yolo_model(
             errors.append(_issue("YOLO_DATASET_VERSION_NOT_FOUND", "Selected dataset version does not exist.", "error", resolved_dataset_version_id))
         else:
             dataset_classes = await _dataset_classes_for_version(db, resolved_dataset_version_id)
-    else:
-        warnings.append(_issue("YOLO_DATASET_VERSION_MISSING", "No dataset version selected; lineage will be incomplete.", "warning"))
 
     model_classes = dataset_lineage.get("classes") if isinstance(dataset_lineage.get("classes"), list) else []
     model_classes = [str(item) for item in model_classes]
@@ -1431,6 +1449,7 @@ async def upload_yolo_model(
     tags: str | None = Form(default=None, description="Comma-separated tags"),
     dataset_version_id: str | None = Form(default=None),
     experiment_id: str | None = Form(default=None),
+    run_id: str | None = Form(default=None),
     yolo_type: str = Form(default="detection"),
     storage_provider_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
@@ -1484,8 +1503,6 @@ async def upload_yolo_model(
             errors.append(_issue("YOLO_DATASET_VERSION_NOT_FOUND", "Selected dataset version does not exist.", "error", resolved_dataset_version_id))
         else:
             dataset_classes = await _dataset_classes_for_version(db, resolved_dataset_version_id)
-    else:
-        warnings.append(_issue("YOLO_DATASET_VERSION_MISSING", "No dataset version selected; lineage will be incomplete.", "warning"))
 
     model_classes = dataset_lineage.get("classes") if isinstance(dataset_lineage.get("classes"), list) else []
     model_classes = [str(item) for item in model_classes]

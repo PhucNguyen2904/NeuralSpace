@@ -388,10 +388,14 @@ class DVCProfileService:
                 
                 await self._run(["git", "config", "user.name", repo.account.username], cwd=repo_path)
                 await self._run(["git", "config", "user.email", f"{repo.account.username}@users.noreply.github.com"], cwd=repo_path)
+                
+                # Auto-initialize DVC if missing
+                if not (Path(repo_path) / ".dvc").exists():
+                    await self._ensure_dvc_repo(repo_path)
+                    await self._run(["git", "push", "origin", "HEAD"], cwd=repo_path)
             except Exception as e:
                 logging.error(f"Failed to auto-clone git repo {repo.id}: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to clone repository: {e}")
-        
         # Mirror GitRepository as a DVCProfile to satisfy foreign key constraints
         profile = await self.db.get(DVCProfile, repo.id)
         if not profile:

@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.dependencies import get_db, get_current_user, UserContext
 from app.models.git_integration import GitAccount, GitRepository
 from app.models.user import User
+from app.models.mlops_tracking import AuditLog
 from app.core.security import encrypt_token, decrypt_token, create_access_token, verify_token
 from app.config import get_settings
 
@@ -114,6 +115,17 @@ async def github_oauth_callback(
             )
             db.add(account)
             
+        # Add Audit Log
+        db.add(
+            AuditLog(
+                entity_type="git_account",
+                entity_id=user_id,
+                action="git_connect",
+                actor_id=user_id,
+                metadata_payload={"provider": "github", "username": username}
+            )
+        )
+            
         await db.commit()
         
     return RedirectResponse(url=f"{settings.FRONTEND_URL}/settings#git")
@@ -155,6 +167,18 @@ async def disconnect_git_account(
         raise HTTPException(status_code=404, detail="Git account not found")
         
     await db.delete(account)
+    
+    # Add Audit Log
+    db.add(
+        AuditLog(
+            entity_type="git_account",
+            entity_id=account_id,
+            action="git_disconnect",
+            actor_id=current_user.user_id,
+            metadata_payload={"provider": account.provider, "username": account.username}
+        )
+    )
+    
     await db.commit()
     return None
 
@@ -334,6 +358,17 @@ async def track_repository(
         repo.sync_status = None
         repo.last_sync_time = None
         
+    # Add Audit Log
+    db.add(
+        AuditLog(
+            entity_type="git_repository",
+            entity_id=repo_id,
+            action="git_track_repo" if payload.is_tracked else "git_untrack_repo",
+            actor_id=current_user.user_id,
+            metadata_payload={"repo_name": repo.repo_name, "branch": payload.tracked_branch}
+        )
+    )
+        
     await db.commit()
     
     return {
@@ -342,3 +377,33 @@ async def track_repository(
         "tracked_branch": repo.tracked_branch,
         "sync_status": repo.sync_status
     }
+
+@router.get("/activities")
+async def list_git_activities(
+    current_user: Annotated[UserContext, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+) -> list[dict[str, Any]]:
+    """List recent Git Integration activities for the current user."""
+    result = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.actor_id == current_user.user_id,
+            AuditLog.entity_type.in_(["git_account", "git_repository", "git_sync"])
+        )
+        .order_by(AuditLog.created_at.desc())
+        .limit(20)
+    )
+    logs = result.scalars().all()
+    
+    return [
+        {
+            "id": log.id,
+            "action": log.action,
+            "entity_type": log.entity_type,
+            "entity_id": log.entity_id,
+            "metadata": log.metadata_payload,
+            "created_at": log.created_at.isoformat()
+        }
+        for log in logs
+    ]
+

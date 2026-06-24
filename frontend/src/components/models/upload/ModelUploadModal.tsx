@@ -281,8 +281,8 @@ export function ModelUploadModal({
                 onChange={(e) => setStorageProviderId(e.target.value)}
                 disabled={isLoadingStorageProviders}
               >
-                <option value="">Default (MinIO Internal)</option>
-                {storageProviders.map((p) => (
+                <option value="">Server Default (Internal MinIO)</option>
+                {storageProviders.filter(p => p.id !== "server-default-minio").map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} ({p.type})
                   </option>

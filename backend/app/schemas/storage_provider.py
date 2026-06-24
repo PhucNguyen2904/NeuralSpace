@@ -11,6 +11,7 @@ class StorageProviderBase(BaseModel):
     type: Literal["minio", "s3", "gdrive"]
     config: dict[str, Any]
     is_active: bool = True
+    is_default: bool = False
 
 class StorageProviderCreate(StorageProviderBase):
     pass
@@ -19,6 +20,7 @@ class StorageProviderUpdate(BaseModel):
     name: str | None = Field(None, max_length=255)
     config: dict[str, Any] | None = None
     is_active: bool | None = None
+    is_default: bool | None = None
 
 class StorageProviderResponse(StorageProviderBase):
     id: str

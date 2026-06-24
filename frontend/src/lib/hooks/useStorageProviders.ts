@@ -7,6 +7,7 @@ export interface StorageProvider {
   type: "minio" | "s3" | "gdrive";
   config: Record<string, any>;
   is_active: boolean;
+  is_default: boolean;
   created_at: string;
 }
 
@@ -22,11 +23,43 @@ export function useStorageProviders() {
 export function useCreateStorageProvider() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { name: string; type: string; config: any; is_active?: boolean }) => {
+    mutationFn: async (payload: { name: string; type: string; config: any; is_active?: boolean; is_default?: boolean }) => {
       try {
         return await unwrapResponse(apiClient.post("/storage-providers", payload));
       } catch (error: any) {
         throw new Error(error.response?.data?.detail || "Failed to create storage provider");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
+    },
+  });
+}
+
+export function useUpdateStorageProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
+      try {
+        return await unwrapResponse(apiClient.put(`/storage-providers/${id}`, payload));
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || "Failed to update storage provider");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
+    },
+  });
+}
+
+export function useClearDefaultStorageProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      try {
+        return await unwrapResponse(apiClient.post(`/storage-providers/clear-default`, {}));
+      } catch (error: any) {
+        throw new Error(error.response?.data?.detail || "Failed to clear default storage provider");
       }
     },
     onSuccess: () => {

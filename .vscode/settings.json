@@ -12,5 +12,5 @@
   "terminal.integrated.env.windows": {
     "PYTHONPATH": "${workspaceFolder}/backend"
   },
-  "python.defaultInterpreterPath": "D:\\Python3.11\\python.exe"
+  "python.defaultInterpreterPath": "D:\\Documents\\Lap_trinh\\NeuralSpace\\backend\\.venv\\Scripts\\python.exe"
 }

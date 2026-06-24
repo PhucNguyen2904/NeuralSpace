@@ -36,8 +36,8 @@ import {
   useUpdateGitSyncPrefs
 } from "@/lib/hooks/useSettings";
 import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcProfile } from "@/lib/hooks/useDatasetVersions";
-import { useStorageProviders, useCreateStorageProvider, useDeleteStorageProvider, useGoogleOAuthLogin } from "@/lib/hooks/useStorageProviders";
-import { useGitAccounts, useGitOAuthLogin, useDisconnectGitAccount, useGitRepositories, useTrackedRepositories, useUntrackedRepositories, useTrackRepository } from "@/lib/hooks/useGitIntegration";
+import { useStorageProviders, useCreateStorageProvider, useUpdateStorageProvider, useClearDefaultStorageProvider, useDeleteStorageProvider, useGoogleOAuthLogin } from "@/lib/hooks/useStorageProviders";
+import { useGitAccounts, useGitOAuthLogin, useDisconnectGitAccount, useGitRepositories, useTrackedRepositories, useUntrackedRepositories, useTrackRepository, useGitActivities } from "@/lib/hooks/useGitIntegration";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
 
@@ -123,8 +123,10 @@ export default function SettingsPage() {
   const deleteDvcProfile = useDeleteDvcProfile();
 
   const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
-  const deleteStorageProvider = useDeleteStorageProvider();
   const createStorageProvider = useCreateStorageProvider();
+  const updateStorageProvider = useUpdateStorageProvider();
+  const clearDefaultStorageProvider = useClearDefaultStorageProvider();
+  const deleteStorageProvider = useDeleteStorageProvider();
   const googleOAuthLogin = useGoogleOAuthLogin();
   const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
   const gitOAuthLogin = useGitOAuthLogin();
@@ -372,34 +374,123 @@ export default function SettingsPage() {
                     </div>
                   ) : (
                     storageProviders.map((provider) => (
-                      <div key={provider.id} className="rounded-lg border border-border bg-bg-elevated p-4 flex flex-wrap items-start justify-between gap-3 shadow-sm hover:border-brand-500/30 transition-colors">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Database className="h-4 w-4 text-brand-500" />
-                            <p className="font-medium text-text-primary">{provider.name}</p>
-                            <span className="rounded bg-brand-500/10 px-1.5 py-0.5 text-xs font-semibold text-brand-600 uppercase tracking-wide">
-                              {provider.type}
-                            </span>
-                            {!provider.is_active && <span className="rounded bg-error-500/10 px-1.5 py-0.5 text-xs font-semibold text-error-500 uppercase tracking-wide">Inactive</span>}
+                      <div key={provider.id} className="rounded-xl border border-border bg-bg-surface overflow-hidden shadow-sm hover:border-brand-500/30 transition-all group">
+                        <div className="p-5 flex flex-wrap items-start justify-between gap-4">
+                          <div className="space-y-3 flex-1 min-w-[250px]">
+                            <div className="flex items-center gap-2">
+                              <div className="h-8 w-8 rounded-lg bg-brand-500/10 flex items-center justify-center">
+                                <Database className="h-4 w-4 text-brand-600" />
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-text-primary text-sm">{provider.name}</h4>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span className="text-xs text-text-tertiary">Type:</span>
+                                  <span className="rounded bg-bg-sunken border border-border px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
+                                    {provider.type}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                              {provider.type !== "gdrive" ? (
+                                <>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-text-tertiary">Endpoint</span>
+                                    <span className="text-text-secondary font-mono truncate">{provider.config.endpoint || "N/A"}</span>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-text-tertiary">Bucket</span>
+                                    <span className="text-text-secondary font-mono truncate">{provider.config.bucket || "N/A"}</span>
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <span className="text-text-tertiary">Access Key</span>
+                                    <span className="text-text-secondary font-mono">
+                                      {provider.config.access_key ? `${provider.config.access_key.substring(0, 4)}****` : "N/A"}
+                                    </span>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="flex flex-col gap-1 col-span-2">
+                                  <span className="text-text-tertiary">Account</span>
+                                  <span className="text-text-secondary font-medium">Google Drive Integration</span>
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-text-secondary font-mono bg-bg-sunken px-2 py-1 rounded inline-block mt-1">
-                            {provider.type === "gdrive" ? "Google Drive Integration" : `Bucket: ${provider.config.bucket || "N/A"}`}
-                          </p>
+
+                          <div className="flex flex-col items-end justify-between gap-4 h-full">
+                            <div className="flex gap-2">
+                              {!provider.is_active && <span className="rounded-full bg-error-500/10 px-2.5 py-1 text-xs font-medium text-error-600 border border-error-500/20">Inactive</span>}
+                              {provider.is_default && <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 border border-brand-500/20 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-brand-600"></span>Default</span>}
+                            </div>
+                            
+                            <div className="flex gap-2">
+                              {!provider.is_default && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  loading={
+                                    (updateStorageProvider.isPending && updateStorageProvider.variables?.id === provider.id) || 
+                                    (clearDefaultStorageProvider.isPending && provider.id === "server-default-minio")
+                                  }
+                                  onClick={() => {
+                                    if (provider.id === "server-default-minio") {
+                                      clearDefaultStorageProvider.mutate(undefined, {
+                                        onSuccess: () => setToastMsg("Reverted to System Default provider")
+                                      });
+                                    } else {
+                                      updateStorageProvider.mutate({
+                                        id: provider.id,
+                                        payload: { is_default: true }
+                                      }, {
+                                        onSuccess: () => setToastMsg("Default provider updated")
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Set Default
+                                </Button>
+                              )}
+                              {provider.id !== "server-default-minio" && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => alert("Edit functionality coming soon")}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="danger"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    onClick={() => {
+                                      if (confirm("Are you sure you want to delete this provider?")) {
+                                        deleteStorageProvider.mutate(provider.id, {
+                                          onSuccess: () => setToastMsg("Provider deleted")
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    Delete
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          className="shrink-0"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete this provider?")) {
-                              deleteStorageProvider.mutate(provider.id, {
-                                onSuccess: () => setToastMsg("Provider deleted")
-                              });
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
+                        <div className="bg-bg-sunken px-5 py-2.5 border-t border-border flex justify-between items-center">
+                          <span className="text-[11px] text-text-tertiary flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            {provider.id === "server-default-minio" ? "System Managed" : `Added ${new Date(provider.created_at).toLocaleDateString()}`}
+                          </span>
+                          <span className="text-[11px] text-brand-600 font-medium cursor-pointer hover:underline">
+                            Test Connection
+                          </span>
+                        </div>
                       </div>
                     ))
                   )}
@@ -952,6 +1043,68 @@ function SyncPreferences() {
 }
 
 function RecentActivity() {
+  const { data: activities, isLoading } = useGitActivities();
+
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    const diff = (Date.now() - date.getTime()) / 1000;
+    if (diff < 60) return 'Vài giây trước';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    return `${Math.floor(diff / 86400)} ngày trước`;
+  };
+
+  const renderActivityIcon = (action: string) => {
+    switch (action) {
+      case 'git_connect':
+        return (
+          <div className="w-[28px] h-[28px] rounded-full bg-[#D1FAE5] dark:bg-[#065F46]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <GitPullRequest className="w-4 h-4 text-[#065F46] dark:text-[#D1FAE5]" />
+          </div>
+        );
+      case 'git_disconnect':
+        return (
+          <div className="w-[28px] h-[28px] rounded-full bg-[#FEE2E2] dark:bg-[#991B1B]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <AlertCircle className="w-4 h-4 text-[#991B1B] dark:text-[#FEE2E2]" />
+          </div>
+        );
+      case 'git_track_repo':
+        return (
+          <div className="w-[28px] h-[28px] rounded-full bg-[#DBEAFE] dark:bg-[#1E40AF]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <GitCommit className="w-4 h-4 text-[#1E40AF] dark:text-[#DBEAFE]" />
+          </div>
+        );
+      case 'git_untrack_repo':
+        return (
+          <div className="w-[28px] h-[28px] rounded-full bg-[#FEF3C7] dark:bg-[#92400E]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Trash2 className="w-4 h-4 text-[#92400E] dark:text-[#FEF3C7]" />
+          </div>
+        );
+      default:
+        return (
+          <div className="w-[28px] h-[28px] rounded-full bg-[#F3F4F6] dark:bg-gray-800 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Tag className="w-4 h-4 text-[#6B7280] dark:text-gray-400" />
+          </div>
+        );
+    }
+  };
+
+  const renderActivityMessage = (activity: any) => {
+    const meta = activity.metadata || {};
+    switch (activity.action) {
+      case 'git_connect':
+        return <>Connected Git account <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">{meta.provider} / {meta.username}</code></>;
+      case 'git_disconnect':
+        return <>Disconnected Git account <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">{meta.provider} / {meta.username}</code></>;
+      case 'git_track_repo':
+        return <>Started tracking repository <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">{meta.repo_name}</code> on branch <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">{meta.branch}</code></>;
+      case 'git_untrack_repo':
+        return <>Stopped tracking repository <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">{meta.repo_name}</code></>;
+      default:
+        return <>{activity.action}</>;
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -963,55 +1116,26 @@ function RecentActivity() {
 
       <div className="border border-[#E5E7EB] dark:border-gray-800 rounded-[8px] bg-[#FFFFFF] dark:bg-gray-900 p-[20px] md:p-[24px]">
         <div className="space-y-6">
-          <div className="flex gap-4">
-            <div className="w-[28px] h-[28px] rounded-full bg-[#D1FAE5] dark:bg-[#065F46]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <GitCommit className="w-4 h-4 text-[#065F46] dark:text-[#D1FAE5]" />
-            </div>
-            <div>
-              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
-                Pushed exp-run-#142 metadata → <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">neural-space-experiments/main</code>
-              </p>
-              <p className="text-[12px] text-[#9CA3AF] mt-1">12 phút trước</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="w-[28px] h-[28px] rounded-full bg-[#DBEAFE] dark:bg-[#1E40AF]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <GitPullRequest className="w-4 h-4 text-[#1E40AF] dark:text-[#DBEAFE]" />
-            </div>
-            <div>
-              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
-                PR #28 opened: "Add ResNet50 baseline" → <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">mlops-pipelines</code>
-              </p>
-              <p className="text-[12px] text-[#9CA3AF] mt-1">47 phút trước</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="w-[28px] h-[28px] rounded-full bg-[#FEE2E2] dark:bg-[#991B1B]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <AlertCircle className="w-4 h-4 text-[#991B1B] dark:text-[#FEE2E2]" />
-            </div>
-            <div>
-              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
-                Sync failed: <code className="font-mono bg-[#F3F4F6] dark:bg-gray-800 px-[5px] py-[2px] rounded-[3px] text-[13px] text-[#111827] dark:text-gray-300">dataset-versioning/main</code> — permission denied (403)
-              </p>
-              <p className="text-[12px] text-[#9CA3AF] mt-1">1 giờ trước</p>
-            </div>
-          </div>
-
-          <div className="flex gap-4">
-            <div className="w-[28px] h-[28px] rounded-full bg-[#FEF3C7] dark:bg-[#92400E]/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <Tag className="w-4 h-4 text-[#92400E] dark:text-[#FEF3C7]" />
-            </div>
-            <div>
-              <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
-                Tagged release v0.4.1 sau khi pipeline hoàn tất
-              </p>
-              <p className="text-[12px] text-[#9CA3AF] mt-1">3 giờ trước</p>
-            </div>
-          </div>
+          {isLoading ? (
+            <p className="text-sm text-text-secondary">Loading activities...</p>
+          ) : !activities || activities.length === 0 ? (
+            <p className="text-sm text-text-secondary">No recent activities.</p>
+          ) : (
+            activities.map(activity => (
+              <div key={activity.id} className="flex gap-4">
+                {renderActivityIcon(activity.action)}
+                <div>
+                  <p className="text-[14px] text-[#111827] dark:text-gray-200 leading-relaxed">
+                    {renderActivityMessage(activity)}
+                  </p>
+                  <p className="text-[12px] text-[#9CA3AF] mt-1">{formatTime(activity.created_at)}</p>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
   );
 }
+

@@ -101,6 +101,27 @@ export function useTrackRepository() {
       queryClient.invalidateQueries({ queryKey: ["gitRepositories"] });
       queryClient.invalidateQueries({ queryKey: ["trackedRepositories"] });
       queryClient.invalidateQueries({ queryKey: ["untrackedRepositories"] });
+      queryClient.invalidateQueries({ queryKey: ["gitActivities"] });
     }
   });
 }
+
+export interface GitActivity {
+  id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  metadata: Record<string, any>;
+  created_at: string;
+}
+
+export function useGitActivities() {
+  return useQuery<GitActivity[]>({
+    queryKey: ["gitActivities"],
+    queryFn: async () => {
+      const response = await apiClient.get("/git/accounts/activities");
+      return response.data;
+    }
+  });
+}
+

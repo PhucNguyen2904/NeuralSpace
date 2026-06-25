@@ -46,10 +46,10 @@ export function DatasetUploadModal({
   const [dvcMode, setDvcMode] = React.useState<"default" | "git">("default");
   const [gitAccountId, setGitAccountId] = React.useState("");
   const [gitRepoId, setGitRepoId] = React.useState("");
-  
+
   const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
   const selectedGitAccountId = gitAccountId || gitAccounts[0]?.id || "";
-  
+
   const { data: gitRepos = [], isLoading: isLoadingGitRepos } = useGitRepositories(selectedGitAccountId);
   const trackedGitRepos = React.useMemo(() => gitRepos.filter((r) => r.is_tracked), [gitRepos]);
   const selectedGitRepoId = gitRepoId || trackedGitRepos[0]?.id || "";
@@ -220,7 +220,7 @@ export function DatasetUploadModal({
                   onChange={(event) => setDvcMode(event.target.value as "default" | "git")}
                   disabled={submitting}
                 >
-                  <option value="default">Server Default (Internal Git)</option>
+                  <option value="default">Server Default</option>
                   <option value="git">External Git Repository</option>
                 </select>
               </div>
@@ -269,7 +269,7 @@ export function DatasetUploadModal({
                 </div>
                 {gitAccounts.length === 0 ? <span className="text-xs text-red-600">No connected Git accounts.</span> : null}
               </Field>
-              
+
               <Field label="Git Repository">
                 <div className="relative">
                   <Database size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
@@ -442,11 +442,11 @@ function CommonFields({
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       <Field label="Dataset name">
-        <input 
-          className={inputCls()} 
-          value={form.name} 
-          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} 
-          placeholder="Inferred from file if empty" 
+        <input
+          className={inputCls()}
+          value={form.name}
+          onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
+          placeholder="Inferred from file if empty"
           disabled={!!initialDatasetName}
         />
       </Field>

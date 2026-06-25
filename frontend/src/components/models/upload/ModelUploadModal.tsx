@@ -147,29 +147,7 @@ export function ModelUploadModal({
         task: response.form.task || current.task,
         tags: response.form.tags.join(", ") || current.tags
       }));
-      // Auto-select YOLO type ONLY when pt_task is explicitly set by the backend.
-      // pt_task is read from inside the .pt weights file and is the only reliable signal.
-      if (mode === "yolo") {
-        const ptTask = (response.form as any).pt_task as string | null | undefined;
-        const taskToYoloType: Record<string, typeof yoloType> = {
-          detect: "detection",
-          segment: "segmentation",
-          classify: "classification",
-          pose: "pose",
-        };
-        const resolvedType = ptTask ? taskToYoloType[ptTask] : undefined;
-        if (resolvedType && resolvedType !== yoloType) {
-          setYoloType(resolvedType);
-          setIssues((prev) => ({
-            // Remove the mismatch error since we are auto-correcting it
-            errors: prev.errors.filter((e) => e.code !== "YOLO_TASK_MISMATCH"),
-            warnings: [
-              { code: "AUTO_TASK_DETECTED", message: `Task auto-detected as '${resolvedType}' from model files — YOLO type has been automatically updated.`, severity: "warning" },
-              ...prev.warnings.filter((w) => w.code !== "AUTO_TASK_DETECTED"),
-            ],
-          }));
-        }
-      }
+
       setVersionTouched(false);
     } catch (error) {
       setIssues(parseUploadError(error));

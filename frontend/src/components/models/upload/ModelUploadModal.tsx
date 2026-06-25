@@ -147,6 +147,29 @@ export function ModelUploadModal({
         task: response.form.task || current.task,
         tags: response.form.tags.join(", ") || current.tags
       }));
+      // Auto-select YOLO type ONLY when pt_task is explicitly set by the backend.
+      // pt_task is read from inside the .pt weights file and is the only reliable signal.
+      if (mode === "yolo") {
+        const ptTask = (response.form as any).pt_task as string | null | undefined;
+        const taskToYoloType: Record<string, typeof yoloType> = {
+          detect: "detection",
+          segment: "segmentation",
+          classify: "classification",
+          pose: "pose",
+        };
+        const resolvedType = ptTask ? taskToYoloType[ptTask] : undefined;
+        if (resolvedType && resolvedType !== yoloType) {
+          setYoloType(resolvedType);
+          setIssues((prev) => ({
+            // Remove the mismatch error since we are auto-correcting it
+            errors: prev.errors.filter((e) => e.code !== "YOLO_TASK_MISMATCH"),
+            warnings: [
+              { code: "AUTO_TASK_DETECTED", message: `Task auto-detected as '${resolvedType}' from model files — YOLO type has been automatically updated.`, severity: "warning" },
+              ...prev.warnings.filter((w) => w.code !== "AUTO_TASK_DETECTED"),
+            ],
+          }));
+        }
+      }
       setVersionTouched(false);
     } catch (error) {
       setIssues(parseUploadError(error));
@@ -256,7 +279,7 @@ export function ModelUploadModal({
                 <Button variant="outline" onClick={() => void inspect()} disabled={!file || inspecting || submitting} loading={inspecting}>
                   Read
                 </Button>
-                <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void submit()} disabled={!file || !inspectResult || submitting || inspecting} loading={submitting}>
+                <Button className="bg-violet-600 text-white hover:bg-violet-500" onClick={() => void submit()} disabled={!file || !inspectResult || issues.errors.length > 0 || submitting || inspecting} loading={submitting}>
                   Upload
                 </Button>
               </>
@@ -582,7 +605,7 @@ function inputCls() {
 
 function parseUploadError(error: unknown): { errors: ModelInspectIssue[]; warnings: ModelInspectIssue[] } {
   const maybe = error as { response?: { data?: { detail?: unknown; message?: unknown; error_code?: unknown } } };
-  const detail = maybe.response?.data?.detail;
+  const detail = maybe.response?.data?.detail || maybe.response?.data?.message;
   if (detail && typeof detail === "object") {
     const payload = detail as { errors?: ModelInspectIssue[]; warnings?: ModelInspectIssue[]; message?: string };
     return {

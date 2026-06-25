@@ -18,18 +18,33 @@ class BaseYoloValidator(ABC):
 
 
 class YoloDetectionValidator(BaseYoloValidator):
+    # File/directory name fragments that are exclusive to pose packages
+    _POSE_MARKERS = ("pose_labels", "keypoints", "skeleton", "kps_", "_kpts", "pose_pred", "val_pose")
+
     def validate(self, names: set[str], filename: str) -> list[dict]:
         errors = []
         if not self._check_weights(names):
             errors.append(self._issue("YOLO_WEIGHT_MISSING", "Detection package must include weights/best.pt or weights/last.pt.", "error", filename))
-        
-        # We can't strictly enforce samples because users might upload minimal zips.
-        # But we MUST reject if it has masks or class_preds
+
+        # Reject clear segmentation markers
         if any("masks/" in name for name in names):
             errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Detection package should not contain masks/ (looks like Segmentation).", "error", filename))
+        # Reject clear classification markers
         if any("class_preds" in name for name in names):
             errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Detection package should not contain class_preds.jpg (looks like Classification).", "error", filename))
-            
+        # Reject pose-specific markers
+        pose_hit = next(
+            (name for name in names if any(marker in name.lower() for marker in self._POSE_MARKERS)),
+            None,
+        )
+        if pose_hit:
+            errors.append(self._issue(
+                "YOLO_STRUCTURE_MISMATCH",
+                f"Detection package should not contain pose-specific artifacts ('{pose_hit}'). Upload as Pose instead.",
+                "error",
+                filename,
+            ))
+
         return errors
 
 
@@ -79,16 +94,24 @@ class YoloPoseValidator(BaseYoloValidator):
         errors = []
         if not self._check_weights(names):
             errors.append(self._issue("YOLO_WEIGHT_MISSING", "Pose package must include weights/best.pt or weights/last.pt.", "error", filename))
-        
-        # Pose doesn't have a very unique file in the template (just results.csv), 
-        # so we ensure it doesn't have things from others.
+
+        # Pose doesn't have a very unique file in the template (just results.csv),
+        # so we ensure it doesn't have things from other task types.
         if any("masks/" in name for name in names):
-            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain masks/.", "error", filename))
+            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain masks/ (looks like Segmentation).", "error", filename))
         if any("metrics.json" in name for name in names):
-            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain metrics.json.", "error", filename))
+            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain metrics.json (looks like Classification).", "error", filename))
         if any("class_preds" in name for name in names):
-            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain class_preds.jpg.", "error", filename))
-        
+            errors.append(self._issue("YOLO_STRUCTURE_MISMATCH", "Pose package should not contain class_preds.jpg (looks like Classification).", "error", filename))
+        # Reject detection-only prediction samples that are not produced by pose
+        if any("val_batch" in name and "pred" in name and "pose" not in name.lower() for name in names):
+            errors.append(self._issue(
+                "YOLO_STRUCTURE_MISMATCH",
+                "Pose package should not contain detection prediction samples (val_batch*_pred.jpg). Upload as Detection instead.",
+                "error",
+                filename,
+            ))
+
         return errors
 
 

@@ -194,7 +194,7 @@ export function DatasetUploadModal({
                 <Button variant="outline" onClick={() => void inspect()} disabled={!file || inspecting || submitting} loading={inspecting}>
                   Read
                 </Button>
-                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || (dvcMode === "git" && !selectedGitRepoId) || submitting || inspecting} loading={submitting}>
+                <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={() => void submit()} disabled={!file || !inspectResult || issues.errors.length > 0 || (dvcMode === "git" && !selectedGitRepoId) || submitting || inspecting} loading={submitting}>
                   Upload
                 </Button>
               </>
@@ -576,7 +576,7 @@ function inputCls() {
 
 function parseUploadError(error: unknown): { errors: DatasetUploadIssue[]; warnings: DatasetUploadIssue[] } {
   const maybe = error as { response?: { data?: { detail?: unknown; message?: unknown; error_code?: unknown } } };
-  const detail = maybe.response?.data?.detail;
+  const detail = maybe.response?.data?.detail || maybe.response?.data?.message;
   if (detail && typeof detail === "object") {
     const payload = detail as { errors?: DatasetUploadIssue[]; warnings?: DatasetUploadIssue[]; message?: string };
     return {

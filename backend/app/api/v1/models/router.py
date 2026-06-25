@@ -148,8 +148,10 @@ def _normalize_model_task(task: str | None) -> str:
         "detect": "object_detection",
         "detection": "object_detection",
         "segmentation": "semantic_segmentation",
+        "segment": "semantic_segmentation",
         "semantic_segmentation": "semantic_segmentation",
         "classification": "image_classification",
+        "classify": "image_classification",
         "image_classification": "image_classification",
         "pose": "object_detection",
         "tracking": "object_detection",
@@ -254,6 +256,70 @@ async def _dataset_classes_for_version(db: AsyncSession, dataset_version_id: str
 
 from app.services.validators.yolo_validators import get_validator
 
+def _detect_task_from_artifacts(
+    archive: zipfile.ZipFile,
+    rel_to_info: dict,
+    names: set,
+    results_path: str | None,
+) -> str | None:
+    """
+    Attempt to infer YOLO task type without loading the .pt weights.
+    Returns one of: 'detect', 'segment', 'classify', 'pose', or None.
+
+    Priority order:
+      1. args.yaml  — YOLO always writes `task: pose` etc. here
+      2. results.csv column headers — pose columns end with (P), detection with (B)
+    """
+    import yaml  # PyYAML is already a transitive dependency via ultralytics/hydra
+
+    # --- 1. args.yaml ---
+    args_path = (
+        "args.yaml" if "args.yaml" in names
+        else next((n for n in names if n.endswith("/args.yaml")), None)
+    )
+    if args_path:
+        try:
+            raw_yaml = archive.read(rel_to_info[args_path]).decode("utf-8", errors="replace")
+            args_data = yaml.safe_load(raw_yaml)
+            if isinstance(args_data, dict):
+                task_val = str(args_data.get("task") or "").strip().lower()
+                _yaml_map = {
+                    "detect": "detect", "detection": "detect",
+                    "segment": "segment", "segmentation": "segment",
+                    "classify": "classify", "classification": "classify",
+                    "pose": "pose",
+                }
+                if task_val in _yaml_map:
+                    return _yaml_map[task_val]
+        except Exception:
+            pass
+
+    # --- 2. results.csv column headers ---
+    if results_path:
+        try:
+            text = archive.read(rel_to_info[results_path]).decode("utf-8-sig", errors="replace")
+            header_line = text.split("\n")[0] if text else ""
+            cols = [c.strip() for c in header_line.split(",")]
+            # Pose metric columns end with (P): precision(P), recall(P), mAP50(P)
+            pose_cols = [c for c in cols if "(P)" in c or "kpt" in c.lower()]
+            # Detection metric columns end with (B): precision(B), recall(B), mAP50(B)
+            # NOTE: do NOT use "box_loss" — pose models also have train/box_loss!
+            box_cols = [c for c in cols if "(B)" in c]
+            # Segmentation metric columns end with (M): precision(M), mAP50(M)
+            # NOTE: do NOT use "mask_loss" — could overlap with other tasks
+            mask_cols = [c for c in cols if "(M)" in c]
+
+            if pose_cols and not box_cols and not mask_cols:
+                return "pose"
+            if mask_cols and not pose_cols:
+                return "segment"
+            # If (B) present without (P)/(M) → detection (this is the default, skip to avoid false positives)
+        except Exception:
+            pass
+
+    return None
+
+
 def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection") -> dict:
     warnings: list[dict] = []
     errors: list[dict] = []
@@ -278,6 +344,7 @@ def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection
         if validation_errors:
             errors.extend(validation_errors)
 
+        pt_task = None
         if primary_artifact:
             import tempfile
             from pathlib import Path
@@ -288,12 +355,15 @@ def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection
                     target = Path(tmp) / "best.pt"
                     target.write_bytes(archive.read(rel_to_info[primary_artifact]))
                     pt_data = torch.load(str(target), map_location='cpu', weights_only=False)
-                    if isinstance(pt_data, dict) and "task" in pt_data:
-                        pt_task = pt_data["task"]
-                        ui_to_task = {"detection": "detect", "segmentation": "segment", "classification": "classify", "pose": "pose"}
-                        expected_task = ui_to_task.get(yolo_type)
-                        if expected_task and pt_task != expected_task:
-                            errors.append(_issue("YOLO_TASK_MISMATCH", f"Selected type is '{yolo_type}', but the model weights are for '{pt_task}'.", "error", primary_artifact))
+                    if isinstance(pt_data, dict):
+                        pt_task = pt_data.get("task") or (pt_data.get("train_args") or {}).get("task")
+                        if not pt_task and hasattr(pt_data.get("model"), "task"):
+                            pt_task = getattr(pt_data["model"], "task")
+                        if pt_task:
+                            ui_to_task = {"detection": "detect", "segmentation": "segment", "classification": "classify", "pose": "pose"}
+                            expected_task = ui_to_task.get(yolo_type)
+                            if expected_task and pt_task != expected_task:
+                                errors.append(_issue("YOLO_TASK_MISMATCH", f"Selected type is '{yolo_type}', but the model weights are for '{pt_task}'.", "error", primary_artifact))
             except Exception as e:
                 pass
 
@@ -310,6 +380,77 @@ def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection
                 errors.append(_issue("YOLO_METADATA_INVALID", "model.metadata.json is not valid JSON.", "error", metadata_path))
         else:
             warnings.append(_issue("YOLO_METADATA_MISSING", "model.metadata.json is missing; metadata will be generated by backend.", "warning"))
+
+        # --- Fallback task detection when torch is unavailable ---
+        # Priority: model.metadata.json → args.yaml → results.csv columns
+        if pt_task is None:
+            # 1. Try model.metadata.json
+            if metadata:
+                model_info_block = _nested_dict(metadata, "model_info")
+                meta_task_raw = (
+                    _nested_string(model_info_block, "task")
+                    or _nested_string(metadata, "task_type")
+                    or _nested_string(metadata, "task")
+                )
+                if meta_task_raw:
+                    _meta_norm = {
+                        "detect": "detect", "object_detection": "detect", "detection": "detect",
+                        "segment": "segment", "segmentation": "segment", "semantic_segmentation": "segment",
+                        "classify": "classify", "classification": "classify", "image_classification": "classify",
+                        "pose": "pose",
+                    }
+                    pt_task = _meta_norm.get(meta_task_raw.strip().lower())
+
+            # 2. Try args.yaml / results.csv headers
+            if pt_task is None:
+                # results_path may not be resolved yet; derive it here for the helper
+                _results_path = (
+                    "reports/results.csv" if "reports/results.csv" in names
+                    else "results.csv" if "results.csv" in names
+                    else next((n for n in names if n.endswith("/results.csv")), None)
+                )
+                pt_task = _detect_task_from_artifacts(archive, rel_to_info, names, _results_path)
+
+            # 3. Validate mismatch if we found a task
+            if pt_task:
+                ui_to_task = {"detection": "detect", "segmentation": "segment", "classification": "classify", "pose": "pose"}
+                expected_task = ui_to_task.get(yolo_type)
+                if expected_task and pt_task != expected_task:
+                    source_label = "model.metadata.json" if metadata else "args.yaml/results.csv"
+                    errors.append(_issue(
+                        "YOLO_TASK_MISMATCH",
+                        f"Selected type is '{yolo_type}', but the model is for task '{pt_task}' "
+                        f"(detected via {source_label}). Please switch to the correct YOLO type.",
+                        "error",
+                        metadata_path or filename,
+                    ))
+            else:
+                # 4. Could not detect task at all — require model.metadata.json to declare it
+                # This happens when torch is not installed AND the ZIP has no args.yaml / standard CSV.
+                if metadata_path and metadata:
+                    # model.metadata.json exists but has no task field
+                    errors.append(_issue(
+                        "YOLO_METADATA_TASK_MISSING",
+                        "Cannot determine model task automatically (torch/ultralytics not available and "
+                        "no args.yaml or standard results.csv found). "
+                        "Please add a 'task' field to model.metadata.json with one of: "
+                        "'pose', 'detect', 'segment', 'classify'.",
+                        "error",
+                        metadata_path,
+                    ))
+                elif not metadata_path:
+                    # No model.metadata.json at all — already warned YOLO_METADATA_MISSING above,
+                    # but if the selected type is non-default, we can't validate at all
+                    if yolo_type != "detection":
+                        warnings.append(_issue(
+                            "YOLO_TASK_UNVERIFIABLE",
+                            f"Cannot verify that this model is actually a '{yolo_type}' model "
+                            f"(torch/ultralytics not available and no metadata found). "
+                            f"Add model.metadata.json with task='{yolo_type[:4]}' or args.yaml to enable validation.",
+                            "warning",
+                            filename,
+                        ))
+
 
         metrics = _nested_dict(metadata, "metrics")
         results_path = "reports/results.csv" if "reports/results.csv" in names else "results.csv" if "results.csv" in names else next((name for name in names if name.endswith("/results.csv")), None)
@@ -349,6 +490,7 @@ def _analyze_yolo_package(raw: bytes, filename: str, yolo_type: str = "detection
             "model_info": model_info,
             "dataset_lineage": dataset_lineage,
             "primary_artifact": _nested_string(model_info, "primary_artifact") or primary_artifact,
+            "pt_task": pt_task,
             "metrics": metrics,
             "artifacts": artifacts,
             "validation_checks": validation_checks,
@@ -1396,7 +1538,8 @@ async def inspect_yolo_model(
     resolved_version = version or _nested_string(model_info, "version") or "v1.0"
     resolved_description = description or _nested_string(model_info, "description") or ""
     resolved_architecture = architecture or _nested_string(model_info, "architecture") or "yolo"
-    resolved_task = _normalize_model_task(task or _nested_string(model_info, "task"))
+    pt_task = analysis.get("pt_task")
+    resolved_task = _normalize_model_task(pt_task or _nested_string(model_info, "task") or task)
     resolved_tags_list = _parse_tags(tags)
     if not resolved_tags_list and isinstance(model_info.get("tags"), list):
         resolved_tags_list = [str(item).strip() for item in model_info["tags"] if str(item).strip()]
@@ -1415,6 +1558,7 @@ async def inspect_yolo_model(
             "framework": "ultralytics",
             "task": resolved_task,
             "tags": resolved_tags_list,
+            "pt_task": pt_task,
         },
         "metadata": {
             "name": resolved_name,

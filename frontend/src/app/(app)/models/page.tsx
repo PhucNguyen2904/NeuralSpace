@@ -15,21 +15,21 @@ import { useToast } from "@/lib/hooks/useToast";
 import { defaultModelFilters, useLoadModel, useModelFilterStore, useModels } from "@/lib/hooks/useModels";
 import type { Model, ModelFilters, ModelFramework, TaskType } from "@/types/model";
 
-const frameworkOptions: Array<{ key: ModelFramework; label: string; count: number }> = [
-  { key: "pytorch", label: "PyTorch", count: 8 },
-  { key: "tensorflow", label: "TensorFlow", count: 4 },
-  { key: "onnx", label: "ONNX", count: 3 },
-  { key: "huggingface", label: "HuggingFace", count: 2 },
-  { key: "sklearn", label: "Scikit-learn", count: 1 },
-  { key: "ultralytics", label: "Ultralytics", count: 0 }
+const frameworkOptions: Array<{ key: ModelFramework; label: string }> = [
+  { key: "pytorch", label: "PyTorch" },
+  { key: "tensorflow", label: "TensorFlow" },
+  { key: "onnx", label: "ONNX" },
+  { key: "huggingface", label: "HuggingFace" },
+  { key: "sklearn", label: "Scikit-learn" },
+  { key: "ultralytics", label: "Ultralytics" }
 ];
-const taskOptions: Array<{ key: TaskType; label: string; count: number }> = [
-  { key: "image_classification", label: "Image Classification", count: 5 },
-  { key: "object_detection", label: "Object Detection", count: 4 },
-  { key: "text_classification", label: "Text Classification", count: 3 },
-  { key: "semantic_segmentation", label: "Semantic Segmentation", count: 2 },
-  { key: "text_generation", label: "Text Generation", count: 2 },
-  { key: "regression", label: "Regression / Other", count: 2 }
+const taskOptions: Array<{ key: TaskType; label: string }> = [
+  { key: "image_classification", label: "Image Classification" },
+  { key: "object_detection", label: "Object Detection" },
+  { key: "text_classification", label: "Text Classification" },
+  { key: "semantic_segmentation", label: "Semantic Segmentation" },
+  { key: "text_generation", label: "Text Generation" },
+  { key: "regression", label: "Regression / Other" }
 ];
 
 function parseFilters(params: URLSearchParams): Partial<ModelFilters> {
@@ -135,13 +135,13 @@ function ModelsPageContent() {
           <div>
             <p className="mb-2 text-sm font-semibold">Framework {activeCount ? <span className="rounded-full bg-violet-50 px-2 py-0.5 text-xs text-violet-700">Filters ({activeCount})</span> : null}</p>
             <div className="space-y-1.5">
-              {frameworkOptions.map((o) => <label key={o.key} className="flex items-center justify-between text-sm text-text-secondary"><span><input type="checkbox" checked={filters.frameworks.includes(o.key)} onChange={(e) => setFilters({ frameworks: e.target.checked ? [...filters.frameworks, o.key] : filters.frameworks.filter((f) => f !== o.key) })} className="mr-2" />{o.label}</span><span>{o.count}</span></label>)}
+              {frameworkOptions.map((o) => <label key={o.key} className="flex items-center justify-between text-sm text-text-secondary"><span><input type="checkbox" checked={filters.frameworks.includes(o.key)} onChange={(e) => setFilters({ frameworks: e.target.checked ? [...filters.frameworks, o.key] : filters.frameworks.filter((f) => f !== o.key) })} className="mr-2" />{o.label}</span></label>)}
             </div>
           </div>
           <div>
             <p className="mb-2 text-sm font-semibold">Task Type</p>
             <div className="space-y-1.5">
-              {taskOptions.map((o) => <label key={o.key} className="flex items-center justify-between text-sm text-text-secondary"><span><input type="checkbox" checked={filters.taskTypes.includes(o.key)} onChange={(e) => setFilters({ taskTypes: e.target.checked ? [...filters.taskTypes, o.key] : filters.taskTypes.filter((t) => t !== o.key) })} className="mr-2" />{o.label}</span><span>{o.count}</span></label>)}
+              {taskOptions.map((o) => <label key={o.key} className="flex items-center justify-between text-sm text-text-secondary"><span><input type="checkbox" checked={filters.taskTypes.includes(o.key)} onChange={(e) => setFilters({ taskTypes: e.target.checked ? [...filters.taskTypes, o.key] : filters.taskTypes.filter((t) => t !== o.key) })} className="mr-2" />{o.label}</span></label>)}
             </div>
           </div>
           <div>

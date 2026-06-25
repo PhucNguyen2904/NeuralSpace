@@ -5,12 +5,12 @@ import { AudioLines, FileText, Film, ImageIcon, Search, Table2 } from "lucide-re
 import { Input } from "@/components/ui";
 import type { DatasetFilters, DatasetType } from "@/types/dataset";
 
-const typeItems: Array<{ key: DatasetType; label: string; icon: LucideIcon; count: number }> = [
-  { key: "image", label: "Image", icon: ImageIcon, count: 12 },
-  { key: "text", label: "Text / NLP", icon: FileText, count: 6 },
-  { key: "tabular", label: "Tabular / CSV", icon: Table2, count: 4 },
-  { key: "audio", label: "Audio", icon: AudioLines, count: 1 },
-  { key: "video", label: "Video", icon: Film, count: 1 }
+const typeItems: Array<{ key: DatasetType; label: string; icon: LucideIcon }> = [
+  { key: "image", label: "Image", icon: ImageIcon },
+  { key: "text", label: "Text / NLP", icon: FileText },
+  { key: "tabular", label: "Tabular / CSV", icon: Table2 },
+  { key: "audio", label: "Audio", icon: AudioLines },
+  { key: "video", label: "Video", icon: Film }
 ];
 
 const allTags = ["computer-vision", "nlp", "benchmark", "custom", "tabular", "audio", "video"];
@@ -45,7 +45,6 @@ export function FilterPanel({
           {typeItems.map((item) => (
             <label key={item.key} className="flex cursor-pointer items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-text-secondary"><input type="checkbox" checked={filters.types.includes(item.key)} onChange={(event) => onChange({ types: event.target.checked ? [...filters.types, item.key] : filters.types.filter((type) => type !== item.key) })} className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500" /><item.icon size={14} className="text-emerald-600" /> {item.label}</span>
-              <span className="text-text-tertiary">{item.count}</span>
             </label>
           ))}
         </div>

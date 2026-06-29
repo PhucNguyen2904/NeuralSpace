@@ -55,6 +55,7 @@ class StorageService:
         from app.core.security import encrypt_credentials
         connection.encrypted_credentials = encrypt_credentials(json.dumps(request.params))
         await self.db.commit()
+        await self.db.refresh(connection)
         return connection
 
     async def list_connections(self, user_id: str) -> Sequence[StorageConnection]:
@@ -78,6 +79,7 @@ class StorageService:
             raise HTTPException(status_code=404, detail="Storage connection not found")
             
         await self.db.commit()
+        await self.db.refresh(target_connection)
         return target_connection
 
     async def get_connection(self, connection_id: str, user_id: str) -> StorageConnection:

@@ -9,8 +9,16 @@ from app.services.storage.gdrive_provider import GoogleDriveProvider
 
 def get_storage_provider(provider_model: StorageConnection) -> BaseStorageProvider:
     if provider_model.provider in ("minio", "s3"):
-        # Temporary stub to prevent crashes until fully migrated to rclone
-        return MinioProvider({})
+        import json
+        from app.core.security import decrypt_credentials
+        params = {}
+        if provider_model.encrypted_credentials:
+            try:
+                decrypted = decrypt_credentials(provider_model.encrypted_credentials)
+                params = json.loads(decrypted)
+            except Exception:
+                pass
+        return MinioProvider(params)
     elif provider_model.provider == "gdrive":
         return GoogleDriveProvider({})
     else:

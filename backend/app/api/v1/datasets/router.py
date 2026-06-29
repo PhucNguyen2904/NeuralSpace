@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 import re
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status, Request
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -293,6 +293,7 @@ async def list_datasets(
 @router.get("/{dataset_id}/download-url")
 async def get_dataset_download_url(
     dataset_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -343,6 +344,14 @@ async def get_dataset_download_url(
                     parsed_prefix = match.group(2).strip("/") if match.group(2) else ""
                     if parsed_prefix:
                         dvc_prefix = parsed_prefix + "/"
+                else:
+                    # Not an S3 remote, fallback to proxy stream URL
+                    token = ""
+                    if hasattr(request, "headers"):
+                        auth_header = request.headers.get("Authorization")
+                        if auth_header and auth_header.startswith("Bearer "):
+                            token = auth_header.split(" ")[1]
+                    return {"url": f"/api/v1/datasets/{dataset_id}/stream-download?access_token={token}"}
         
         object_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
     elif storage_path:
@@ -408,6 +417,93 @@ async def get_dataset_download_url(
 
 
 
+@router.get("/{dataset_id}/stream-download")
+async def stream_dataset_download(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+):
+    from fastapi.responses import StreamingResponse
+    from app.services.storage.rclone_service import StorageException
+    
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    
+    latest_version = (
+        await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.dataset_id == dataset.id, DatasetVersion.is_latest.is_(True))
+        )
+    ).scalar_one_or_none()
+
+    if not latest_version or not latest_version.dvc_md5:
+        raise HTTPException(status_code=404, detail="No DVC MD5 found for dataset version")
+
+    dvc_md5 = latest_version.dvc_md5.strip()
+
+    if not dataset.dvc_profile_id:
+        raise HTTPException(status_code=400, detail="Dataset does not have a DVC profile configured")
+
+    from app.models.mlops_tracking import DVCProfile
+    profile_row = await db.get(DVCProfile, dataset.dvc_profile_id)
+    if not profile_row or not profile_row.repo_path:
+        raise HTTPException(status_code=400, detail="Invalid DVC profile or missing repo path")
+
+    from src.integrations.dvc.client import DVCClient
+    import asyncio
+    
+    dvc_client = DVCClient(
+        profile_row.repo_path,
+        remote_name=profile_row.remote_name,
+        ssh_key_encrypted=profile_row.ssh_key_encrypted,
+        git_ssh_url=profile_row.git_ssh_url,
+    )
+    
+    dvc_file_path = f"{dataset.name}.dvc"
+    if not (Path(profile_row.repo_path) / dvc_file_path).exists():
+        raise HTTPException(status_code=404, detail=f"DVC file not found in repository")
+        
+    try:
+        await dvc_client.pull(dvc_file_path, profile_row.repo_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to pull dataset from remote: {e}")
+        
+    dataset_dir = Path(profile_row.repo_path) / dataset.name
+    if not dataset_dir.exists():
+        # It might be a single file
+        dataset_dir = Path(profile_row.repo_path) / dataset.name
+        if not dataset_dir.exists():
+            raise HTTPException(status_code=404, detail="Dataset not found after pull")
+
+    async def zip_streamer():
+        # Use zip command to stream directory contents as zip
+        import subprocess
+        proc = await asyncio.create_subprocess_exec(
+            "zip", "-r", "-", ".",
+            cwd=str(dataset_dir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        if not proc.stdout:
+            yield b""
+            return
+            
+        chunk_size = 64 * 1024
+        while True:
+            chunk = await proc.stdout.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+            
+        await proc.wait()
+        
+    filename = f"{dataset.name}.zip"
+    return StreamingResponse(
+        zip_streamer(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+    
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
     row = await db.get(Dataset, dataset_id)
@@ -752,7 +848,9 @@ async def create_dataset_version(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    return _version_payload(row)
+    res_payload = _version_payload(row)
+    await _resolve_user_names(db, [res_payload])
+    return res_payload
 
 
 @router.post("/{dataset_id}/versions/track", status_code=status.HTTP_201_CREATED)
@@ -1106,7 +1204,9 @@ async def get_dataset_version(
     row = await db.get(DatasetVersion, version_id)
     if row is None or row.dataset_id != dataset.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dataset version not found")
-    return _version_payload(row, linked_models=await _version_linked_models(db, row.id))
+    payload = _version_payload(row, linked_models=await _version_linked_models(db, row.id))
+    await _resolve_user_names(db, [payload])
+    return payload
 
 
 @router.get("/{dataset_id}/versions/{version_id}/metadata")
@@ -1162,7 +1262,9 @@ async def update_dataset_version(
         row.status = str(payload["status"])
     await db.commit()
     await db.refresh(row)
-    return _version_payload(row, linked_models=await _version_linked_models(db, row.id))
+    res_payload = _version_payload(row, linked_models=await _version_linked_models(db, row.id))
+    await _resolve_user_names(db, [res_payload])
+    return res_payload
 
 
 @router.post("/{dataset_id}/versions/{version_id}/validate")
@@ -1326,5 +1428,8 @@ async def upload_dataset(
         raise
 
     response = _to_payload(payload)
-    response["latest_version"] = _version_payload(version)
+    await _resolve_user_names(db, [response])
+    version_res = _version_payload(version)
+    await _resolve_user_names(db, [version_res])
+    response["latest_version"] = version_res
     return response

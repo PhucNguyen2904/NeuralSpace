@@ -42,6 +42,8 @@ export function Modal({
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const latestOnCloseRef = React.useRef(onClose);
 
+  const [isMouseDownOnBackdrop, setIsMouseDownOnBackdrop] = React.useState(false);
+
   React.useEffect(() => {
     latestOnCloseRef.current = onClose;
   }, [onClose]);
@@ -81,8 +83,17 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,17,23,0.4)] p-4 backdrop-blur-sm animate-fadeIn"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          setIsMouseDownOnBackdrop(true);
+        } else {
+          setIsMouseDownOnBackdrop(false);
+        }
+      }}
       onClick={(e) => {
-        if (closeOnBackdrop && e.target === e.currentTarget) onClose();
+        if (closeOnBackdrop && e.target === e.currentTarget && isMouseDownOnBackdrop) {
+          onClose();
+        }
       }}
       role="presentation"
     >

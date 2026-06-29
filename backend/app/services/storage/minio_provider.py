@@ -13,8 +13,8 @@ class MinioProvider(BaseStorageProvider):
         super().__init__(config)
         self.endpoint_url = config.get("endpoint") or config.get("endpoint_url")
         self.bucket = config.get("bucket")
-        self.access_key = config.get("access_key")
-        self.secret_key = config.get("secret_key")
+        self.access_key = config.get("access_key") or config.get("access_key_id")
+        self.secret_key = config.get("secret_key") or config.get("secret_access_key")
 
     def _get_client(self):
         session = aiobotocore.session.get_session()

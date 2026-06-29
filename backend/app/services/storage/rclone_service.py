@@ -192,6 +192,38 @@ class RcloneService:
             logger.error("rclone executable not found")
             raise StorageException("rclone executable not found. Please install rclone.")
 
+    async def stream_cat(self, config_path: str, remote_path: str, provider: str = "unknown"):
+        """Stream file contents asynchronously."""
+        import asyncio
+        full_cmd = ["rclone", "cat", remote_path, "--config", config_path]
+        
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *full_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            if proc.stdout is None:
+                raise StorageException("Failed to open stdout for rclone stream")
+                
+            chunk_size = 64 * 1024  # 64KB chunks
+            while True:
+                chunk = await proc.stdout.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+                
+            await proc.wait()
+            if proc.returncode != 0:
+                stderr = (await proc.stderr.read()).decode('utf-8', errors='ignore').strip() if proc.stderr else ""
+                logger.error(f"rclone stream_cat {remote_path} failed with exit code {proc.returncode} | stderr: {stderr}")
+                raise self._map_error(stderr, provider=provider, path=remote_path)
+                
+        except FileNotFoundError:
+            logger.error("rclone executable not found")
+            raise StorageException("rclone executable not found. Please install rclone.")
+
     def about(self, config_path: str, remote_name: str, provider: str = "unknown") -> dict[str, Any]:
         """Get quota and usage information."""
         result = self.command(["about", f"{remote_name}:", "--json"], config_path=config_path, provider=provider)

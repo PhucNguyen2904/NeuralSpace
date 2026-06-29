@@ -71,13 +71,14 @@ const providerSchema = z.object({
   display_name: z.string().min(1, "Name is required"),
   provider: z.enum(["s3", "drive"]),
   endpoint: z.string().optional(),
+  bucket: z.string().optional(),
   access_key_id: z.string().optional(),
   secret_access_key: z.string().optional(),
   client_id: z.string().optional(),
   client_secret: z.string().optional(),
 }).refine(data => {
   if (data.provider === "s3") {
-    return !!data.endpoint && !!data.access_key_id && !!data.secret_access_key;
+    return !!data.endpoint && !!data.bucket && !!data.access_key_id && !!data.secret_access_key;
   }
   return true;
 }, { path: ["provider"], message: "Please fill in all required fields for the selected provider." });
@@ -139,6 +140,7 @@ export default function SettingsPage() {
       display_name: "",
       provider: "s3",
       endpoint: "",
+      bucket: "",
       access_key_id: "",
       secret_access_key: "",
       client_id: "",
@@ -157,6 +159,7 @@ export default function SettingsPage() {
 
       const params: Record<string, string> = {};
       params.endpoint = values.endpoint;
+      params.bucket = values.bucket;
       params.access_key_id = values.access_key_id;
       params.secret_access_key = values.secret_access_key;
       params.env_auth = "false";
@@ -493,6 +496,9 @@ export default function SettingsPage() {
                     <>
                       <Field label="Endpoint URL" error={providerForm.formState.errors.endpoint?.message}>
                         <input {...providerForm.register("endpoint")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. http://minio:9000 or s3.amazonaws.com" />
+                      </Field>
+                      <Field label="Bucket Name" error={providerForm.formState.errors.bucket?.message}>
+                        <input {...providerForm.register("bucket")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. my-dataset-bucket" />
                       </Field>
                       <div className="grid grid-cols-2 gap-4">
                         <Field label="Access Key ID" error={providerForm.formState.errors.access_key_id?.message}>

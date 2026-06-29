@@ -407,9 +407,58 @@ class DatasetUploadService:
                     payload=metadata,
                 )
             elif provider_model.provider in ("minio", "s3"):
-                # TODO: Refactor direct external storage upload to use Rclone service
-                pass
+                from app.services.storage.factory import get_storage_provider
+                import json
                 
+                provider = get_storage_provider(provider_model)
+                
+                try:
+                    object_name = f"datasets/{dataset_id}/versions/{normalized_version}/{upload_filename}"
+                    raw_uri = await provider.upload_bytes(data=upload_data, dest_path=object_name, content_type=content_type)
+                    storage_payload["raw_upload_uri"] = raw_uri
+                    
+                    if delta_metadata:
+                        storage_payload["delta_metadata"] = delta_metadata
+                    
+                    if extracted_root is not None:
+                        prefix = f"datasets/{dataset_id}/versions/{normalized_version}/extracted"
+                        for file_path in extracted_root.rglob("*"):
+                            if not file_path.is_file():
+                                continue
+                            rel = file_path.relative_to(extracted_root).as_posix()
+                            await provider.upload_bytes(
+                                data=file_path.read_bytes(),
+                                dest_path=f"{prefix}/{rel}",
+                                content_type="application/octet-stream"
+                            )
+                        bucket = getattr(provider, "bucket", "unknown-bucket")
+                        storage_payload["dataset_uri"] = f"s3://{bucket}/{prefix}/"
+                    
+                    report_uri = await provider.upload_bytes(
+                        data=json.dumps(report, ensure_ascii=False, indent=2).encode("utf-8"),
+                        dest_path=f"datasets/{dataset_id}/versions/{normalized_version}/validation_report.json",
+                        content_type="application/json"
+                    )
+                    storage_payload["validation_report_uri"] = report_uri
+                    
+                    metadata_uri = await provider.upload_bytes(
+                        data=json.dumps({**metadata, "storage": {**storage_payload, "metadata_uri": ""}}, ensure_ascii=False, indent=2).encode("utf-8"),
+                        dest_path=f"datasets/{dataset_id}/versions/{normalized_version}/dataset.metadata.json",
+                        content_type="application/json"
+                    )
+                    metadata["storage"]["metadata_uri"] = metadata_uri
+                    await provider.upload_bytes(
+                        data=json.dumps(metadata, ensure_ascii=False, indent=2).encode("utf-8"),
+                        dest_path=f"datasets/{dataset_id}/versions/{normalized_version}/dataset.metadata.json",
+                        content_type="application/json"
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).error(f"External storage upload failed: {e}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Failed to upload to external storage. Please check your provider configuration (Endpoint, Bucket, Keys). Error: {str(e)}"
+                    )
             class_count = parsed.statistics.get("class_count")
             profile = await DVCProfileService(self.db, get_settings()).resolve_for_dataset(
                 dataset=MLDataset(
@@ -512,6 +561,66 @@ class DatasetUploadService:
         git_ssh_url: str | None = None,
         storage_provider_id: str | None = None,
     ) -> DVCTrackResult:
+        if storage_provider_id:
+            provider = await self.db.get(StorageConnection, storage_provider_id)
+            if provider and provider.provider == "gdrive":
+                dvc_remote_name = f"provider_{storage_provider_id}"
+                
+                creds_dir = Path(dvc_repo_path) / ".dvc"
+                creds_dir.mkdir(parents=True, exist_ok=True)
+                creds_path = creds_dir / f"gdrive_creds_{dvc_remote_name}.json"
+                
+                from app.core.security import decrypt_credentials
+                try:
+                    raw_creds_json = decrypt_credentials(provider.encrypted_credentials)
+                    import json
+                    from app.config import get_settings
+                    raw_creds = json.loads(raw_creds_json)
+                    settings = get_settings()
+                    
+                    token_expiry_str = raw_creds.get("expiry")
+                    if token_expiry_str and "+" in token_expiry_str:
+                        token_expiry_str = token_expiry_str.split("+")[0] + "Z"
+                        
+                    dvc_creds = {
+                        "access_token": raw_creds.get("access_token"),
+                        "client_id": settings.GOOGLE_CLIENT_ID,
+                        "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                        "refresh_token": raw_creds.get("refresh_token"),
+                        "token_expiry": token_expiry_str,
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "user_agent": None,
+                        "revoke_uri": "https://oauth2.googleapis.com/revoke",
+                        "id_token": None,
+                        "id_token_jwt": None,
+                        "token_response": {
+                            "access_token": raw_creds.get("access_token"),
+                            "refresh_token": raw_creds.get("refresh_token"),
+                            "token_type": raw_creds.get("token_type", "Bearer")
+                        },
+                        "scopes": ["https://www.googleapis.com/auth/drive"],
+                        "token_info_uri": "https://oauth2.googleapis.com/tokeninfo",
+                        "invalid": False,
+                        "_class": "OAuth2Credentials",
+                        "_module": "oauth2client.client"
+                    }
+                    creds_json = json.dumps(dvc_creds)
+                except Exception as e:
+                    import logging
+                    logging.error(f"Failed to decrypt or parse storage credentials: {e}")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Your Google Drive credentials have expired or become invalid. Please go to Settings and reconnect Google Drive.",
+                    )
+                await asyncio.to_thread(creds_path.write_text, creds_json)
+                
+                proc1 = await asyncio.create_subprocess_exec("dvc", "remote", "add", "-f", "-d", dvc_remote_name, "gdrive://root", cwd=dvc_repo_path)
+                await proc1.wait()
+                proc2 = await asyncio.create_subprocess_exec("dvc", "remote", "modify", "--local", dvc_remote_name, "gdrive_use_service_account", "false", cwd=dvc_repo_path)
+                await proc2.wait()
+                proc3 = await asyncio.create_subprocess_exec("dvc", "remote", "modify", "--local", dvc_remote_name, "gdrive_user_credentials_file", str(creds_path), cwd=dvc_repo_path)
+                await proc3.wait()
+
         try:
             dvc_client = DVCClient(
                 dvc_repo_path,
@@ -524,12 +633,6 @@ class DatasetUploadService:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"DVC repo not ready: {exc}",
             ) from exc
-
-        if storage_provider_id:
-            provider = await self.db.get(StorageConnection, storage_provider_id)
-            if provider:
-                # TODO: Implement rclone remote configuration in DVC
-                pass
 
         safe_filename = Path(filename).name or "upload"
         staging_dir = Path(dvc_repo_path) / dataset_name

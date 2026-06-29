@@ -133,14 +133,19 @@ class DVCClient:
     async def remove_dataset(self, dataset_name: str, commit_message: str) -> None:
         """Completely remove the dataset folder from the Git repository."""
         dataset_path = self.repo_path / dataset_name
-        if not dataset_path.exists():
-            return
-
         rel_data_path = self._relpath(dataset_path)
         
-        await self._run_command([*self._git_cmd, "rm", "-r", "-f", rel_data_path], cwd=self.repo_path)
-        await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
-        
+        # Even if the local folder is already deleted, we need to remove it from git.
+        try:
+            await self._run_command([*self._git_cmd, "rm", "-r", "-f", "--ignore-unmatch", rel_data_path], cwd=self.repo_path)
+            # Only commit if git rm actually removed something (or if there are staged changes)
+            stdout, _, _ = await self._run_command([*self._git_cmd, "diff", "--cached", "--name-only"], cwd=self.repo_path)
+            if stdout.strip():
+                await self._run_command([*self._git_cmd, "commit", "-m", commit_message], cwd=self.repo_path)
+        except Exception as exc:
+            import logging
+            logging.warning(f"Git rm failed for {rel_data_path}: {exc}")
+            
         import shutil
         shutil.rmtree(dataset_path, ignore_errors=True)
         

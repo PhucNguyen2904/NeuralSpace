@@ -8,7 +8,7 @@ import { VersionList } from "@/components/datasets/versions/VersionList";
 import { DatasetUploadModal } from "@/components/datasets/upload/DatasetUploadModal";
 import { Button } from "@/components/ui";
 import { useDatasetDetail } from "@/lib/hooks/useDatasets";
-import { useTrackVersion, useVersionDetail, useVersionDiff, useVersionList } from "@/lib/hooks/useDatasetVersions";
+import { useVersionDetail, useVersionDiff, useVersionList } from "@/lib/hooks/useDatasetVersions";
 
 export default function DatasetDetailPage() {
   const params = useParams<{ id: string }>();
@@ -69,7 +69,6 @@ export default function DatasetDetailPage() {
           </section>
         )}
       </div>
-
 
       <DatasetUploadModal
         open={uploadModalOpen}

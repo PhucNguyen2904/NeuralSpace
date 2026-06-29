@@ -4,7 +4,7 @@ import * as React from "react";
 import { AlertTriangle, CheckCircle2, FileArchive, Package, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { inspectGeneralModel, inspectYoloModel, uploadGeneralModel, uploadYoloModel } from "@/lib/api/models";
-import { useStorageProviders } from "@/lib/hooks/useStorageProviders";
+import { useStorageConnections } from "@/lib/hooks/useStorageProviders";
 import { cn } from "@/lib/utils/cn";
 import { useYoloUploadStore } from "@/lib/stores/yoloUploadStore";
 import { motion } from "framer-motion";
@@ -49,7 +49,7 @@ export function ModelUploadModal({
   const metadataInputRef = React.useRef<HTMLInputElement | null>(null);
   
   const [storageProviderId, setStorageProviderId] = React.useState("");
-  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
+  const { data: storageConnections = [], isLoading: isLoadingStorageConnections } = useStorageConnections();
   const selectedProviderId = storageProviderId;
 
   const { yoloType, setYoloType } = useYoloUploadStore();
@@ -280,12 +280,12 @@ export function ModelUploadModal({
                 className={`${inputCls()} w-full pl-9`}
                 value={storageProviderId}
                 onChange={(e) => setStorageProviderId(e.target.value)}
-                disabled={isLoadingStorageProviders}
+                disabled={isLoadingStorageConnections}
               >
                 <option value="">Server Default (Internal MinIO)</option>
-                {storageProviders.filter(p => p.id !== "server-default-minio").map((p) => (
+                {storageConnections.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.type})
+                    {p.display_name} ({p.provider})
                   </option>
                 ))}
               </select>
@@ -551,20 +551,21 @@ function UploadPreview({ model }: { model: Model }) {
 function IssueList({ title, issues, tone }: { title: string; issues: ModelInspectIssue[]; tone: "error" | "warning" }) {
   if (issues.length === 0) return null;
   return (
-    <div className={cn("rounded-lg border p-3 text-sm", tone === "error" ? "border-red-200 bg-red-50 text-red-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
-      <div className="mb-2 flex items-center gap-2 font-semibold">
+    <details className={cn("rounded-lg border p-3 text-sm group", tone === "error" ? "border-red-200 bg-red-50 text-red-900" : "border-amber-200 bg-amber-50 text-amber-900")}>
+      <summary className="flex items-center gap-2 font-semibold cursor-pointer select-none list-none [&::-webkit-details-marker]:hidden">
         <AlertTriangle size={15} />
-        {title}
-      </div>
-      <div className="space-y-1">
-        {issues.slice(0, 10).map((issue, index) => (
+        {title} ({issues.length})
+        <svg className="w-4 h-4 ml-auto transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+      </summary>
+      <div className="mt-3 space-y-1 max-h-48 overflow-y-auto pl-6">
+        {issues.map((issue, index) => (
           <p key={`${issue.code}-${index}`} className="text-xs">
             <span className="font-semibold">{issue.code}</span>: {issue.message}
             {issue.path ? <span> · {issue.path}</span> : null}
           </p>
         ))}
       </div>
-    </div>
+    </details>
   );
 }
 

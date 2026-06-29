@@ -2,18 +2,18 @@
 
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { AlertTriangle, Archive, Download, GitBranch, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, Archive, Download, GitBranch, Link2, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { Button, Modal } from "@/components/ui";
-import { useDatasetDetail, useDeleteDataset, useUpdateDataset } from "@/lib/hooks/useDatasets";
+import { useDatasetDetail, useDeleteDataset, useUpdateDataset, useDatasetDownloadUrl } from "@/lib/hooks/useDatasets";
 import { useToast } from "@/lib/hooks/useToast";
 import { useVersionList } from "@/lib/hooks/useDatasetVersions";
 import { formatBytes } from "@/lib/utils/format";
 import type { DatasetVersion } from "@/lib/hooks/useDatasetVersions";
 import type { Dataset } from "@/types/dataset";
 
-type TabValue = "overview" | "preview" | "versions" | "history";
+type TabValue = "overview" | "preview" | "usage" | "versions" | "history";
 type CustomField = { key: string; value: string };
 
 export function DatasetDetailDrawer({
@@ -33,6 +33,7 @@ export function DatasetDetailDrawer({
   const versionsQuery = useVersionList(datasetId ?? "");
   const dataset = detail.data;
   const [tab, setTab] = React.useState<TabValue>("overview");
+  const downloadUrlQuery = useDatasetDownloadUrl(dataset?.id, tab === "usage");
   const [metadataModalOpen, setMetadataModalOpen] = React.useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
@@ -61,6 +62,22 @@ export function DatasetDetailDrawer({
       }))
     });
   }, [dataset]);
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
+
+  const getCurlCommand = () => {
+    if (downloadUrlQuery.isLoading) return "Generating URL...";
+    if (downloadUrlQuery.isError) return "Failed to generate URL";
+    const safeName = (dataset?.name || "dataset").replace(/\s+/g, "_");
+    return `curl -L -o "${safeName}.zip" "${downloadUrlQuery.data?.url || ""}"`;
+  };
 
   if (!open || !dataset) return null;
 
@@ -116,14 +133,7 @@ export function DatasetDetailDrawer({
             <Button size="sm" variant="ghost" className="px-2.5" onClick={() => router.push(`/datasets/${encodeURIComponent(dataset.id)}`)} title="Versions">
               <GitBranch size={14} className="mr-1" /> Versions
             </Button>
-            <Button size="sm" variant="ghost" className="px-2" onClick={() => {
-              const a = document.createElement("a");
-              a.href = "data:text/plain;charset=utf-8,Mock%20Dataset%20Content";
-              a.download = `${dataset.name}.zip`;
-              a.click();
-            }} title="Download">
-              <Download size={14} />
-            </Button>
+
             {dataset.status === "archived" ? (
               <Button size="sm" variant="ghost" className="px-2" disabled={updateDataset.isPending} onClick={() => {
                 void updateDataset.mutateAsync({ datasetId: dataset.id, payload: { status: "active" } });
@@ -146,7 +156,7 @@ export function DatasetDetailDrawer({
         </div>
         <div className="border-b border-border px-5 py-2">
           <div className="flex gap-2 text-sm">
-            {(["overview", "preview", "versions", "history"] as TabValue[]).map((item) => (
+            {(["overview", "preview", "usage", "versions", "history"] as TabValue[]).map((item) => (
               <button key={item} onClick={() => setTab(item)} className={tab === item ? "rounded-md bg-[#ECFDF5] px-2 py-1 font-medium text-emerald-700" : "rounded-md px-2 py-1 text-text-secondary"}>
                 {item.toUpperCase()}
               </button>
@@ -163,6 +173,9 @@ export function DatasetDetailDrawer({
                 <Info label="Item count" value={`${(dataset.item_count ?? 0).toLocaleString()} items`} />
                 <Info label="Classes" value={dataset.class_count ? `${dataset.class_count} categories` : "-"} />
                 <Info label="Created by" value={dataset.created_by ?? "-"} />
+                {dataset.yolo_task ? (
+                  <Info label="YOLO Task" value={dataset.yolo_task.replace(/_/g, " ")} />
+                ) : null}
                 <Info
                   label="Last updated"
                   value={dataset.updated_at ? formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true }) : "-"}
@@ -184,6 +197,42 @@ export function DatasetDetailDrawer({
                   ))}
                 </div>
               )}
+            </div>
+          ) : null}
+          {tab === "usage" ? (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Direct Download</p>
+                </div>
+                <div className="flex items-center justify-between rounded-md border border-border bg-bg-surface p-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Archive size={16} className="text-text-secondary" />
+                    <span className="font-medium text-text-primary">{dataset.name}.zip</span>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    const a = document.createElement("a");
+                    if (downloadUrlQuery.data?.url) {
+                      a.href = downloadUrlQuery.data.url;
+                    } else {
+                      a.href = "data:text/plain;charset=utf-8,Mock%20Dataset%20Content";
+                    }
+                    a.download = `${dataset.name}.zip`;
+                    a.click();
+                  }}>
+                    <Download size={14} className="mr-1" /> Download Zip
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Download via cURL</p>
+                  <Button size="sm" variant="ghost" disabled={!downloadUrlQuery.data?.url} onClick={() => copyToClipboard(getCurlCommand())}>
+                    <Link2 size={14} className="mr-1" />Copy
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto rounded-md border border-border bg-bg-surface p-3 font-mono text-xs">{getCurlCommand()}</pre>
+              </div>
             </div>
           ) : null}
           {tab === "versions" ? (

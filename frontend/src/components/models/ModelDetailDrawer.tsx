@@ -8,11 +8,11 @@ import { Button, Modal } from "@/components/ui";
 import { MetricsChart } from "@/components/models/MetricsChart";
 import { VersionTimeline } from "@/components/models/VersionTimeline";
 import { useToast } from "@/lib/hooks/useToast";
-import { useDeleteModel, useModelDetail, useUpdateModel, useUploadModelVersion } from "@/lib/hooks/useModels";
+import { useDeleteModel, useModelDetail, useUpdateModel, useUploadModelVersion, useModelDownloadUrl } from "@/lib/hooks/useModels";
 import { cn } from "@/lib/utils/cn";
 import type { Model, UploadModelVersionMetadata } from "@/types/model";
 
-type Tab = "overview" | "metrics" | "files" | "usage" | "versions";
+type Tab = "overview" | "metrics" | "usage" | "versions";
 type CustomField = { key: string; value: string };
 
 export function ModelDetailDrawer({
@@ -31,6 +31,7 @@ export function ModelDetailDrawer({
   const uploadVersion = useUploadModelVersion();
   const model = detail.data;
   const [tab, setTab] = React.useState<Tab>("overview");
+  const downloadUrlQuery = useModelDownloadUrl(model?.id, tab === "usage");
   const [versionModalOpen, setVersionModalOpen] = React.useState(false);
   const [metadataModalOpen, setMetadataModalOpen] = React.useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = React.useState(false);
@@ -207,7 +208,23 @@ export function ModelDetailDrawer({
     }
   };
 
-  const code = `import torch\nmodel_path = "${mountPath}/model.pt"\nmodel = torch.load(model_path)\nmodel.eval()`;
+  const pythonInferenceCode = `import torch\nmodel_path = "${mountPath}/model.pt"\nmodel = torch.load(model_path)\nmodel.eval()`;
+  
+  const getCurlCommand = () => {
+    if (downloadUrlQuery.isLoading) return "Generating URL...";
+    if (downloadUrlQuery.isError) return "Failed to generate URL";
+    const safeName = (model?.name || "model").replace(/\s+/g, "_");
+    return `curl -L -o "${safeName}.zip" "${downloadUrlQuery.data?.url || ""}"`;
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Failed to copy");
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50">
@@ -236,7 +253,7 @@ export function ModelDetailDrawer({
         </div>
         <div className="border-b border-border px-5 py-2">
           <div className="flex gap-2 text-sm">
-            {(["overview", "metrics", "files", "usage", "versions"] as Tab[]).map((t) => (
+            {(["overview", "metrics", "usage", "versions"] as Tab[]).map((t) => (
               <button key={t} className={tab === t ? "rounded-md bg-violet-50 px-2 py-1 text-violet-700" : "rounded-md px-2 py-1 text-text-secondary"} onClick={() => setTab(t)}>{t.toUpperCase()}</button>
             ))}
           </div>
@@ -256,8 +273,50 @@ export function ModelDetailDrawer({
             </div>
           ) : null}
           {tab === "metrics" ? <MetricsTab model={model} trainingHistory={metrics.data?.training_history ?? []} /> : null}
-          {tab === "files" ? <div className="space-y-2">{model.files.map((f) => <div key={f.name} className="flex items-center justify-between rounded-md border border-border p-2 text-sm"><span>{f.name}</span><span className="text-text-secondary">{f.size} · {f.type}</span><Button size="sm" variant="ghost">Download</Button></div>)}</div> : null}
-          {tab === "usage" ? <div className="space-y-2"><div className="flex items-center justify-between"><p className="text-sm font-medium">Python</p><Button size="sm" variant="ghost"><Link2 size={14} />Copy</Button></div><pre className="overflow-x-auto rounded-md bg-bg-elevated p-3 font-mono text-xs">{code}</pre></div> : null}
+          {tab === "usage" ? (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Direct Download</p>
+                </div>
+                <div className="space-y-2">
+                  {model.files.map((f) => (
+                    <div key={f.name} className="flex items-center justify-between rounded-md border border-border bg-bg-surface p-2 text-sm">
+                      <div className="flex items-center gap-2">
+                        <span>{f.name}</span>
+                        <span className="text-xs text-text-secondary">{f.size} · {f.type}</span>
+                      </div>
+                      <Button size="sm" variant="ghost" disabled={!downloadUrlQuery.data?.url} onClick={() => {
+                        if (!downloadUrlQuery.data?.url) return;
+                        const a = document.createElement("a");
+                        a.href = downloadUrlQuery.data.url;
+                        a.download = f.name;
+                        a.click();
+                      }}>Download</Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Python Inference</p>
+                  <Button size="sm" variant="ghost" onClick={() => copyToClipboard(pythonInferenceCode)}>
+                    <Link2 size={14} className="mr-1" />Copy
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto rounded-md bg-bg-elevated p-3 font-mono text-xs">{pythonInferenceCode}</pre>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Download via cURL</p>
+                  <Button size="sm" variant="ghost" disabled={!downloadUrlQuery.data?.url} onClick={() => copyToClipboard(getCurlCommand())}>
+                    <Link2 size={14} className="mr-1" />Copy
+                  </Button>
+                </div>
+                <pre className="overflow-x-auto rounded-md bg-bg-elevated p-3 font-mono text-xs">{getCurlCommand()}</pre>
+              </div>
+            </div>
+          ) : null}
           {tab === "versions" ? <VersionTimeline versions={versions.data ?? []} /> : null}
         </div>
       </motion.aside>

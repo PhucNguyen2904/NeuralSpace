@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { subDays, startOfDay, subMonths } from "date-fns";
-import { deleteDataset, getDatasetById, getDatasets, getDatasetPreview, mountDatasetToWorkspace, updateDataset } from "@/lib/api/datasets";
+import { deleteDataset, getDatasetById, getDatasets, getDatasetPreview, mountDatasetToWorkspace, updateDataset, getDatasetDownloadUrl } from "@/lib/api/datasets";
 import type { DatasetFilters, DatasetListParams, UpdateDatasetPayload } from "@/types/dataset";
 
 export const defaultDatasetFilters: DatasetFilters = {
@@ -17,7 +17,8 @@ export const defaultDatasetFilters: DatasetFilters = {
   tags: [],
   sort: "newest",
   archiveStatus: "active",
-  view: "grid"
+  view: "grid",
+  yoloTasks: []
 };
 
 type DatasetFilterStore = {
@@ -52,6 +53,7 @@ function toParams(filters: DatasetFilters): DatasetListParams {
     created_after: createdAfterFromFilter(filters.createdWithin),
     sort: filters.sort,
     archive_status: filters.archiveStatus,
+    task_type: filters.yoloTasks.length ? filters.yoloTasks : undefined,
     page: 1,
     limit: 24
   };
@@ -79,6 +81,15 @@ export function useDatasetDetail(id: string) {
     enabled: Boolean(id)
   });
   return { detail, preview };
+}
+
+export function useDatasetDownloadUrl(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["dataset-download-url", id],
+    queryFn: () => getDatasetDownloadUrl(id!),
+    enabled: Boolean(id) && enabled,
+    staleTime: 55 * 60 * 1000 // 55 minutes
+  });
 }
 
 export function useMountDatasetMutation() {

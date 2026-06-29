@@ -11,6 +11,7 @@ import {
   getDatasetVersions,
   getDvcProfiles,
   trackDatasetVersion,
+  trackDeltaDatasetVersion,
   updateDvcProfile,
   validateDatasetVersion,
   type DvcProfile,
@@ -416,6 +417,121 @@ export function useUploadVersion(): UseUploadVersionReturn {
       error,
       reset: () => {
         setSteps(INITIAL_STEPS);
+        setError(null);
+        mutation.reset();
+      },
+    }),
+    [mutation, steps, error]
+  );
+}
+
+// ─── Upload Delta Version (delta ZIP → /versions/track-delta) ────────────────
+
+export interface UseUploadDeltaVersionReturn {
+  upload: (opts: {
+    datasetId: string;
+    file: File;
+    baseVersionId: string;
+    version?: string;
+    commitMessage?: string;
+    changelog?: string;
+    itemCount?: number;
+    status?: DvcVersionStatus;
+    dvcProfileId?: string;
+    splitInfo?: Record<string, number>;
+    schemaSnapshot?: Record<string, unknown>;
+  }) => Promise<void>;
+  isUploading: boolean;
+  steps: UploadStep[];
+  error: string | null;
+  reset: () => void;
+}
+
+const INITIAL_DELTA_STEPS: UploadStep[] = [
+  { key: "upload", label: "Uploading delta file...", status: "pending" },
+  { key: "dvc", label: "Merging delta + DVC tracking...", status: "pending" },
+  { key: "save", label: "Saving version metadata...", status: "pending" },
+];
+
+export function useUploadDeltaVersion(): UseUploadDeltaVersionReturn {
+  const queryClient = useQueryClient();
+  const [steps, setSteps] = useState<UploadStep[]>(INITIAL_DELTA_STEPS);
+  const [error, setError] = useState<string | null>(null);
+
+  const setStep = (key: UploadStep["key"], patch: Partial<UploadStep>) =>
+    setSteps((prev) => prev.map((s) => (s.key === key ? ({ ...s, ...patch } as UploadStep) : s)));
+
+  const mutation = useMutation({
+    mutationFn: async (opts: {
+      datasetId: string;
+      file: File;
+      baseVersionId: string;
+      version?: string;
+      commitMessage?: string;
+      changelog?: string;
+      itemCount?: number;
+      status?: DvcVersionStatus;
+      dvcProfileId?: string;
+      splitInfo?: Record<string, number>;
+      schemaSnapshot?: Record<string, unknown>;
+    }) => {
+      setStep("upload", { status: "running", label: "Uploading delta file..." });
+
+      const result = await trackDeltaDatasetVersion(opts.datasetId, {
+        file: opts.file,
+        baseVersionId: opts.baseVersionId,
+        version: opts.version,
+        commitMessage: opts.commitMessage,
+        changelog: opts.changelog,
+        itemCount: opts.itemCount ?? 0,
+        status: opts.status ?? "draft",
+        dvcProfileId: opts.dvcProfileId,
+        splitInfo: opts.splitInfo,
+        schemaSnapshot: opts.schemaSnapshot,
+        onUploadProgress: (pct) => {
+          if (pct < 100) {
+            setStep("upload", { percent: pct, label: `Uploading delta... ${pct}%` });
+          } else {
+            setStep("upload", { status: "done", label: "Delta uploaded" });
+            setStep("dvc", { status: "running", label: "Merging delta + DVC tracking..." });
+          }
+        },
+      });
+
+      setStep("dvc", { status: "done", label: `Delta merged · DVC commit: ${result.dvc_md5?.slice(0, 7) ?? "ok"}` });
+      setStep("save", { status: "running", label: "Saving version metadata..." });
+
+      return { result, datasetId: opts.datasetId };
+    },
+
+    onSuccess: async ({ result, datasetId }) => {
+      setStep("save", { status: "done", label: `Version ${result.version} saved (delta, is_latest: true)` });
+      await queryClient.invalidateQueries({ queryKey: ["dataset-versions", datasetId] });
+    },
+
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        (err instanceof Error ? err.message : "Delta upload failed");
+      setError(msg);
+      setSteps((prev) =>
+        prev.map((s) => (s.status === "running" ? ({ ...s, status: "error" } as UploadStep) : s))
+      );
+    },
+  });
+
+  return useMemo(
+    () => ({
+      upload: async (opts) => {
+        setError(null);
+        setSteps(INITIAL_DELTA_STEPS);
+        await mutation.mutateAsync(opts);
+      },
+      isUploading: mutation.isPending,
+      steps,
+      error,
+      reset: () => {
+        setSteps(INITIAL_DELTA_STEPS);
         setError(null);
         mutation.reset();
       },

@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { deleteModel, getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace, updateModel, uploadModelVersion } from "@/lib/api/models";
+import { deleteModel, getModelById, getModelMetrics, getModels, getModelVersions, loadModelToWorkspace, updateModel, uploadModelVersion, getModelDownloadUrl } from "@/lib/api/models";
 import type { ModelFilters, ModelListParams, UpdateModelPayload, UploadModelVersionMetadata } from "@/types/model";
 
 export const defaultModelFilters: ModelFilters = {
@@ -72,6 +72,15 @@ export function useModelDetail(id: string) {
   });
   const versions = useQuery({ queryKey: ["model-versions", id], queryFn: () => getModelVersions(id), enabled: Boolean(id) });
   return { detail, metrics, versions };
+}
+
+export function useModelDownloadUrl(id: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["model-download-url", id],
+    queryFn: () => getModelDownloadUrl(id!),
+    enabled: Boolean(id) && enabled,
+    staleTime: 55 * 60 * 1000
+  });
 }
 
 export function useModelComparison(ids: string[]) {

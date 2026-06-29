@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     postgresql-client \
     openssh-client \
+    rclone \
     && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /storage-configs && chown -R 1000:1000 /storage-configs
 
 # Copy project files
 COPY pyproject.toml ./

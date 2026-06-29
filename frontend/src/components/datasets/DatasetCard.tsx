@@ -14,6 +14,15 @@ const typeIconMap = {
   video: Film
 };
 
+const yoloTaskLabelMap: Record<string, { label: string; color: string }> = {
+  object_detection: { label: "Object Detection", color: "bg-blue-50 text-blue-700" },
+  instance_segmentation: { label: "Seg.", color: "bg-purple-50 text-purple-700" },
+  pose_estimation: { label: "Pose", color: "bg-orange-50 text-orange-700" },
+  image_classification: { label: "Classification", color: "bg-emerald-50 text-emerald-700" },
+  obb: { label: "OBB", color: "bg-rose-50 text-rose-700" }
+};
+
+
 export function DatasetCard({
   dataset,
   active = false,
@@ -56,6 +65,13 @@ export function DatasetCard({
         <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><CheckCircle2 size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={dataset.label_status}>{dataset.label_status}</span></div>
         <div className="flex min-w-0 items-center gap-1.5 text-text-secondary"><Calendar size={14} className="shrink-0" /><span className="truncate font-medium text-text-primary" title={formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}>{formatDistanceToNow(new Date(dataset.updated_at), { addSuffix: true })}</span></div>
       </div>
+      {dataset.yolo_task && yoloTaskLabelMap[dataset.yolo_task] ? (
+        <div className="mt-2">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${yoloTaskLabelMap[dataset.yolo_task].color}`}>
+            {yoloTaskLabelMap[dataset.yolo_task].label}
+          </span>
+        </div>
+      ) : null}
       <div className="mt-4 grid grid-cols-2 gap-2">
         <Button size="sm" variant="outline" className="text-text-secondary" onClick={() => onViewDetails(dataset)}>
           <Eye size={14} /> Details

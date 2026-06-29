@@ -1,5 +1,11 @@
 export type DatasetType = "image" | "text" | "tabular" | "audio" | "video";
 export type LabelStatus = "labeled" | "unlabeled" | "processing";
+export type YoloTaskType =
+  | "object_detection"
+  | "instance_segmentation"
+  | "pose_estimation"
+  | "image_classification"
+  | "obb";
 
 export interface Dataset {
   id: string;
@@ -19,6 +25,7 @@ export interface Dataset {
   storage_path: string;
   version?: string;
   status?: "active" | "archived" | "ready";
+  yolo_task?: YoloTaskType | null;
 }
 
 export interface DatasetUploadIssue {
@@ -148,6 +155,7 @@ export interface DatasetListParams {
   created_after?: string;
   sort?: "newest" | "oldest" | "name" | "size";
   archive_status?: "all" | "active" | "archived";
+  task_type?: YoloTaskType[];
   page?: number;
   limit?: number;
 }
@@ -163,4 +171,5 @@ export interface DatasetFilters {
   sort: "newest" | "oldest" | "name" | "size";
   archiveStatus: "all" | "active" | "archived";
   view: "grid" | "list";
+  yoloTasks: YoloTaskType[];
 }

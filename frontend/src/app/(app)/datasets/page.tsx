@@ -12,7 +12,7 @@ import { DatasetUploadModal } from "@/components/datasets/upload/DatasetUploadMo
 import { Button } from "@/components/ui";
 import { useDatasets, useDatasetFilterStore, useMountDatasetMutation } from "@/lib/hooks/useDatasets";
 import { useToast } from "@/lib/hooks/useToast";
-import type { Dataset, DatasetFilters, DatasetType } from "@/types/dataset";
+import type { Dataset, DatasetFilters, DatasetType, YoloTaskType } from "@/types/dataset";
 
 function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
   const types = params.getAll("type") as DatasetType[];
@@ -27,6 +27,7 @@ function parseFilters(params: URLSearchParams): Partial<DatasetFilters> {
     archiveStatus: (params.get("archiveStatus") as DatasetFilters["archiveStatus"]) ?? "active",
     tags: params.getAll("tag"),
     createdWithin: (params.get("created") as DatasetFilters["createdWithin"]) ?? "all",
+    yoloTasks: params.getAll("yoloTask") as YoloTaskType[],
     ...(sizeMin ? { sizeMin: parseInt(sizeMin, 10) } : {}),
     ...(sizeMax ? { sizeMax: parseInt(sizeMax, 10) } : {})
   };
@@ -70,6 +71,7 @@ function DatasetsPageContent() {
     if (filters.sizeMin > 0) params.set("sizeMin", filters.sizeMin.toString());
     if (filters.sizeMax < 50 * 1024 * 1024 * 1024) params.set("sizeMax", filters.sizeMax.toString());
     filters.tags.forEach((tag) => params.append("tag", tag));
+    filters.yoloTasks.forEach((t) => params.append("yoloTask", t));
     router.replace(`${pathname}?${params.toString()}`);
   }, [filters, pathname, router]);
 
@@ -84,6 +86,7 @@ function DatasetsPageContent() {
     if (filters.status !== "all") count += 1;
     if (filters.tags.length) count += 1;
     if (filters.createdWithin !== "all") count += 1;
+    if (filters.yoloTasks.length) count += 1;
     return count;
   }, [filters]);
 

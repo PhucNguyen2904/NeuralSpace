@@ -25,12 +25,57 @@ services:
       timeout: 3s
       retries: 10
 
-  k8s-mock:
-    image: mendhak/http-https-echo:34
+  minio-test:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
     environment:
-      HTTP_PORT: 8080
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
     ports:
-      - "18080:8080"
+      - "9002:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio-init-test:
+    image: minio/mc:latest
+    depends_on:
+      minio-test:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio-test:9000 minioadmin minioadmin &&
+      mc mb -p local/workspace-data || true
+      "
+    restart: "no"
+
+  mlflow-test:
+    image: ghcr.io/mlflow/mlflow:v2.14.3
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
+      minio-init-test:
+        condition: service_completed_successfully
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio-test:9000
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+    command: >
+      sh -c "python -m pip install --no-cache-dir psycopg2-binary==2.9.9 boto3==1.34.131 &&
+      python -m mlflow server
+      --backend-store-uri postgresql://postgres:postgres@postgres-test:5432/cloud_ide_test
+      --default-artifact-root s3://mlflow-artifacts
+      --host 0.0.0.0
+      --port 5000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/ping', timeout=5)\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api-test:
     build:
@@ -41,12 +86,34 @@ services:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres-test:5432/cloud_ide_test
       REDIS_URL: redis://redis-test:6379/0
-      KUBERNETES_IN_CLUSTER: "false"
-      KUBERNETES_NAMESPACE_PREFIX: "ws-"
+      MINIO_ENDPOINT: "minio-test:9000"
+      MINIO_ACCESS_KEY: "minioadmin"
+      MINIO_SECRET_KEY: "minioadmin"
+      MINIO_BUCKET: "workspace-data"
+      MLFLOW_TRACKING_URI: "http://mlflow-test:5000"
+      MLFLOW_S3_ENDPOINT_URL: "http://minio-test:9000"
+      AWS_ACCESS_KEY_ID: "minioadmin"
+      AWS_SECRET_ACCESS_KEY: "minioadmin"
     depends_on:
       postgres-test:
         condition: service_healthy
       redis-test:
         condition: service_healthy
-      k8s-mock:
+      minio-test:
+        condition: service_healthy
+      mlflow-test:
+        condition: service_healthy
+
+  reverse-proxy-test:
+    image: nginx:1.27-alpine
+    depends_on:
+      api-test:
         condition: service_started
+      mlflow-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.test.conf:/etc/nginx/nginx.conf:ro

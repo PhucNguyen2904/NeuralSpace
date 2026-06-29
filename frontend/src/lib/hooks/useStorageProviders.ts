@@ -1,99 +1,78 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient, unwrapResponse } from "@/lib/api/client";
 
-export interface StorageProvider {
+export interface StorageConnection {
   id: string;
-  name: string;
-  type: "minio" | "s3" | "gdrive";
-  config: Record<string, any>;
-  is_active: boolean;
-  is_default: boolean;
+  user_id: string;
+  provider: string;
+  remote_name: string;
+  display_name: string;
   created_at: string;
+  updated_at: string;
+  status: string;
+  is_default: boolean;
+  last_sync_at?: string | null;
 }
 
-export function useStorageProviders() {
+export function useConnectGoogleDrive() {
+  return useMutation({
+    mutationFn: async (displayName: string) => {
+      const searchParams = new URLSearchParams({ display_name: displayName });
+      return unwrapResponse(apiClient.get(`/storage/google/oauth/url?${searchParams.toString()}`));
+    },
+    onSuccess: (data: { url: string }) => {
+      window.location.href = data.url;
+    },
+  });
+}
+
+export function useStorageConnections() {
   return useQuery({
-    queryKey: ["storage-providers"],
-    queryFn: async (): Promise<StorageProvider[]> => {
-      return unwrapResponse(apiClient.get("/storage-providers"));
+    queryKey: ["storage-connections"],
+    queryFn: async (): Promise<StorageConnection[]> => {
+      return unwrapResponse(apiClient.get("/storage/list"));
     },
   });
 }
 
-export function useCreateStorageProvider() {
+export function useConnectStorage() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { name: string; type: string; config: any; is_active?: boolean; is_default?: boolean }) => {
+    mutationFn: async (payload: { provider: string; remote_name: string; display_name: string; params: Record<string, string> }) => {
       try {
-        return await unwrapResponse(apiClient.post("/storage-providers", payload));
+        return await unwrapResponse(apiClient.post("/storage/connect", payload));
       } catch (error: any) {
-        throw new Error(error.response?.data?.detail || "Failed to create storage provider");
+        throw new Error(error.response?.data?.detail || "Failed to connect storage provider");
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
+      queryClient.invalidateQueries({ queryKey: ["storage-connections"] });
     },
   });
 }
 
-export function useUpdateStorageProvider() {
+export function useDisconnectStorage() {
   const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
-      try {
-        return await unwrapResponse(apiClient.put(`/storage-providers/${id}`, payload));
-      } catch (error: any) {
-        throw new Error(error.response?.data?.detail || "Failed to update storage provider");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
-    },
-  });
-}
-
-export function useClearDefaultStorageProvider() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      try {
-        return await unwrapResponse(apiClient.post(`/storage-providers/clear-default`, {}));
-      } catch (error: any) {
-        throw new Error(error.response?.data?.detail || "Failed to clear default storage provider");
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
-    },
-  });
-}
-
-export function useDeleteStorageProvider() {
-  const queryClient = useQueryClient();
+  
   return useMutation({
     mutationFn: async (id: string) => {
-      await unwrapResponse(apiClient.delete(`/storage-providers/${id}`));
+      return unwrapResponse(apiClient.post(`/storage/${id}/disconnect`));
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["storage-providers"] });
+      queryClient.invalidateQueries({ queryKey: ["storage-connections"] });
     },
   });
 }
 
-export function useGoogleOAuthLogin() {
+export function useSetDefaultStorage() {
+  const queryClient = useQueryClient();
+  
   return useMutation({
-    mutationFn: async () => {
-      const response = await apiClient.get("/storage/google/oauth/login?action=connect");
-      if (response.data?.url) {
-        window.location.href = response.data.url;
-      }
+    mutationFn: async (id: string) => {
+      return unwrapResponse(apiClient.post(`/storage/${id}/default`));
     },
-    onError: (error: any) => {
-      console.error("Google OAuth login failed:", error);
-      alert(
-        "Failed to initiate Google Drive Connect. " + 
-        (error.response?.status === 401 ? "Your session may have expired. Please log out and log back in." : "Please check your network and backend logs.")
-      );
-    }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["storage-connections"] });
+    },
   });
 }

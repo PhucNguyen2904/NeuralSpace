@@ -874,6 +874,76 @@ async def list_models(
     }
 
 
+@router.get("/{model_id}/download-url")
+async def get_model_download_url(
+    model_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.clients.minio_client import get_minio_client
+
+    row = await db.get(ModelRegistry, model_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Model not found")
+
+    source = row.source_payload or {}
+
+    # ── 1. Prefer the latest entry in version_history (most recent upload) ──
+    version_history: list[dict] = source.get("version_history") or []
+    latest_storage_path: str | None = None
+    latest_object_name: str | None = None
+    if version_history:
+        last = version_history[-1]
+        latest_storage_path = last.get("storage_path")
+        latest_object_name = last.get("object_name")
+
+    storage_path = latest_storage_path or row.storage_path
+    object_name_hint = latest_object_name  # may be used as fallback
+
+    if not storage_path:
+        raise HTTPException(status_code=404, detail="Model file not found")
+
+    # ── 2. Detect if external storage provider should handle this ──────────
+    storage_provider_id = source.get("storage_provider_id")
+    if storage_provider_id:
+        try:
+            from app.models.storage_connection import StorageConnection
+            from app.services.storage.factory import get_storage_provider
+            provider_model = await db.get(StorageConnection, storage_provider_id)
+            if provider_model:
+                provider = get_storage_provider(provider_model)
+                signed_url = await provider.get_signed_url(storage_path, expires_seconds=3600)
+                return {"url": signed_url}
+        except Exception:
+            # Fallback to MinIO below if provider fails
+            pass
+
+    # ── 3. Parse s3:// or plain object path → MinIO presigned URL ─────────
+    bucket: str | None = None
+    minio_object: str | None = None
+
+    if storage_path.startswith("s3://"):
+        _, rest = storage_path.split("s3://", 1)
+        b, _, obj = rest.partition("/")
+        bucket = b or None
+        minio_object = obj or None
+    elif not storage_path.startswith(("gdrive://", "http://", "https://")):
+        # Plain relative MinIO path
+        minio_object = storage_path.replace("\\", "/").lstrip("/")
+
+    # Last resort: use the stored object_name from version_history
+    if not minio_object and object_name_hint:
+        minio_object = object_name_hint.replace("\\", "/").lstrip("/")
+
+    if not minio_object:
+        raise HTTPException(status_code=404, detail="Model file not found or is stored externally")
+
+    client = get_minio_client()
+    url = client.presigned_get_url(minio_object, bucket=bucket, expires_seconds=3600)
+    return {"url": url}
+
+
+
 @router.get("/{model_id}")
 async def get_model(model_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
     row = await db.get(ModelRegistry, model_id)
@@ -1110,9 +1180,9 @@ async def delete_model(
     storage_provider_id = (row.source_payload or {}).get("storage_provider_id")
     provider = None
     if storage_provider_id:
-        from app.models.storage_provider import StorageProvider
+        from app.models.storage_connection import StorageConnection
         from app.services.storage.factory import get_storage_provider
-        provider_model = await db.get(StorageProvider, storage_provider_id)
+        provider_model = await db.get(StorageConnection, storage_provider_id)
         if provider_model:
             provider = get_storage_provider(provider_model)
 
@@ -1195,9 +1265,9 @@ async def upload_model_version(
     object_name = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
     
     if storage_provider_id:
-        from app.models.storage_provider import StorageProvider
+        from app.models.storage_connection import StorageConnection
         from app.services.storage.factory import get_storage_provider
-        provider_model = await db.get(StorageProvider, storage_provider_id)
+        provider_model = await db.get(StorageConnection, storage_provider_id)
         if not provider_model:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
         provider = get_storage_provider(provider_model)
@@ -1297,9 +1367,9 @@ async def upload_model(
     content_type = file.content_type or "application/octet-stream"
     
     if storage_provider_id:
-        from app.models.storage_provider import StorageProvider
+        from app.models.storage_connection import StorageConnection
         from app.services.storage.factory import get_storage_provider
-        provider_model = await db.get(StorageProvider, storage_provider_id)
+        provider_model = await db.get(StorageConnection, storage_provider_id)
         if not provider_model:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
         provider = get_storage_provider(provider_model)
@@ -1685,9 +1755,9 @@ async def upload_yolo_model(
     minio_object = f"models/{model_id}/versions/{safe_version}/{safe_filename}"
     
     if storage_provider_id:
-        from app.models.storage_provider import StorageProvider
+        from app.models.storage_connection import StorageConnection
         from app.services.storage.factory import get_storage_provider
-        provider_model = await db.get(StorageProvider, storage_provider_id)
+        provider_model = await db.get(StorageConnection, storage_provider_id)
         if not provider_model:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Storage provider not found")
         provider = get_storage_provider(provider_model)

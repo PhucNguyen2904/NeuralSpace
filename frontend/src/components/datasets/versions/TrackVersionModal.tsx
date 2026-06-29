@@ -4,15 +4,24 @@ import { useCallback, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
   Database,
   FileJson,
   FileUp,
+  GitCompare,
   Loader2,
   UploadCloud,
   XCircle,
+  Zap,
 } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
-import { useDvcProfiles, useUploadVersion, type UploadStep } from "@/lib/hooks/useDatasetVersions";
+import {
+  useDvcProfiles,
+  useUploadDeltaVersion,
+  useUploadVersion,
+  useVersionList,
+  type UploadStep,
+} from "@/lib/hooks/useDatasetVersions";
 import type { DvcVersionStatus } from "@/lib/api/dvc";
 
 type DatasetVersionMetadata = {
@@ -29,6 +38,8 @@ type DatasetVersionMetadata = {
   schema_snapshot?: Record<string, unknown>;
   schemaSnapshot?: Record<string, unknown>;
 };
+
+type UploadMode = "full" | "delta";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -76,10 +87,14 @@ function FileDrop({
   file,
   onFile,
   disabled,
+  label,
+  hint,
 }: {
   file: File | null;
   onFile: (f: File) => void;
   disabled: boolean;
+  label?: string;
+  hint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -135,14 +150,53 @@ function FileDrop({
           <UploadCloud size={32} className="text-text-tertiary" />
           <div className="text-center">
             <p className="text-sm font-medium text-text-primary">
-              Drag & drop or <span className="text-brand-500">browse</span>
+              {label ?? <>Drag & drop or <span className="text-brand-500">browse</span></>}
             </p>
             <p className="mt-0.5 text-xs text-text-secondary">
-              Any file format · Max recommended 500 MB
+              {hint ?? "Any file format · Max recommended 500 MB"}
             </p>
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ─── Mode Toggle ─────────────────────────────────────────────────────────────
+
+function ModeToggle({ mode, onChange, disabled }: { mode: UploadMode; onChange: (m: UploadMode) => void; disabled: boolean }) {
+  return (
+    <div className="flex rounded-lg border border-border bg-bg-elevated p-1 gap-1">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange("full")}
+        className={[
+          "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          mode === "full"
+            ? "bg-bg-surface text-text-primary shadow-sm"
+            : "text-text-secondary hover:text-text-primary",
+          disabled ? "opacity-50 pointer-events-none" : "",
+        ].join(" ")}
+      >
+        <UploadCloud size={15} />
+        Full Upload
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange("delta")}
+        className={[
+          "flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+          mode === "delta"
+            ? "bg-brand-500/10 text-brand-500 shadow-sm"
+            : "text-text-secondary hover:text-text-primary",
+          disabled ? "opacity-50 pointer-events-none" : "",
+        ].join(" ")}
+      >
+        <Zap size={15} />
+        Delta Upload
+      </button>
     </div>
   );
 }
@@ -163,8 +217,11 @@ export function TrackVersionModal({
   onSuccess,
 }: UploadVersionModalProps) {
   const uploader = useUploadVersion();
+  const deltaUploader = useUploadDeltaVersion();
   const { data: dvcProfiles = [], isLoading: isLoadingDvcProfiles } = useDvcProfiles();
+  const { data: existingVersions = [] } = useVersionList(datasetId);
 
+  const [mode, setMode] = useState<UploadMode>("full");
   const [file, setFile] = useState<File | null>(null);
   const [dvcProfileId, setDvcProfileId] = useState("");
   const [version, setVersion] = useState("");
@@ -172,17 +229,29 @@ export function TrackVersionModal({
   const [changelog, setChangelog] = useState("");
   const [itemCount, setItemCount] = useState<string>("");
   const [versionStatus, setVersionStatus] = useState<DvcVersionStatus>("draft");
+
+  // Delta-specific state
+  const [baseVersionId, setBaseVersionId] = useState("");
+
   const metadataInputRef = useRef<HTMLInputElement>(null);
   const [metadataFileName, setMetadataFileName] = useState("");
   const [importedMetadata, setImportedMetadata] = useState<DatasetVersionMetadata | null>(null);
 
-  const isDone = uploader.steps.every((s) => s.status === "done");
-  const hasError = uploader.steps.some((s) => s.status === "error");
-  const isActive = uploader.isUploading;
+  const activeUploader = mode === "delta" ? deltaUploader : uploader;
+  const isDone = activeUploader.steps.every((s) => s.status === "done");
+  const hasError = activeUploader.steps.some((s) => s.status === "error");
+  const isActive = activeUploader.isUploading;
 
   const readyDvcProfiles = dvcProfiles.filter((profile) => profile.status === "ready");
   const selectedDvcProfileId = dvcProfileId || readyDvcProfiles.find((profile) => profile.is_environment_default)?.id || readyDvcProfiles[0]?.id || "";
-  const canSubmit = Boolean(file && selectedDvcProfileId) && !isActive && !isDone;
+
+  // For delta: auto-select latest version as base
+  const latestVersion = existingVersions.find((v) => v.is_latest);
+  const resolvedBaseVersionId = baseVersionId || latestVersion?.id || "";
+
+  const canSubmitFull = Boolean(file && selectedDvcProfileId) && !isActive && !isDone;
+  const canSubmitDelta = Boolean(file && selectedDvcProfileId && resolvedBaseVersionId) && !isActive && !isDone;
+  const canSubmit = mode === "delta" ? canSubmitDelta : canSubmitFull;
 
   const applyFileDefaults = async (selected: File) => {
     setFile(selected);
@@ -196,13 +265,16 @@ export function TrackVersionModal({
   const handleClose = () => {
     if (isActive) return;
     uploader.reset();
+    deltaUploader.reset();
     setFile(null);
+    setMode("full");
     setDvcProfileId("");
     setVersion("");
     setCommitMessage("");
     setChangelog("");
     setItemCount("");
     setVersionStatus("draft");
+    setBaseVersionId("");
     setMetadataFileName("");
     setImportedMetadata(null);
     onClose();
@@ -211,21 +283,37 @@ export function TrackVersionModal({
   const handleSubmit = async () => {
     if (!file) return;
     try {
-      await uploader.upload({
-        datasetId,
-        file,
-        version,
-        commitMessage: commitMessage.trim() || `chore(data): track ${filenameStem(file.name)}`,
-        changelog,
-        itemCount: itemCount ? parseInt(itemCount, 10) : 0,
-        status: versionStatus,
-        dvcProfileId: selectedDvcProfileId,
-        splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
-        schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
-      });
+      if (mode === "delta") {
+        await deltaUploader.upload({
+          datasetId,
+          file,
+          baseVersionId: resolvedBaseVersionId,
+          version,
+          commitMessage: commitMessage.trim() || `chore(data): delta update for ${filenameStem(file.name)}`,
+          changelog,
+          itemCount: itemCount ? parseInt(itemCount, 10) : 0,
+          status: versionStatus,
+          dvcProfileId: selectedDvcProfileId,
+          splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
+          schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
+        });
+      } else {
+        await uploader.upload({
+          datasetId,
+          file,
+          version,
+          commitMessage: commitMessage.trim() || `chore(data): track ${filenameStem(file.name)}`,
+          changelog,
+          itemCount: itemCount ? parseInt(itemCount, 10) : 0,
+          status: versionStatus,
+          dvcProfileId: selectedDvcProfileId,
+          splitInfo: importedMetadata?.split_info ?? importedMetadata?.splitInfo,
+          schemaSnapshot: importedMetadata?.schema_snapshot ?? importedMetadata?.schemaSnapshot,
+        });
+      }
       onSuccess?.();
     } catch {
-      // useTrackVersionUploader stores the visible error state.
+      // useUploadVersion / useUploadDeltaVersion stores the visible error state.
     }
   };
 
@@ -253,7 +341,8 @@ export function TrackVersionModal({
     }
   };
 
-  const showProgress = uploader.steps.some((s) => s.status !== "pending");
+  const showProgress = activeUploader.steps.some((s) => s.status !== "pending");
+  const activeError = activeUploader.error;
 
   return (
     <Modal
@@ -272,7 +361,7 @@ export function TrackVersionModal({
             </span>
           ) : (
             <span className="text-xs text-text-tertiary">
-              DVC tracking may take 1–3 minutes
+              {mode === "delta" ? "Delta merge + DVC tracking may take 1–3 minutes" : "DVC tracking may take 1–3 minutes"}
             </span>
           )}
           <div className="flex gap-2">
@@ -286,8 +375,8 @@ export function TrackVersionModal({
                 loading={isActive}
                 className="gap-1.5"
               >
-                <UploadCloud size={15} />
-                Upload & Track
+                {mode === "delta" ? <Zap size={15} /> : <UploadCloud size={15} />}
+                {mode === "delta" ? "Upload Delta" : "Upload & Track"}
               </Button>
             )}
           </div>
@@ -295,13 +384,65 @@ export function TrackVersionModal({
       }
     >
       <div className="space-y-5">
+        {/* ── Mode toggle ── */}
+        {!showProgress && (
+          <ModeToggle mode={mode} onChange={setMode} disabled={isActive} />
+        )}
+
+        {/* ── Delta mode: base version selector ── */}
+        {!showProgress && mode === "delta" && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/5 px-4 py-3 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-medium text-brand-400">
+              <GitCompare size={15} />
+              Delta Upload — only upload the changes
+            </div>
+            <p className="text-xs text-text-secondary">
+              Upload a <strong>ZIP file containing only the changes</strong> (added/modified files for images,
+              or <code>added_rows.csv</code> / <code>removed_ids.json</code> for tabular data).
+              The server merges it with the base version automatically.
+            </p>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-text-secondary">
+                Base version <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
+                <select
+                  value={resolvedBaseVersionId}
+                  onChange={(e) => setBaseVersionId(e.target.value)}
+                  disabled={isActive || existingVersions.length === 0}
+                  className="h-9 w-full appearance-none rounded-md border border-border bg-bg-surface px-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
+                >
+                  {existingVersions.length === 0 && (
+                    <option value="">No existing versions</option>
+                  )}
+                  {existingVersions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.version}{v.is_latest ? " · latest" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {existingVersions.length === 0 && (
+                <p className="mt-1 text-xs text-red-500">No existing versions found. Use Full Upload for the first version.</p>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ── File drop zone ── */}
         {!showProgress && (
           <div>
             <label className="mb-2 block text-sm font-medium">
-              Dataset file <span className="text-red-500">*</span>
+              {mode === "delta" ? "Delta file" : "Dataset file"} <span className="text-red-500">*</span>
             </label>
-            <FileDrop file={file} onFile={(selected) => void applyFileDefaults(selected)} disabled={isActive} />
+            <FileDrop
+              file={file}
+              onFile={(selected) => void applyFileDefaults(selected)}
+              disabled={isActive}
+              label={mode === "delta" ? "Drag & drop your delta ZIP or browse" : undefined}
+              hint={mode === "delta" ? "Must be a ZIP with delta_manifest.json + changed files only" : undefined}
+            />
           </div>
         )}
 
@@ -383,7 +524,7 @@ export function TrackVersionModal({
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
               disabled={isActive}
-              placeholder={file ? `chore(data): track ${filenameStem(file.name)}` : "Generated from the selected file"}
+              placeholder={file ? `chore(data): ${mode === "delta" ? "delta update for" : "track"} ${filenameStem(file.name)}` : "Generated from the selected file"}
               className="h-9 w-full rounded-md border border-border bg-bg-surface px-3 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
             />
           </div>
@@ -400,7 +541,7 @@ export function TrackVersionModal({
               value={changelog}
               onChange={(e) => setChangelog(e.target.value)}
               disabled={isActive}
-              placeholder="Describe changes from the previous version..."
+              placeholder={mode === "delta" ? "Describe what changed in this delta..." : "Describe changes from the previous version..."}
               className="w-full rounded-md border border-border bg-bg-surface px-3 py-2 text-sm placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-50"
             />
           </div>
@@ -448,7 +589,7 @@ export function TrackVersionModal({
               Progress
             </p>
             <ul className="space-y-3 text-sm">
-              {uploader.steps.map((step) => (
+              {activeUploader.steps.map((step) => (
                 <StepRow key={step.key} step={step} />
               ))}
             </ul>
@@ -456,12 +597,12 @@ export function TrackVersionModal({
         )}
 
         {/* ── Error ── */}
-        {hasError && uploader.error && (
+        {hasError && activeError && (
           <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" />
             <div>
-              <p className="font-medium">Upload failed</p>
-              <p className="mt-0.5 text-xs opacity-90">{uploader.error}</p>
+              <p className="font-medium">{mode === "delta" ? "Delta upload failed" : "Upload failed"}</p>
+              <p className="mt-0.5 text-xs opacity-90">{activeError}</p>
             </div>
           </div>
         )}
@@ -470,7 +611,9 @@ export function TrackVersionModal({
         {!showProgress && (
           <p className="flex items-center gap-1.5 text-xs text-text-tertiary">
             <AlertTriangle size={12} />
-            Previous latest version will be marked as non-latest automatically.
+            {mode === "delta"
+              ? "Delta is merged server-side; the stored version is always a complete snapshot."
+              : "Previous latest version will be marked as non-latest automatically."}
           </p>
         )}
       </div>

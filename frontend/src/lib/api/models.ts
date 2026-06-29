@@ -21,6 +21,11 @@ export async function loadModelToWorkspace(modelId: string, workspaceId: string,
   await apiClient.post(`/workspaces/${workspaceId}/models`, { model_id: modelId, mount_path: mountPath });
 }
 
+export async function getModelDownloadUrl(id: string): Promise<{ url: string }> {
+  const response = await apiClient.get<{ url: string }>(`/models/${id}/download-url`);
+  return response.data;
+}
+
 export async function getModelVersions(modelId: string): Promise<ModelVersion[]> {
   const response = await apiClient.get<ModelVersion[]>(`/models/${modelId}/versions`);
   return response.data;

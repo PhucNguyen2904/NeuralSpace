@@ -1,9 +1,9 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { AudioLines, FileText, Film, ImageIcon, Search, Table2 } from "lucide-react";
+import { AudioLines, Boxes, FileText, Film, Footprints, ImageIcon, RotateCcw, ScanLine, Search, Table2 } from "lucide-react";
 import { Input } from "@/components/ui";
-import type { DatasetFilters, DatasetType } from "@/types/dataset";
+import type { DatasetFilters, DatasetType, YoloTaskType } from "@/types/dataset";
 
 const typeItems: Array<{ key: DatasetType; label: string; icon: LucideIcon }> = [
   { key: "image", label: "Image", icon: ImageIcon },
@@ -11,6 +11,15 @@ const typeItems: Array<{ key: DatasetType; label: string; icon: LucideIcon }> = 
   { key: "tabular", label: "Tabular / CSV", icon: Table2 },
   { key: "audio", label: "Audio", icon: AudioLines },
   { key: "video", label: "Video", icon: Film }
+];
+
+
+const yoloTaskItems: Array<{ key: YoloTaskType; label: string; icon: LucideIcon; color: string }> = [
+  { key: "object_detection", label: "Object Detection", icon: Boxes, color: "bg-blue-50 text-blue-700" },
+  { key: "instance_segmentation", label: "Instance Segmentation", icon: ScanLine, color: "bg-purple-50 text-purple-700" },
+  { key: "pose_estimation", label: "Pose Estimation", icon: Footprints, color: "bg-orange-50 text-orange-700" },
+  { key: "image_classification", label: "Image Classification", icon: ImageIcon, color: "bg-emerald-50 text-emerald-700" },
+  { key: "obb", label: "OBB Detection", icon: RotateCcw, color: "bg-rose-50 text-rose-700" }
 ];
 
 const allTags = ["computer-vision", "nlp", "benchmark", "custom", "tabular", "audio", "video"];
@@ -47,6 +56,34 @@ export function FilterPanel({
               <span className="flex items-center gap-2 text-text-secondary"><input type="checkbox" checked={filters.types.includes(item.key)} onChange={(event) => onChange({ types: event.target.checked ? [...filters.types, item.key] : filters.types.filter((type) => type !== item.key) })} className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500" /><item.icon size={14} className="text-emerald-600" /> {item.label}</span>
             </label>
           ))}
+        </div>
+      </div>
+      <div>
+        <p className="mb-2 text-sm font-semibold text-text-primary">YOLO Task</p>
+        <div className="space-y-2">
+          {yoloTaskItems.map((item) => {
+            const checked = filters.yoloTasks.includes(item.key);
+            return (
+              <label key={item.key} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) =>
+                    onChange({
+                      yoloTasks: event.target.checked
+                        ? [...filters.yoloTasks, item.key]
+                        : filters.yoloTasks.filter((t) => t !== item.key)
+                    })
+                  }
+                  className="h-4 w-4 rounded border-border text-emerald-600 focus:ring-emerald-500"
+                />
+                <span className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${item.color}`}>
+                  <item.icon size={11} />
+                  {item.label}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
       <div>

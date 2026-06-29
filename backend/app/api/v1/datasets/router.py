@@ -67,6 +67,7 @@ def _to_payload(row: Dataset) -> dict:
         "thumbnail_url": None,
         "storage_path": row.storage_path or "",
         "status": row.status,
+        "yolo_task": source.get("task_type"),
     }
 
 
@@ -230,6 +231,7 @@ async def list_datasets(
     created_after: datetime | None = Query(default=None),
     sort: str | None = Query(default=None),
     archive_status: str | None = Query(default="active"),
+    task_type: list[str] | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     _user=Depends(get_current_user),
 ) -> dict:
@@ -255,8 +257,17 @@ async def list_datasets(
     elif archive_status == "archived":
         filters.append(Dataset.status == "archived")
 
+    if task_type:
+        from sqlalchemy import or_
+        task_conditions = [
+            Dataset.source_payload["task_type"].astext == t
+            for t in task_type
+        ]
+        filters.append(or_(*task_conditions))
+
     stmt = select(Dataset)
     count_stmt = select(func.count(Dataset.id))
+
     if filters:
         for cond in filters:
             stmt = stmt.where(cond)
@@ -277,6 +288,124 @@ async def list_datasets(
     payloads = [_to_payload(row) for row in rows]
     await _resolve_user_names(db, payloads)
     return {"items": payloads, "total": total, "page": page, "pageSize": limit}
+
+
+@router.get("/{dataset_id}/download-url")
+async def get_dataset_download_url(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    from app.clients.minio_client import get_minio_client
+
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    
+    # Prioritize latest version for downloading
+    latest_version = (
+        await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.dataset_id == dataset.id, DatasetVersion.is_latest.is_(True))
+        )
+    ).scalar_one_or_none()
+
+    storage_path = None
+    dvc_md5 = None
+
+    if latest_version:
+        if latest_version.dvc_md5:
+            dvc_md5 = latest_version.dvc_md5.strip()
+        if latest_version.storage_path:
+            storage_path = latest_version.storage_path
+
+    # Fallback to dataset storage path if no version found
+    if not storage_path and not dvc_md5:
+        storage_path = dataset.storage_path
+        if not storage_path:
+            pub_ds = await db.get(Dataset, dataset_id)
+            if pub_ds:
+                storage_path = pub_ds.storage_path
+
+    if not storage_path and not dvc_md5:
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+
+    bucket = None
+    object_name = None
+
+    if dvc_md5:
+        dvc_prefix = "dvc/"
+        if dataset.dvc_profile_id:
+            from app.models.mlops_tracking import DVCProfile
+            profile_row = await db.get(DVCProfile, dataset.dvc_profile_id)
+            if profile_row and profile_row.remote_url:
+                match = re.match(r"s3://([^/]+)(/.*)?", profile_row.remote_url.strip())
+                if match:
+                    bucket = match.group(1)
+                    parsed_prefix = match.group(2).strip("/") if match.group(2) else ""
+                    if parsed_prefix:
+                        dvc_prefix = parsed_prefix + "/"
+        
+        object_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
+    elif storage_path:
+        if storage_path.endswith(".dvc"):
+             raise HTTPException(status_code=404, detail="No DVC MD5 found for dataset")
+             
+        if storage_path.startswith("s3://"):
+            _, rest = storage_path.split("s3://", 1)
+            bucket, _, object_name = rest.partition("/")
+        else:
+            object_name = storage_path.replace("\\", "/", -1).lstrip("/")
+            
+    if not object_name:
+         raise HTTPException(status_code=404, detail="Dataset file not found")
+
+    client = get_minio_client()
+
+    # ── Check if this is a delta version and reconstruct if needed ────────
+    if latest_version:
+        snapshot = latest_version.metadata_snapshot or {}
+        if snapshot.get("is_delta") and snapshot.get("base_version_id") and snapshot.get("delta_type"):
+            delta_type = snapshot["delta_type"]
+            try:
+                base_version_id = snapshot["base_version_id"]
+                base_ver = await db.get(DatasetVersion, base_version_id)
+                if base_ver and base_ver.storage_path:
+                    base_path = base_ver.storage_path
+                    base_bucket = None
+                    if base_path.startswith("s3://"):
+                        _, rest = base_path.split("s3://", 1)
+                        base_bucket, _, base_path = rest.partition("/")
+
+                    base_raw = await client.get_object_data(base_path, bucket=base_bucket)
+                    delta_raw = await client.get_object_data(object_name, bucket=bucket)
+
+                    from app.services.dataset_delta_service import apply_delta
+                    merged_raw, _ = apply_delta(base_raw, delta_raw, delta_type)
+
+                    # Upload merged file to a temp path for presigned URL
+                    import io as _io
+                    ext = ".zip" if delta_type == "zip" else f".{delta_type}"
+                    content_type = {
+                        "zip": "application/zip",
+                        "csv": "text/csv",
+                        "json": "application/json"
+                    }.get(delta_type, "application/octet-stream")
+                    merged_object = f"datasets/reconstructed/{latest_version.id}/merged{ext}"
+                    
+                    await client.upload_fileobj(
+                        merged_object,
+                        _io.BytesIO(merged_raw),
+                        len(merged_raw),
+                        content_type=content_type,
+                    )
+                    url = client.presigned_get_url(merged_object, bucket=bucket, expires_seconds=3600)
+                    return {"url": url, "reconstructed": True}
+            except Exception:
+                # Fallback to returning the delta file directly if reconstruction fails
+                pass
+
+    url = client.presigned_get_url(object_name, bucket=bucket, expires_seconds=3600)
+    return {"url": url}
+
 
 
 @router.get("/{dataset_id}")
@@ -732,6 +861,128 @@ async def track_dataset_version(
     return payload
 
 
+@router.post("/{dataset_id}/versions/track-delta", status_code=status.HTTP_201_CREATED)
+async def track_dataset_version_delta(
+    dataset_id: str,
+    # ── File upload ──────────────────────────────────────────────────────────
+    file: UploadFile = File(..., description="Delta file containing only the changes (ZIP with delta_manifest.json for images, or ZIP with added/removed CSVs for tabular data)"),
+    # ── Required: base version ───────────────────────────────────────────────
+    base_version_id: str = Form(..., description="ID of the DatasetVersion to apply this delta on top of"),
+    # ── Optional form fields ─────────────────────────────────────────────────
+    version: str | None = Form(default=None, description="Optional explicit version, e.g. v3 or v3.0"),
+    commit_message: str = Form(default="", description="Git commit message for this DVC snapshot"),
+    changelog: str = Form(default="", description="Human-readable change description"),
+    item_count: int = Form(default=0, description="Number of samples/rows in the merged dataset"),
+    version_status: str = Form(default="draft", alias="status", description="draft | validated | deprecated"),
+    split_info: str | None = Form(default=None, description="JSON string: {train, val, test} split ratios"),
+    schema_snapshot: str | None = Form(default=None, description="JSON string: column/feature schema snapshot"),
+    dvc_profile_id: str | None = Form(default=None, description="Optional DVC storage profile id"),
+    # ── Dependencies ─────────────────────────────────────────────────────────
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+) -> dict:
+    """
+    Upload a *delta* file and create a new DatasetVersion by merging it with an existing base version.
+
+    Instead of uploading the entire dataset again, only upload the changes:
+
+    **For ZIP / Image datasets** — upload a ZIP containing:
+    - Only the added or modified files
+    - A `delta_manifest.json` describing removed files
+
+    **For CSV datasets** — upload a ZIP containing:
+    - `added_rows.csv` — new rows to append
+    - `modified_rows.csv` — updated rows (with `__original_index__` column)
+    - `removed_ids.json` — list of 0-based row indices to remove
+    - `delta_manifest.json`
+
+    **For JSON datasets** — upload a ZIP containing:
+    - `added_records.json` — new records to append
+    - `removed_ids.json` — list of 0-based indices to remove
+    - `delta_manifest.json`
+
+    The server merges the delta with the base version and stores the full reconstructed
+    file (transparent to the download flow).
+    """
+    import json as _json
+
+    from app.config import get_settings
+    from app.services.mlops_dataset_service import DatasetService
+    from app.services.dvc_profile_service import DVCProfileService
+
+    settings = get_settings()
+
+    # ── Resolve dataset ───────────────────────────────────────────────────
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+
+    # ── Parse optional JSON form fields ──────────────────────────────────
+    parsed_split_info: dict | None = None
+    parsed_schema_snapshot: dict | None = None
+    if split_info:
+        try:
+            parsed_split_info = _json.loads(split_info)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="split_info must be valid JSON",
+            )
+    if schema_snapshot:
+        try:
+            parsed_schema_snapshot = _json.loads(schema_snapshot)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="schema_snapshot must be valid JSON",
+            )
+
+    # ── Validate status ───────────────────────────────────────────────────
+    allowed_statuses = {"draft", "validated", "deprecated"}
+    if version_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"status must be one of {sorted(allowed_statuses)}",
+        )
+
+    # ── Validate file is not empty ────────────────────────────────────────
+    if not getattr(file, "size", 1) or file.size == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Delta file is empty",
+        )
+
+    # ── Resolve DVC profile ───────────────────────────────────────────────
+    profile = await DVCProfileService(db, settings).resolve_for_dataset(
+        dataset=dataset,
+        user=current_user,
+        requested_profile_id=dvc_profile_id,
+    )
+
+    # ── Delegate to service ───────────────────────────────────────────────
+    svc = DatasetService(db)
+    new_version = await svc.track_delta_version(
+        dataset=dataset,
+        delta_file=file,
+        base_version_id=base_version_id,
+        version=version,
+        commit_message=commit_message or f"chore(data): delta update for {dataset.name}",
+        changelog=changelog,
+        item_count=item_count,
+        version_status=version_status,
+        split_info=parsed_split_info,
+        schema_snapshot=parsed_schema_snapshot,
+        user=current_user,
+        dvc_repo_path=profile.repo_path,
+        dvc_remote_name=profile.remote_name,
+        dvc_profile_id=profile.id,
+        ssh_key_encrypted=profile.ssh_key_encrypted,
+        git_ssh_url=profile.git_ssh_url,
+    )
+
+    response_payload = _version_payload(new_version)
+    await _resolve_user_names(db, [response_payload])
+    return response_payload
+
+
 @router.post("/uploads/yolo", status_code=status.HTTP_201_CREATED)
 async def upload_yolo_dataset(
     file: UploadFile = File(..., description="YOLO/Ultralytics dataset ZIP"),
@@ -739,6 +990,7 @@ async def upload_yolo_dataset(
     version: str | None = Form(default=None),
     description: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
+    task: str | None = Form(default=None, description="YOLO task type: object_detection, instance_segmentation, pose_estimation, image_classification, obb"),
     dvc_profile_id: str | None = Form(default=None),
     git_repository_id: str | None = Form(default=None),
     storage_provider_id: str | None = Form(default=None),
@@ -754,6 +1006,7 @@ async def upload_yolo_dataset(
         version=version,
         description=description,
         tags=_parse_tags(tags),
+        task_type=task,
         dvc_profile_id=dvc_profile_id or git_repository_id,
         storage_provider_id=storage_provider_id,
     )
@@ -766,6 +1019,7 @@ async def inspect_yolo_dataset(
     version: str | None = Form(default=None),
     description: str | None = Form(default=None),
     tags: str | None = Form(default=None, description="Comma-separated tags"),
+    task: str | None = Form(default=None, description="YOLO task type override"),
     db: AsyncSession = Depends(get_db),
     _current_user: UserContext = Depends(get_current_user),
 ) -> dict:
@@ -777,6 +1031,7 @@ async def inspect_yolo_dataset(
         version=version,
         description=description,
         tags=_parse_tags(tags),
+        task_type=task,
     )
 
 

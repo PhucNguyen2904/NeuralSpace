@@ -36,7 +36,7 @@ import {
   useUpdateGitSyncPrefs
 } from "@/lib/hooks/useSettings";
 import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcProfile } from "@/lib/hooks/useDatasetVersions";
-import { useStorageProviders, useCreateStorageProvider, useUpdateStorageProvider, useClearDefaultStorageProvider, useDeleteStorageProvider, useGoogleOAuthLogin } from "@/lib/hooks/useStorageProviders";
+import { useStorageConnections, useConnectStorage, useDisconnectStorage, useConnectGoogleDrive, useSetDefaultStorage } from "@/lib/hooks/useStorageProviders";
 import { useGitAccounts, useGitOAuthLogin, useDisconnectGitAccount, useGitRepositories, useTrackedRepositories, useUntrackedRepositories, useTrackRepository, useGitActivities } from "@/lib/hooks/useGitIntegration";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
@@ -68,18 +68,19 @@ const passwordSchema = z
   .refine((v) => v.newPassword === v.confirmPassword, { path: ["confirmPassword"], message: "Password confirmation does not match" });
 
 const providerSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  type: z.enum(["minio", "s3", "gdrive"]),
+  display_name: z.string().min(1, "Name is required"),
+  provider: z.enum(["s3", "drive"]),
   endpoint: z.string().optional(),
-  access_key: z.string().optional(),
-  secret_key: z.string().optional(),
-  bucket: z.string().optional(),
+  access_key_id: z.string().optional(),
+  secret_access_key: z.string().optional(),
+  client_id: z.string().optional(),
+  client_secret: z.string().optional(),
 }).refine(data => {
-  if (data.type !== "gdrive") {
-    return !!data.endpoint && !!data.access_key && !!data.secret_key && !!data.bucket;
+  if (data.provider === "s3") {
+    return !!data.endpoint && !!data.access_key_id && !!data.secret_access_key;
   }
   return true;
-}, { path: ["endpoint"], message: "Endpoint, Access Key, Secret Key, and Bucket are required for MinIO/S3" });
+}, { path: ["provider"], message: "Please fill in all required fields for the selected provider." });
 
 function Field({ label, children, error }: { label: string; children: ReactNode; error?: string | any }) {
   return (
@@ -122,45 +123,58 @@ export default function SettingsPage() {
   const updateDvcProfile = useUpdateDvcProfile();
   const deleteDvcProfile = useDeleteDvcProfile();
 
-  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageProviders();
-  const createStorageProvider = useCreateStorageProvider();
-  const updateStorageProvider = useUpdateStorageProvider();
-  const clearDefaultStorageProvider = useClearDefaultStorageProvider();
-  const deleteStorageProvider = useDeleteStorageProvider();
-  const googleOAuthLogin = useGoogleOAuthLogin();
+  const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageConnections();
+  const connectStorage = useConnectStorage();
+  const disconnectStorage = useDisconnectStorage();
+  const connectGoogleDrive = useConnectGoogleDrive();
+  const setDefaultStorage = useSetDefaultStorage();
   const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
   const gitOAuthLogin = useGitOAuthLogin();
   const disconnectGitAccount = useDisconnectGitAccount();
   const [providerModalOpen, setProviderModalOpen] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const providerForm = useForm<z.infer<typeof providerSchema>>({
     resolver: zodResolver(providerSchema),
     defaultValues: {
-      name: "",
-      type: "minio",
+      display_name: "",
+      provider: "s3",
       endpoint: "",
-      access_key: "",
-      secret_key: "",
-      bucket: "",
+      access_key_id: "",
+      secret_access_key: "",
+      client_id: "",
+      client_secret: "",
     }
   });
 
   const onSubmitProvider = async (values: any) => {
     try {
-      await createStorageProvider.mutateAsync({
-        name: values.name,
-        type: values.type,
-        config: {
-          endpoint: values.endpoint,
-          access_key: values.access_key,
-          secret_key: values.secret_key,
-          bucket: values.bucket,
-        }
+      if (values.provider === "drive") {
+        // Trigger Google OAuth flow
+        // The display_name is sent in the URL so it's retained during the OAuth redirect
+        await connectGoogleDrive.mutateAsync(values.display_name);
+        return; // Navigation handles the rest
+      }
+
+      const params: Record<string, string> = {};
+      params.endpoint = values.endpoint;
+      params.access_key_id = values.access_key_id;
+      params.secret_access_key = values.secret_access_key;
+      params.env_auth = "false";
+      
+      const remote_name = values.display_name.toLowerCase().replace(/[^a-z0-9]/g, "_");
+
+      await connectStorage.mutateAsync({
+        display_name: values.display_name,
+        provider: values.provider,
+        remote_name: remote_name,
+        params: params,
       });
       setProviderModalOpen(false);
       providerForm.reset();
-      setToastMsg("Storage provider created");
+      setShowAdvanced(false);
+      setToastMsg("Storage provider connected");
     } catch (err: any) {
-      setToastMsg(err.message || "Failed to create provider");
+      setToastMsg(err.message || "Failed to connect provider");
     }
   };
 
@@ -382,47 +396,37 @@ export default function SettingsPage() {
                                 <Database className="h-4 w-4 text-brand-600" />
                               </div>
                               <div>
-                                <h4 className="font-semibold text-text-primary text-sm">{provider.name}</h4>
+                                <h4 className="font-semibold text-text-primary text-sm flex items-center gap-2">
+                                  {provider.display_name}
+                                  {provider.is_default && (
+                                    <span className="rounded-full bg-brand-500/10 text-brand-600 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">
+                                      Default
+                                    </span>
+                                  )}
+                                </h4>
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <span className="text-xs text-text-tertiary">Type:</span>
+                                  <span className="text-xs text-text-tertiary">Provider:</span>
                                   <span className="rounded bg-bg-sunken border border-border px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
-                                    {provider.type}
+                                    {provider.provider}
                                   </span>
+                                </div>
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  <span className={cn("h-2 w-2 rounded-full", provider.status === "connected" ? "bg-success-500" : "bg-error-500")} />
+                                  <span className="text-xs font-medium text-text-secondary capitalize">{provider.status}</span>
                                 </div>
                               </div>
                             </div>
                             
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                              {provider.type !== "gdrive" ? (
-                                <>
-                                  <div className="flex flex-col gap-1">
-                                    <span className="text-text-tertiary">Endpoint</span>
-                                    <span className="text-text-secondary font-mono truncate">{provider.config.endpoint || "N/A"}</span>
-                                  </div>
-                                  <div className="flex flex-col gap-1">
-                                    <span className="text-text-tertiary">Bucket</span>
-                                    <span className="text-text-secondary font-mono truncate">{provider.config.bucket || "N/A"}</span>
-                                  </div>
-                                  <div className="flex flex-col gap-1">
-                                    <span className="text-text-tertiary">Access Key</span>
-                                    <span className="text-text-secondary font-mono">
-                                      {provider.config.access_key ? `${provider.config.access_key.substring(0, 4)}****` : "N/A"}
-                                    </span>
-                                  </div>
-                                </>
-                              ) : (
-                                <div className="flex flex-col gap-1 col-span-2">
-                                  <span className="text-text-tertiary">Account</span>
-                                  <span className="text-text-secondary font-medium">Google Drive Integration</span>
-                                </div>
-                              )}
+                              <div className="flex flex-col gap-1">
+                                <span className="text-text-tertiary">Remote Name</span>
+                                <span className="text-text-secondary font-mono truncate">{provider.remote_name}</span>
+                              </div>
                             </div>
                           </div>
 
                           <div className="flex flex-col items-end justify-between gap-4 h-full">
                             <div className="flex gap-2">
-                              {!provider.is_active && <span className="rounded-full bg-error-500/10 px-2.5 py-1 text-xs font-medium text-error-600 border border-error-500/20">Inactive</span>}
-                              {provider.is_default && <span className="rounded-full bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 border border-brand-500/20 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-brand-600"></span>Default</span>}
                             </div>
                             
                             <div className="flex gap-2">
@@ -431,64 +435,36 @@ export default function SettingsPage() {
                                   variant="outline"
                                   size="sm"
                                   className="h-8 text-xs"
-                                  loading={
-                                    (updateStorageProvider.isPending && updateStorageProvider.variables?.id === provider.id) || 
-                                    (clearDefaultStorageProvider.isPending && provider.id === "server-default-minio")
-                                  }
-                                  onClick={() => {
-                                    if (provider.id === "server-default-minio") {
-                                      clearDefaultStorageProvider.mutate(undefined, {
-                                        onSuccess: () => setToastMsg("Reverted to System Default provider")
-                                      });
-                                    } else {
-                                      updateStorageProvider.mutate({
-                                        id: provider.id,
-                                        payload: { is_default: true }
-                                      }, {
-                                        onSuccess: () => setToastMsg("Default provider updated")
-                                      });
-                                    }
-                                  }}
+                                  loading={setDefaultStorage.isPending && setDefaultStorage.variables === provider.id}
+                                  onClick={() => setDefaultStorage.mutate(provider.id, {
+                                    onSuccess: () => setToastMsg("Default storage updated")
+                                  })}
                                 >
-                                  Set Default
+                                  Set as Default
                                 </Button>
                               )}
-                              {provider.id !== "server-default-minio" && (
-                                <>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => alert("Edit functionality coming soon")}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    className="h-8 text-xs"
-                                    onClick={() => {
-                                      if (confirm("Are you sure you want to delete this provider?")) {
-                                        deleteStorageProvider.mutate(provider.id, {
-                                          onSuccess: () => setToastMsg("Provider deleted")
-                                        });
-                                      }
-                                    }}
-                                  >
-                                    Delete
-                                  </Button>
-                                </>
-                              )}
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                className="h-8 text-xs"
+                                loading={disconnectStorage.isPending && disconnectStorage.variables === provider.id}
+                                onClick={() => {
+                                  if (confirm("Are you sure you want to disconnect this provider?")) {
+                                    disconnectStorage.mutate(provider.id, {
+                                      onSuccess: () => setToastMsg("Provider disconnected")
+                                    });
+                                  }
+                                }}
+                              >
+                                Disconnect
+                              </Button>
                             </div>
                           </div>
                         </div>
                         <div className="bg-bg-sunken px-5 py-2.5 border-t border-border flex justify-between items-center">
                           <span className="text-[11px] text-text-tertiary flex items-center gap-1">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            {provider.id === "server-default-minio" ? "System Managed" : `Added ${new Date(provider.created_at).toLocaleDateString()}`}
-                          </span>
-                          <span className="text-[11px] text-brand-600 font-medium cursor-pointer hover:underline">
-                            Test Connection
+                            {`Added ${new Date(provider.created_at).toLocaleDateString()}`}
                           </span>
                         </div>
                       </div>
@@ -504,45 +480,73 @@ export default function SettingsPage() {
                 size="md"
               >
                 <form onSubmit={providerForm.handleSubmit(onSubmitProvider)} className="space-y-4" autoComplete="off">
-                  <Field label="Provider Name" error={providerForm.formState.errors.name?.message}>
-                    <input {...providerForm.register("name")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. Production MinIO" />
+                  <Field label="Display Name" error={providerForm.formState.errors.display_name?.message}>
+                    <input {...providerForm.register("display_name")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. My Google Drive" />
                   </Field>
-                  <Field label="Provider Type" error={providerForm.formState.errors.type?.message}>
-                    <select {...providerForm.register("type")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary">
-                      <option value="minio">MinIO</option>
-                      <option value="s3">Amazon S3</option>
-                      <option value="gdrive">Google Drive</option>
+                  <Field label="Provider" error={providerForm.formState.errors.provider?.message}>
+                    <select {...providerForm.register("provider")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none text-text-primary">
+                      <option value="s3">Amazon S3 / MinIO / S3 Compatible</option>
+                      <option value="drive">Google Drive</option>
                     </select>
                   </Field>
-                  {providerForm.watch("type") !== "gdrive" ? (
+                  {providerForm.watch("provider") === "s3" ? (
                     <>
                       <Field label="Endpoint URL" error={providerForm.formState.errors.endpoint?.message}>
-                        <input {...providerForm.register("endpoint")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. http://minio:9000" />
+                        <input {...providerForm.register("endpoint")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="e.g. http://minio:9000 or s3.amazonaws.com" />
                       </Field>
                       <div className="grid grid-cols-2 gap-4">
-                        <Field label="Access Key" error={providerForm.formState.errors.access_key?.message}>
-                          <input {...providerForm.register("access_key")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                        <Field label="Access Key ID" error={providerForm.formState.errors.access_key_id?.message}>
+                          <input {...providerForm.register("access_key_id")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
                         </Field>
-                        <Field label="Secret Key" error={providerForm.formState.errors.secret_key?.message}>
-                          <input type="password" {...providerForm.register("secret_key")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                        <Field label="Secret Access Key" error={providerForm.formState.errors.secret_access_key?.message}>
+                          <input type="password" {...providerForm.register("secret_access_key")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
                         </Field>
                       </div>
-                      <Field label="Bucket Name" error={providerForm.formState.errors.bucket?.message}>
-                        <input {...providerForm.register("bucket")} className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" placeholder="datasets" />
-                      </Field>
                     </>
                   ) : (
-                    <div className="rounded-lg bg-bg-sunken border border-border p-4 text-center space-y-3">
-                      <p className="text-sm text-text-primary">Click below to connect your Google Drive account via OAuth.</p>
-                      <Button type="button" variant="outline" className="w-full flex justify-center items-center gap-2" onClick={() => googleOAuthLogin.mutate()} loading={googleOAuthLogin.isPending}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22Z" fill="#34A853" fillOpacity="0.2" /><path d="M21.1441 10.3636H12V13.6364H17.2917C17.0601 14.6865 16.4468 15.5891 15.5413 16.1963V18.1704H18.7188C20.5794 16.459 21.6364 13.8824 21.6364 10.8982C21.6364 10.7182 21.6151 10.5401 21.1441 10.3636Z" fill="#4285F4" /><path d="M12 21.8182C14.7083 21.8182 16.9944 20.916 18.7217 19.3855L15.5442 17.4114C14.6111 18.0363 13.4116 18.4091 12 18.4091C9.27116 18.4091 6.96205 16.5615 6.1362 14.0743H2.86311V16.1086C4.54427 19.4526 8.01633 21.8182 12 21.8182Z" fill="#34A853" /><path d="M6.13621 14.0743C5.92429 13.4354 5.80211 12.7297 5.80211 12C5.80211 11.2703 5.92429 10.5646 6.13621 9.92573V7.8914H2.86312C2.1704 9.276 1.77273 10.5985 1.77273 12C1.77273 13.4015 2.1704 14.724 2.86312 16.1086L6.13621 14.0743Z" fill="#FBBC05" /><path d="M12 5.59092C13.4735 5.59092 14.7924 6.09819 15.8344 7.09101L18.7909 4.13455C16.992 2.45909 14.7061 1.45455 12 1.45455C8.01633 1.45455 4.54427 3.82015 2.86311 7.16421L6.1362 9.19851C6.96205 6.71129 9.27116 4.86364 12 4.86364V5.59092Z" fill="#EA4335" /></svg>
-                        Connect Google Drive
-                      </Button>
-                    </div>
+                    <>
+                      <div className="flex flex-col items-center justify-center p-6 border border-border rounded-lg bg-bg-sunken my-2">
+                        <div className="w-12 h-12 rounded-full bg-brand-50 flex items-center justify-center mb-3">
+                          <Database className="w-6 h-6 text-brand-600" />
+                        </div>
+                        <h4 className="text-sm font-medium text-text-primary mb-1">Connect to Google Drive</h4>
+                        <p className="text-xs text-text-secondary text-center mb-4 max-w-xs">
+                          You will be redirected to Google to authorize access to your Drive.
+                        </p>
+                        
+                        {showAdvanced && (
+                          <div className="w-full space-y-4 mb-4 pt-4 border-t border-border">
+                            <p className="text-xs text-text-secondary">Custom OAuth Client (Enterprise)</p>
+                            <div className="grid grid-cols-2 gap-4 text-left">
+                              <Field label="Client ID" error={providerForm.formState.errors.client_id?.message}>
+                                <input {...providerForm.register("client_id")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                              </Field>
+                              <Field label="Client Secret" error={providerForm.formState.errors.client_secret?.message}>
+                                <input type="password" {...providerForm.register("client_secret")} autoComplete="new-password" className="h-10 w-full rounded-md border border-border bg-bg-surface px-3 text-sm focus:border-brand-500 focus:outline-none" />
+                              </Field>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="sm" 
+                          className="text-xs text-text-tertiary mb-2"
+                          onClick={() => setShowAdvanced(!showAdvanced)}
+                        >
+                          {showAdvanced ? "Hide Advanced Settings" : "Advanced Settings"}
+                        </Button>
+                      </div>
+                    </>
                   )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="ghost" type="button" onClick={() => setProviderModalOpen(false)}>Cancel</Button>
-                    <Button type="submit" loading={createStorageProvider.isPending}>Save Provider</Button>
+                    {providerForm.watch("provider") === "drive" ? (
+                      <Button type="button" onClick={providerForm.handleSubmit(onSubmitProvider)} loading={connectGoogleDrive.isPending}>Connect Google Drive</Button>
+                    ) : (
+                      <Button type="submit" loading={connectStorage.isPending}>Save Provider</Button>
+                    )}
                   </div>
                 </form>
               </Modal>

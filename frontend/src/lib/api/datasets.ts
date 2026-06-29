@@ -22,6 +22,11 @@ export async function mountDatasetToWorkspace(datasetId: string, workspaceId: st
   return response.data;
 }
 
+export async function getDatasetDownloadUrl(id: string): Promise<{ url: string }> {
+  const response = await apiClient.get<{ url: string }>(`/datasets/${id}/download-url`);
+  return response.data;
+}
+
 export async function uploadDataset(file: File, metadata?: Record<string, unknown>): Promise<Dataset> {
   const formData = new FormData();
   formData.append("file", file);

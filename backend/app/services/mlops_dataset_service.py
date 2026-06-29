@@ -271,25 +271,117 @@ class DatasetService:
 
         file_size = await asyncio.to_thread(_save_file)
 
-        # ── Upload raw file to MinIO manually ─────────────────────────────
+        # ── Upload to MinIO: delta if previous version exists, full otherwise ──
         from app.services.dataset_storage_service import DatasetStorageService
-        storage = DatasetStorageService()
-        try:
-            # We don't have storage_provider_id in this context, so we assume internal MinIO
-            def _get_minio_stream():
-                return staging_file.open("rb")
+        from app.services.dataset_delta_service import compute_zip_delta, apply_delta, detect_delta_type
+        from app.clients.minio_client import get_minio_client
 
-            with _get_minio_stream() as f:
-                raw_uri = await storage.upload_raw_stream(
-                    dataset_id=folder_id,
-                    version=requested_version,
-                    filename=safe_name,
-                    fileobj=f,
-                    size=file_size,
-                    content_type=file.content_type or "application/octet-stream",
-                )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to upload raw file to MinIO: {e}")
+        storage = DatasetStorageService()
+        minio = get_minio_client()
+
+        # Find the latest existing version to use as base for delta
+        existing_versions = (
+            await self.db.execute(
+                select(DatasetVersion)
+                .where(DatasetVersion.dataset_id == dataset.id, DatasetVersion.is_latest.is_(True))
+                .order_by(DatasetVersion.created_at.desc())
+                .limit(1)
+            )
+        ).scalars().all()
+        base_version_row = existing_versions[0] if existing_versions else None
+
+        delta_metadata: dict = {}
+        raw_uri = ""
+
+        if base_version_row and base_version_row.storage_path:
+            # ── Delta path: compute diff vs previous version ──────────────
+            try:
+                base_storage_path = base_version_row.storage_path
+                base_object_name = base_storage_path
+                base_bucket = None
+                if base_storage_path.startswith("s3://"):
+                    _, rest = base_storage_path.split("s3://", 1)
+                    base_bucket, _, base_object_name = rest.partition("/")
+
+                base_raw = await minio.get_object_data(base_object_name, bucket=base_bucket)
+                new_raw = staging_file.read_bytes()
+
+                delta_type = detect_delta_type(safe_name)
+                if delta_type == "zip":
+                    delta_bytes, manifest = compute_zip_delta(base_raw, new_raw, base_version_row.version)
+                elif delta_type == "csv":
+                    from app.services.dataset_delta_service import compute_csv_delta
+                    delta_bytes, manifest = compute_csv_delta(base_raw, new_raw, base_version_row.version)
+                elif delta_type == "json":
+                    from app.services.dataset_delta_service import compute_json_delta
+                    delta_bytes, manifest = compute_json_delta(base_raw, new_raw, base_version_row.version)
+                else:
+                    # Fallback for unknown types
+                    delta_bytes = new_raw
+                    from app.services.dataset_delta_service import DeltaManifest
+                    manifest = DeltaManifest(
+                        base_version=base_version_row.version,
+                        delta_type=delta_type,
+                        added=[],
+                        modified=[safe_name],
+                        removed=[],
+                    )
+
+                delta_filename = f"delta_{safe_name}"
+                import io as _io
+                with _io.BytesIO(delta_bytes) as delta_stream:
+                    raw_uri = await storage.upload_raw_stream(
+                        dataset_id=folder_id,
+                        version=requested_version,
+                        filename=delta_filename,
+                        fileobj=delta_stream,
+                        size=len(delta_bytes),
+                        content_type="application/zip",
+                    )
+
+                delta_metadata = {
+                    "is_delta": True,
+                    "base_version_id": base_version_row.id,
+                    "base_version": base_version_row.version,
+                    "delta_type": delta_type,
+                    "delta_manifest": manifest.to_dict(),
+                    "delta_size_bytes": len(delta_bytes),
+                    "full_size_bytes": file_size,
+                    "savings_bytes": file_size - len(delta_bytes),
+                }
+
+            except Exception as exc:
+                # If delta computation fails for any reason, fall back to full upload
+                import traceback
+                from app.core.logging import get_logger
+                get_logger(__name__).error("Delta computation failed", error=str(exc), tb=traceback.format_exc())
+                delta_metadata = {}
+                try:
+                    with staging_file.open("rb") as f:
+                        raw_uri = await storage.upload_raw_stream(
+                            dataset_id=folder_id,
+                            version=requested_version,
+                            filename=safe_name,
+                            fileobj=f,
+                            size=file_size,
+                            content_type=file.content_type or "application/octet-stream",
+                        )
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Failed to upload file to MinIO: {e}")
+        else:
+            # ── Full upload: first version, no base to diff against ───────
+            try:
+                with staging_file.open("rb") as f:
+                    raw_uri = await storage.upload_raw_stream(
+                        dataset_id=folder_id,
+                        version=requested_version,
+                        filename=safe_name,
+                        fileobj=f,
+                        size=file_size,
+                        content_type=file.content_type or "application/octet-stream",
+                    )
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to upload raw file to MinIO: {e}")
 
         # ── 3. DVC track: add → git commit → push ────────────────────────
         try:
@@ -330,6 +422,15 @@ class DatasetService:
                 dataset.dvc_profile_id = dvc_profile_id
                 new_version.dvc_profile_id = dvc_profile_id
             dataset.updated_at = datetime.now()
+
+            # Merge delta info into metadata_snapshot (no migration needed)
+            if delta_metadata:
+                existing_snapshot = new_version.metadata_snapshot or {}
+                new_version.metadata_snapshot = {**existing_snapshot, **delta_metadata}
+                # size_bytes reflects what was actually stored (delta size)
+                if "delta_size_bytes" in delta_metadata:
+                    new_version.size_bytes = delta_metadata["delta_size_bytes"]
+
             await self.db.commit()
             await self.db.refresh(dataset)
             await self.db.refresh(new_version)
@@ -338,7 +439,176 @@ class DatasetService:
             await storage.delete_version_prefix(dataset_id=dataset.id, version=requested_version)
             raise
 
+
         return new_version
+
+    async def track_delta_version(
+        self,
+        *,
+        dataset: MLDataset,
+        delta_file: UploadFile,
+        base_version_id: str,
+        version: str | None,
+        commit_message: str,
+        changelog: str,
+        item_count: int,
+        version_status: str,
+        split_info: dict | None,
+        schema_snapshot: dict | None,
+        user: UserContext,
+        dvc_repo_path: str,
+        dvc_remote_name: str,
+        dvc_profile_id: str | None = None,
+        ssh_key_encrypted: bytes | None = None,
+        git_ssh_url: str | None = None,
+    ) -> DatasetVersion:
+        """
+        Upload a *delta* file, merge it with the base version, and create a
+        new DatasetVersion as if the full merged file had been uploaded.
+
+        Steps:
+        1. Resolve the base DatasetVersion row and download its file from MinIO.
+        2. Read the delta file from the client.
+        3. Detect delta type (zip / csv / json) from the base filename.
+        4. Apply delta → reconstructed full file.
+        5. Delegate to track_new_version() with the merged bytes as an in-memory
+           UploadFile, so all DVC / DB logic stays the same.
+        """
+        from app.clients.minio_client import get_minio_client
+        from app.models.mlops_tracking import DVCProfile
+        from app.services.dataset_delta_service import apply_delta, detect_delta_type
+        import re as _re
+
+        # ── 1. Resolve base version ───────────────────────────────────────
+        base_version_row = (
+            await self.db.execute(
+                select(DatasetVersion)
+                .where(
+                    DatasetVersion.id == base_version_id,
+                    DatasetVersion.dataset_id == dataset.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if base_version_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Base version not found: {base_version_id}",
+            )
+
+        # ── 2. Download base file from MinIO ─────────────────────────────
+        base_storage_path = base_version_row.storage_path
+        if not base_storage_path:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Base version has no storage path; cannot compute delta.",
+            )
+
+        minio = get_minio_client()
+        bucket = None
+        object_name = base_storage_path
+
+        if base_storage_path.startswith("s3://"):
+            _, rest = base_storage_path.split("s3://", 1)
+            bucket, _, object_name = rest.partition("/")
+        elif base_storage_path.startswith("datasets/"):
+            object_name = base_storage_path
+
+        # Resolve DVC-based storage if needed
+        if base_version_row.dvc_md5:
+            dvc_md5 = base_version_row.dvc_md5.strip()
+            dvc_prefix = "dvc/"
+            if base_version_row.dvc_profile_id:
+                profile_row = await self.db.get(DVCProfile, base_version_row.dvc_profile_id)
+                if profile_row and profile_row.remote_url:
+                    m = _re.match(r"s3://([^/]+)(/.*)?", profile_row.remote_url.strip())
+                    if m:
+                        bucket = m.group(1)
+                        parsed_prefix = m.group(2).strip("/") if m.group(2) else ""
+                        if parsed_prefix:
+                            dvc_prefix = parsed_prefix + "/"
+            object_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
+
+        try:
+            base_raw = await minio.get_object_data(object_name, bucket=bucket)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to download base version from storage: {exc}",
+            ) from exc
+
+        # ── 3. Read delta bytes ───────────────────────────────────────────
+        delta_raw = await delta_file.read()
+        if not delta_raw:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Delta file is empty.",
+            )
+
+        # ── 4. Detect type & apply delta ─────────────────────────────────
+        base_filename = (delta_file.filename or "upload.zip")
+        # Try to infer from the base version storage path
+        if base_storage_path:
+            base_filename = Path(base_storage_path).name
+
+        delta_type = detect_delta_type(base_filename)
+        try:
+            merged_raw, manifest = apply_delta(base_raw, delta_raw, delta_type)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Failed to apply delta: {exc}",
+            ) from exc
+
+        # ── 5. Build an in-memory UploadFile from merged bytes ────────────
+        import io as _io
+
+        class _InMemoryUploadFile:
+            """Minimal shim that satisfies the interface used by track_new_version."""
+            def __init__(self, raw: bytes, filename: str, content_type: str) -> None:
+                self.filename = filename
+                self.content_type = content_type
+                self.size = len(raw)
+                self.file = _io.BytesIO(raw)
+
+            async def read(self, size: int = -1) -> bytes:
+                return self.file.read() if size < 0 else self.file.read(size)
+
+        merged_filename = base_filename
+        merged_content_type = "application/zip" if delta_type == "zip" else (
+            "text/csv" if delta_type == "csv" else "application/json"
+        )
+        merged_upload = _InMemoryUploadFile(merged_raw, merged_filename, merged_content_type)
+
+        # Enrich changelog with delta summary
+        delta_summary = (
+            f"[delta from {base_version_row.version}] "
+            f"+{len(manifest.added)} added, "
+            f"~{len(manifest.modified)} modified, "
+            f"-{len(manifest.removed)} removed"
+        )
+        enriched_changelog = f"{delta_summary}\n{changelog}".strip()
+
+        # ── 6. Delegate to the standard track_new_version() ──────────────
+        new_version = await self.track_new_version(
+            dataset=dataset,
+            file=merged_upload,  # type: ignore[arg-type]
+            version=version,
+            commit_message=commit_message or f"chore(data): delta update for {dataset.name}",
+            changelog=enriched_changelog,
+            item_count=item_count,
+            version_status=version_status,
+            split_info=split_info,
+            schema_snapshot=schema_snapshot,
+            user=user,
+            dvc_repo_path=dvc_repo_path,
+            dvc_remote_name=dvc_remote_name,
+            dvc_profile_id=dvc_profile_id,
+            ssh_key_encrypted=ssh_key_encrypted,
+            git_ssh_url=git_ssh_url,
+        )
+
+        return new_version
+
 
     @staticmethod
     def _normalize_version(version: str | None) -> str:

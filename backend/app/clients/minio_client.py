@@ -26,6 +26,7 @@ class MinIOClient:
             access_key=settings.MINIO_ACCESS_KEY,
             secret_key=settings.MINIO_SECRET_KEY,
             secure=False,  # Internal connection is always plain HTTP
+            region="us-east-1",
         )
         self._bucket = settings.MINIO_BUCKET
         self._public_endpoint = settings.MINIO_PUBLIC_ENDPOINT
@@ -126,18 +127,33 @@ class MinIOClient:
         """Return a presigned GET URL pointing to the public endpoint."""
         target = bucket or self._bucket
         from datetime import timedelta
+        
+        settings = get_settings()
+        
+        # If the public endpoint differs from the internal one,
+        # we must use a client initialized with the public endpoint.
+        # Otherwise, the Host header included in the AWS v4 signature calculation
+        # won't match the one sent by the user, leading to a SignatureDoesNotMatch error.
+        if settings.MINIO_PUBLIC_ENDPOINT != settings.MINIO_ENDPOINT:
+            from minio import Minio
+            public_client = Minio(
+                endpoint=settings.MINIO_PUBLIC_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=settings.MINIO_PUBLIC_SECURE,
+                region="us-east-1",
+            )
+            return public_client.presigned_get_object(
+                bucket_name=target,
+                object_name=object_name,
+                expires=timedelta(seconds=expires_seconds),
+            )
 
-        url = self._client.presigned_get_object(
+        return self._client.presigned_get_object(
             bucket_name=target,
             object_name=object_name,
             expires=timedelta(seconds=expires_seconds),
         )
-        # Replace internal endpoint with public one so the URL is reachable
-        # from outside the server network.
-        settings = get_settings()
-        internal = settings.MINIO_ENDPOINT
-        public = settings.MINIO_PUBLIC_ENDPOINT
-        return url.replace(f"http://{internal}", f"{'https' if settings.MINIO_PUBLIC_SECURE else 'http'}://{public}", 1)
 
     async def get_object_data(self, object_name: str, bucket: str | None = None) -> bytes:
         """Fetch an object's raw bytes from MinIO."""

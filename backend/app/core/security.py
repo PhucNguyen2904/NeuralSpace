@@ -35,6 +35,21 @@ def decrypt_token(encrypted_token: str) -> str:
     return fernet.decrypt(encrypted_token.encode("utf-8")).decode("utf-8")
 
 
+def get_oauth_fernet() -> Fernet:
+    settings = get_settings()
+    key_material = settings.OAUTH_ENCRYPTION_KEY.encode("utf-8") if hasattr(settings, 'OAUTH_ENCRYPTION_KEY') and settings.OAUTH_ENCRYPTION_KEY else settings.SECRET_KEY.encode("utf-8")
+    fernet_key = base64.urlsafe_b64encode(hashlib.sha256(key_material).digest())
+    return Fernet(fernet_key)
+
+def encrypt_credentials(data: str) -> str:
+    """Encrypt OAuth credentials."""
+    return get_oauth_fernet().encrypt(data.encode("utf-8")).decode("utf-8")
+
+def decrypt_credentials(encrypted_data: str) -> str:
+    """Decrypt OAuth credentials."""
+    return get_oauth_fernet().decrypt(encrypted_data.encode("utf-8")).decode("utf-8")
+
+
 @dataclass
 class TokenPayload:
     """Validated JWT payload."""

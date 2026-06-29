@@ -174,6 +174,67 @@ export async function trackDatasetVersion(
   return response.data;
 }
 
+// ─── New: Delta Upload ────────────────────────────────────────────────────────
+
+export interface TrackDeltaVersionPayload {
+  /** Delta file: ZIP containing only the changed/added files + delta_manifest.json */
+  file: File;
+  /** ID of the DatasetVersion that serves as the base */
+  baseVersionId: string;
+  version?: string;
+  commitMessage?: string;
+  changelog?: string;
+  itemCount?: number;
+  status?: DvcVersionStatus;
+  dvcProfileId?: string;
+  splitInfo?: Record<string, number>;
+  schemaSnapshot?: Record<string, unknown>;
+  onUploadProgress?: (percent: number) => void;
+}
+
+/**
+ * Upload a *delta* package and create a new DatasetVersion by merging with the base version.
+ * Calls  POST /api/v1/datasets/{id}/versions/track-delta  (multipart/form-data).
+ */
+export async function trackDeltaDatasetVersion(
+  datasetId: string,
+  payload: TrackDeltaVersionPayload
+): Promise<DvcDatasetVersion> {
+  const form = new FormData();
+  form.append("file", payload.file);
+  form.append("base_version_id", payload.baseVersionId);
+  if (payload.version?.trim()) {
+    form.append("version", payload.version.trim());
+  }
+  form.append("commit_message", payload.commitMessage ?? "");
+  form.append("changelog", payload.changelog ?? "");
+  form.append("item_count", String(payload.itemCount ?? 0));
+  form.append("status", payload.status ?? "draft");
+  if (payload.dvcProfileId) {
+    form.append("dvc_profile_id", payload.dvcProfileId);
+  }
+  if (payload.splitInfo) {
+    form.append("split_info", JSON.stringify(payload.splitInfo));
+  }
+  if (payload.schemaSnapshot) {
+    form.append("schema_snapshot", JSON.stringify(payload.schemaSnapshot));
+  }
+
+  const response = await apiClient.post<DvcDatasetVersion>(
+    `/datasets/${datasetId}/versions/track-delta`,
+    form,
+    {
+      timeout: 300_000, // 5 min – DVC push + merge can be slow
+      onUploadProgress: (evt) => {
+        if (payload.onUploadProgress && evt.total) {
+          payload.onUploadProgress(Math.round((evt.loaded * 100) / evt.total));
+        }
+      },
+    }
+  );
+  return response.data;
+}
+
 export async function getDvcProfiles(): Promise<DvcProfile[]> {
   const response = await apiClient.get<{ items: DvcProfile[] }>("/dvc/profiles");
   return response.data.items;

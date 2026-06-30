@@ -125,8 +125,11 @@ export function DatasetDetailDrawer({
     <div className="fixed inset-0 z-50">
       <motion.button initial={{ opacity: 0 }} animate={{ opacity: 0.3 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black backdrop-blur-sm" onClick={onClose} />
       <motion.aside initial={{ x: "100%" }} animate={{ x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="absolute right-0 top-0 h-full w-full max-w-[520px] overflow-hidden border-l border-border bg-bg-surface md:w-[520px]">
+        <Button size="sm" variant="ghost" className="absolute right-4 top-4 z-10 px-2" onClick={onClose} title="Close">
+          <X size={16} />
+        </Button>
         <div className="flex items-start justify-between border-b border-border px-5 py-4">
-          <div className="min-w-0 pr-4">
+          <div className="min-w-0 pr-8">
             <h2 className="truncate text-xl font-bold text-text-primary">{dataset.name}</h2>
             <div className="mt-1.5">
               <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
@@ -156,8 +159,6 @@ export function DatasetDetailDrawer({
             <Button size="sm" variant="ghost" className="px-2 text-error-600 hover:text-error-700 hover:bg-error-50" onClick={() => setDeleteModalOpen(true)} title="Delete permanently">
               <Trash2 size={14} />
             </Button>
-            <div className="mx-0.5 h-4 w-px bg-border" />
-            <Button size="sm" variant="ghost" className="px-2" onClick={onClose} title="Close"><X size={16} /></Button>
           </div>
         </div>
         <div className="border-b border-border px-5 py-2">

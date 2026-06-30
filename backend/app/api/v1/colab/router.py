@@ -14,9 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db, get_redis
-from app.models.dataset import Dataset
-from app.models.mlops_tracking import Experiment, ModelVersion, Run, RunLog
-from app.models.model_registry import ModelRegistry
+from app.models.mlops_tracking import Experiment, ModelVersion, Run, RunLog, DatasetVersion
 from app.models.workspace_assets import WorkspaceModel
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.colab import (
@@ -105,7 +103,7 @@ async def _workspace_assets_payload(
     if dataset_ids:
         dataset_rows = (
             await db.execute(
-                select(Dataset).where(Dataset.id.in_(dataset_ids))
+                select(DatasetVersion).where(DatasetVersion.id.in_(dataset_ids))
             )
         ).scalars().all()
         public_client = _minio_client(public=True)
@@ -125,7 +123,7 @@ async def _workspace_assets_payload(
     if model_ids:
         model_rows = (
             await db.execute(
-                select(ModelRegistry).where(ModelRegistry.id.in_(model_ids))
+                select(ModelVersion).where(ModelVersion.id.in_(model_ids))
             )
         ).scalars().all()
         if public_client is None:

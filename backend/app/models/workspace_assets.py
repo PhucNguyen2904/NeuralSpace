@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -24,15 +25,15 @@ class WorkspaceDataset(TimestampMixin, Base):
         nullable=False,
     )
     dataset_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("datasets.id", ondelete="CASCADE"),
+        UUID(as_uuid=False),
+        ForeignKey("mlops.dataset_versions.id", ondelete="CASCADE"),
         nullable=False,
     )
     mount_path: Mapped[str] = mapped_column(String(255), nullable=False)
     mounted_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     workspace = relationship("Workspace")
-    dataset = relationship("Dataset", back_populates="workspaces")
+    # Removed legacy back_populates
 
 
 class WorkspaceModel(TimestampMixin, Base):
@@ -51,13 +52,13 @@ class WorkspaceModel(TimestampMixin, Base):
         nullable=False,
     )
     model_id: Mapped[str] = mapped_column(
-        String(50),
-        ForeignKey("models.id", ondelete="CASCADE"),
+        UUID(as_uuid=False),
+        ForeignKey("mlops.model_versions.id", ondelete="CASCADE"),
         nullable=False,
     )
     mount_path: Mapped[str] = mapped_column(String(255), nullable=False)
     mounted_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     workspace = relationship("Workspace")
-    model = relationship("ModelRegistry", back_populates="workspaces")
+    # Removed legacy back_populates
 

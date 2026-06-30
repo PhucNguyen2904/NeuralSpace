@@ -10,9 +10,7 @@ from typing import Literal
 from sqlalchemy import Select, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.dataset import Dataset as AssetDataset
 from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
-from app.models.model_registry import ModelRegistry
 from app.schemas.lineage import (
     DatasetLineageGraph,
     ImpactedModel,
@@ -369,22 +367,21 @@ class LineageService:
         for model_version in model_version_rows:
             model_versions_by_run.setdefault(model_version.run_id, []).append(model_version)
 
-        dataset_rows = []
         if dataset_ids:
-            dataset_rows = list(
-                (await self.db.execute(select(AssetDataset).where(AssetDataset.id.in_(dataset_ids))))
-                .scalars()
-                .all()
-            )
-        model_rows = []
+            datasets = (
+                await self.db.execute(select(DatasetVersion).where(DatasetVersion.id.in_(dataset_ids)))
+            ).scalars().all()
+            datasets_by_id = {str(d.id): d for d in datasets}
+        else:
+            datasets_by_id = {}
+
         if model_ids:
-            model_rows = list(
-                (await self.db.execute(select(ModelRegistry).where(ModelRegistry.id.in_(model_ids))))
-                .scalars()
-                .all()
-            )
-        datasets_by_id = {row.id: row for row in dataset_rows}
-        models_by_id = {row.id: row for row in model_rows}
+            models = (
+                await self.db.execute(select(ModelVersion).where(ModelVersion.id.in_(model_ids)))
+            ).scalars().all()
+            models_by_id = {str(m.id): m for m in models}
+        else:
+            models_by_id = {}
 
         for run in colab_runs:
             run_node_id = run.id
@@ -408,7 +405,7 @@ class LineageService:
                         "id": asset_id,
                         "type": "dataset",
                         "dataset_id": asset_id,
-                        "name": dataset.name if dataset else asset_id,
+                        "name": dataset.version if dataset else asset_id,
                         "version": "workspace",
                         "status": "validated",
                         "created_at": dataset.created_at.isoformat() if dataset and dataset.created_at else None,

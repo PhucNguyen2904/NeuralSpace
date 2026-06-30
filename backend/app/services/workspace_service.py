@@ -12,9 +12,8 @@ from app.core.exceptions import (
     WorkspaceNotOwnedError,
 )
 from app.core.logging import get_logger
-from app.models.dataset import Dataset
-from app.models.model_registry import ModelRegistry
 from app.models.workspace import Workspace, WorkspaceStatus
+from app.models.mlops_tracking import DatasetVersion, ModelVersion
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.workspace import (
     WorkspaceAssetsUpdateRequest,
@@ -42,7 +41,7 @@ class WorkspaceService:
             set(
                 (
                     await db.execute(
-                        select(Dataset.id).where(Dataset.id.in_(dataset_ids))
+                        select(DatasetVersion.id).where(DatasetVersion.id.in_(dataset_ids))
                     )
                 ).scalars().all()
             )
@@ -53,7 +52,7 @@ class WorkspaceService:
             set(
                 (
                     await db.execute(
-                        select(ModelRegistry.id).where(ModelRegistry.id.in_(model_ids))
+                        select(ModelVersion.id).where(ModelVersion.id.in_(model_ids))
                     )
                 ).scalars().all()
             )

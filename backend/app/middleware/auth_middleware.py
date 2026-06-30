@@ -40,27 +40,31 @@ class AuthMiddleware(BaseHTTPMiddleware):
             or request.url.path.startswith("/api/v1/colab/runtime/")
             or request.url.path.startswith("/workspace-data/")
             or request.url.path.startswith("/mlflow-artifacts/")
+            or request.url.path.startswith("/api/v1/datasets/d/")
         ):
             return await call_next(request)
 
         authorization = request.headers.get("Authorization")
-        if (
-            not authorization
-            and request.url.path.startswith("/api/v1/workspaces/")
-            and request.url.path.endswith("/events")
-        ):
+        if not authorization:
             token = request.query_params.get("access_token")
-            if token:
+            if token and (
+                (request.url.path.startswith("/api/v1/workspaces/") and request.url.path.endswith("/events"))
+                or request.url.path.endswith("/minio-stream")
+                or request.url.path.endswith("/gdrive-stream")
+                or request.url.path.endswith("/stream-download")
+            ):
                 try:
                     request.state.user = verify_jwt(token)
-                    return await call_next(request)
-                except Exception:
-                    self._log_failed_auth(request, "invalid_or_expired_sse_token")
+                except Exception as e:
+                    logger.error(f"Failed to verify query token: {e}")
+                    self._log_failed_auth(request, "invalid_or_expired_query_token")
                     return JSONResponse(status_code=401, content={"message": "Invalid or expired token"})
-
-        if not authorization:
+                
+                return await call_next(request)
+            
             self._log_failed_auth(request, "missing_authorization")
             return JSONResponse(status_code=401, content={"message": "Missing authorization"})
+
 
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:

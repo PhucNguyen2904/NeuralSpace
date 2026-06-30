@@ -238,7 +238,7 @@ class DatasetUploadService:
         storage_provider_id: str | None = None,
     ) -> dict:
         from sqlalchemy import select
-        from app.models.dataset import Dataset
+        from app.models.mlops_tracking import MLDataset
         
         embedded_metadata = parsed.details.get("embedded_metadata") if isinstance(parsed.details, dict) else None
         if not isinstance(embedded_metadata, dict):
@@ -251,8 +251,8 @@ class DatasetUploadService:
         resolved_description = description if description not in (None, "") else metadata_description
         resolved_tags = tags or metadata_tags
         
-        existing_dataset = (await self.db.execute(select(Dataset.id).where(Dataset.name == parsed.name))).scalar_one_or_none()
-        dataset_id = existing_dataset or f"ds_{uuid4().hex[:10]}"
+        existing_dataset = (await self.db.execute(select(MLDataset.id).where(MLDataset.name == parsed.name))).scalar_one_or_none()
+        dataset_id = existing_dataset or str(uuid4())
         
         normalized_version = await self._resolve_upload_version(
             dataset_name=parsed.name,
@@ -492,7 +492,7 @@ class DatasetUploadService:
 
 
 
-            public_dataset, _mlops_dataset, dataset_version = await self.version_service.create_upload_version(
+            mlops_dataset, dataset_version = await DatasetVersionService(self.db).create_upload_version(
                 dataset_id=dataset_id,
                 dataset_name=parsed.name,
                 description=resolved_description,
@@ -519,13 +519,11 @@ class DatasetUploadService:
 
             return {
                 "dataset": {
-                    "id": public_dataset.id,
-                    "name": public_dataset.name,
-                    "description": public_dataset.description or "",
-                    "type": public_dataset.dataset_type,
-                    "task": parsed.task_type,
-                    "tags": public_dataset.tags or [],
-                    "storage_path": public_dataset.storage_path or "",
+                    "id": mlops_dataset.id,
+                    "name": mlops_dataset.name,
+                    "description": mlops_dataset.description or "",
+                    "type": mlops_dataset.type,
+                    "status": mlops_dataset.status,
                 },
                 "version": {
                     "id": dataset_version.id,

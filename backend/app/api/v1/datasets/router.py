@@ -12,7 +12,6 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
-from app.models.dataset import Dataset
 from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
 from app.models.workspace_assets import WorkspaceDataset
 
@@ -71,15 +70,21 @@ def _to_payload(row: Dataset) -> dict:
     }
 
 
-def _mlops_to_payload(row: MLDataset) -> dict:
+def _mlops_to_payload(row: MLDataset, latest_version: DatasetVersion | None = None) -> dict:
+    size_bytes = 0
+    item_count = 0
+    if latest_version:
+        size_bytes = latest_version.size_bytes or 0
+        item_count = latest_version.item_count or 0
+        
     return {
         "id": row.id,
         "name": row.name,
         "description": row.description or "",
         "type": row.type,
         "label_status": "labeled" if row.status == "active" else "processing",
-        "size_bytes": 0,
-        "item_count": 0,
+        "size_bytes": size_bytes,
+        "item_count": item_count,
         "class_count": None,
         "custom_metadata": {},
         "tags": row.tags or [],
@@ -163,31 +168,6 @@ async def _resolve_mlops_dataset(db: AsyncSession, dataset_id: str, user: UserCo
         if row is not None:
             return row
 
-    public_dataset = await db.get(Dataset, dataset_id)
-    if public_dataset is not None:
-        by_name = (
-            await db.execute(select(MLDataset).where(MLDataset.name == public_dataset.name))
-        ).scalar_one_or_none()
-        if by_name is not None:
-            return by_name
-
-        row = MLDataset(
-            id=str(uuid4()),
-            name=public_dataset.name,
-            description=public_dataset.description,
-            type=public_dataset.dataset_type,
-            owner_id=user.user_id,
-            team_id=None,
-            dvc_repo_url=None,
-            storage_path=public_dataset.storage_path,
-            tags=public_dataset.tags or [],
-            status="active",
-        )
-        db.add(row)
-        await db.commit()
-        await db.refresh(row)
-        return row
-
     by_name = (
         await db.execute(select(MLDataset).where(MLDataset.name == dataset_id))
     ).scalar_one_or_none()
@@ -237,36 +217,37 @@ async def list_datasets(
 ) -> dict:
     filters = []
     if search:
-        filters.append(func.lower(Dataset.name).like(f"%{search.lower()}%"))
+        filters.append(func.lower(MLDataset.name).like(f"%{search.lower()}%"))
     if type:
-        filters.append(Dataset.dataset_type.in_(type))
+        filters.append(MLDataset.type.in_(type))
     if status:
-        filters.append(Dataset.label_status == status)
+        pass # label_status is no longer directly supported in MLDataset, mapped to 'active'
     if size_min is not None:
-        filters.append(Dataset.size_bytes >= size_min)
+        filters.append(DatasetVersion.size_bytes >= size_min)
     if size_max is not None:
-        filters.append(Dataset.size_bytes <= size_max)
+        filters.append(DatasetVersion.size_bytes <= size_max)
     if created_after is not None:
-        filters.append(Dataset.created_at >= created_after)
+        filters.append(MLDataset.created_at >= created_after)
     if tags:
         for tag in tags:
-            filters.append(Dataset.tags.contains([tag]))
+            filters.append(MLDataset.tags.contains([tag]))
 
     if archive_status == "active":
-        filters.append(Dataset.status != "archived")
+        filters.append(MLDataset.status != "archived")
     elif archive_status == "archived":
-        filters.append(Dataset.status == "archived")
+        filters.append(MLDataset.status == "archived")
 
     if task_type:
-        from sqlalchemy import or_
-        task_conditions = [
-            Dataset.source_payload["task_type"].astext == t
-            for t in task_type
-        ]
-        filters.append(or_(*task_conditions))
+        filters.append(DatasetVersion.task_type.in_(task_type))
 
-    stmt = select(Dataset)
-    count_stmt = select(func.count(Dataset.id))
+    stmt = select(MLDataset, DatasetVersion).outerjoin(
+        DatasetVersion,
+        (DatasetVersion.dataset_id == MLDataset.id) & (DatasetVersion.is_latest.is_(True))
+    )
+    count_stmt = select(func.count(MLDataset.id)).outerjoin(
+        DatasetVersion,
+        (DatasetVersion.dataset_id == MLDataset.id) & (DatasetVersion.is_latest.is_(True))
+    )
 
     if filters:
         for cond in filters:
@@ -274,18 +255,19 @@ async def list_datasets(
             count_stmt = count_stmt.where(cond)
 
     if sort == "oldest":
-        stmt = stmt.order_by(Dataset.created_at.asc())
+        stmt = stmt.order_by(MLDataset.created_at.asc())
     elif sort == "name":
-        stmt = stmt.order_by(Dataset.name.asc())
+        stmt = stmt.order_by(MLDataset.name.asc())
     elif sort == "size":
-        stmt = stmt.order_by(Dataset.size_bytes.desc())
+        stmt = stmt.order_by(DatasetVersion.size_bytes.desc().nulls_last())
     else:
-        stmt = stmt.order_by(Dataset.updated_at.desc())
+        stmt = stmt.order_by(MLDataset.updated_at.desc())
         
     stmt = stmt.offset((page - 1) * limit).limit(limit)
-    rows = (await db.execute(stmt)).scalars().all()
+    rows = (await db.execute(stmt)).all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
-    payloads = [_to_payload(row) for row in rows]
+    
+    payloads = [_mlops_to_payload(row[0], row[1]) for row in rows]
     await _resolve_user_names(db, payloads)
     return {"items": payloads, "total": total, "page": page, "pageSize": limit}
 
@@ -399,10 +381,7 @@ async def get_dataset_download_url(
     # Fallback to dataset storage path if no version found
     if not storage_path and not dvc_md5:
         storage_path = dataset.storage_path
-        if not storage_path:
-            pub_ds = await db.get(Dataset, dataset_id)
-            if pub_ds:
-                storage_path = pub_ds.storage_path
+
 
     if not storage_path and not dvc_md5:
         raise HTTPException(status_code=404, detail="Dataset file not found")
@@ -498,6 +477,7 @@ async def minio_dataset_stream(
     current_user: UserContext = Depends(get_current_user),
 ):
     from fastapi.responses import StreamingResponse
+    from app.clients.minio_client import get_minio_client
     import io as _io
     
     dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
@@ -517,10 +497,7 @@ async def minio_dataset_stream(
 
     if not storage_path and not dvc_md5:
         storage_path = dataset.storage_path
-        if not storage_path:
-            pub_ds = await db.get(Dataset, dataset_id)
-            if pub_ds:
-                storage_path = pub_ds.storage_path
+
 
     bucket = None
     object_name = None
@@ -688,10 +665,7 @@ async def gdrive_dataset_download(
 
     if not storage_path:
         storage_path = dataset.storage_path
-        if not storage_path:
-            pub_ds = await db.get(Dataset, dataset_id)
-            if pub_ds:
-                storage_path = pub_ds.storage_path
+
 
     if not storage_path or not storage_path.startswith("gdrive://"):
         raise HTTPException(status_code=404, detail="Dataset is not a Google Drive file")
@@ -778,12 +752,6 @@ async def gdrive_dataset_download(
     
 @router.get("/{dataset_id}")
 async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user=Depends(get_current_user)) -> dict:
-    row = await db.get(Dataset, dataset_id)
-    if row is not None:
-        payload = _to_payload(row)
-        await _resolve_user_names(db, [payload])
-        return payload
-
     mlops_row = None
     if re.fullmatch(r"[0-9a-fA-F-]{36}", dataset_id):
         mlops_row = await db.get(MLDataset, dataset_id)
@@ -793,7 +761,15 @@ async def get_dataset(dataset_id: str, db: AsyncSession = Depends(get_db), _user
         ).scalar_one_or_none()
     if mlops_row is None:
         return {}
-    payload = _mlops_to_payload(mlops_row)
+        
+    latest_version = (
+        await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.dataset_id == mlops_row.id, DatasetVersion.is_latest.is_(True))
+        )
+    ).scalar_one_or_none()
+    
+    payload = _mlops_to_payload(mlops_row, latest_version)
     await _resolve_user_names(db, [payload])
     return payload
 

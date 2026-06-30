@@ -7,7 +7,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext
-from app.models.dataset import Dataset
 from app.models.mlops_tracking import DatasetVersion, MLDataset
 
 
@@ -40,49 +39,7 @@ class DatasetVersionService:
         dvc_storage_path: str | None,
         dvc_profile_id: str | None,
         user: UserContext,
-    ) -> tuple[Dataset, MLDataset, DatasetVersion]:
-        public_dataset = await self.db.get(Dataset, dataset_id)
-        if public_dataset is None:
-            public_dataset = Dataset(
-                id=dataset_id,
-                name=dataset_name,
-                description=description or "Uploaded dataset",
-                dataset_type=dataset_type,
-                status="ready",
-                size_bytes=size_bytes,
-                item_count=item_count,
-                label_status="labeled" if validation_status in {"passed", "warning"} else "processing",
-                tags=tags,
-                storage_path=storage_path,
-                created_by=user.user_id,
-                source_payload={
-                    "format": format,
-                    "task_type": task_type,
-                    "class_count": class_count,
-                    "metadata_uri": metadata_snapshot.get("storage", {}).get("metadata_uri"),
-                    "validation_report_uri": metadata_snapshot.get("storage", {}).get("validation_report_uri"),
-                    "validation_status": validation_status,
-                    "custom_metadata": {},
-                },
-            )
-            self.db.add(public_dataset)
-        else:
-            public_dataset.description = description or public_dataset.description
-            public_dataset.size_bytes = size_bytes
-            public_dataset.item_count = item_count
-            public_dataset.label_status = "labeled" if validation_status in {"passed", "warning"} else "processing"
-            public_dataset.tags = tags or public_dataset.tags
-            public_dataset.storage_path = storage_path
-            public_dataset.source_payload = {
-                **(public_dataset.source_payload or {}),
-                "format": format,
-                "task_type": task_type,
-                "class_count": class_count,
-                "metadata_uri": metadata_snapshot.get("storage", {}).get("metadata_uri"),
-                "validation_report_uri": metadata_snapshot.get("storage", {}).get("validation_report_uri"),
-                "validation_status": validation_status,
-            }
-
+    ) -> tuple[MLDataset, DatasetVersion]:
         mlops_dataset = (
             await self.db.execute(select(MLDataset).where(MLDataset.name == dataset_name))
         ).scalar_one_or_none()
@@ -138,7 +95,6 @@ class DatasetVersionService:
         )
         self.db.add(dataset_version)
         await self.db.commit()
-        await self.db.refresh(public_dataset)
-        await self.db.refresh(mlops_dataset)
+                await self.db.refresh(mlops_dataset)
         await self.db.refresh(dataset_version)
-        return public_dataset, mlops_dataset, dataset_version
+        return mlops_dataset, dataset_version

@@ -90,7 +90,7 @@ services:
     command: >
       sh -c "python -m pip install --no-cache-dir psycopg2-binary==2.9.9 boto3==1.34.131 &&
       python -m mlflow server
-      --backend-store-uri postgresql://postgres:postgres@postgres:5432/mlflow
+      --backend-store-uri postgresql://postgres:postgres@postgres:5432/cloud_ide
       --default-artifact-root s3://mlflow-artifacts
       --host 0.0.0.0
       --port 5000"

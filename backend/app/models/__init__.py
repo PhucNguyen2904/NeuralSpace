@@ -1,8 +1,6 @@
 """SQLAlchemy ORM models."""
 
 from app.models.base import Base, BaseModel, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.dataset import Dataset
-from app.models.model_registry import ModelRegistry
 from app.models.mlops_tracking import (
     ApprovalRequest,
     AuditLog,
@@ -29,8 +27,6 @@ __all__ = [
     "BaseModel",
     "TimestampMixin",
     "UUIDPrimaryKeyMixin",
-    "Dataset",
-    "ModelRegistry",
     "MLDataset",
     "DatasetVersion",
     "DVCProfile",

@@ -248,11 +248,7 @@ class DatasetService:
                 detail=f"DVC repo not ready: {exc}",
             ) from exc
 
-        from app.models.dataset import Dataset
-        public_dataset_id = (
-            await self.db.execute(select(Dataset.id).where(Dataset.name == dataset.name))
-        ).scalar_one_or_none()
-        folder_id = public_dataset_id or dataset.id
+        folder_id = dataset.id
 
         # ── 2. Write file to a safe staging path inside the DVC repo ────────
         # Structure: <dvc_repo>/{folder_id}/{version}/{original_filename}

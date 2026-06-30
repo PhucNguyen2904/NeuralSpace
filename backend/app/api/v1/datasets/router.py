@@ -289,6 +289,78 @@ async def list_datasets(
     await _resolve_user_names(db, payloads)
     return {"items": payloads, "total": total, "page": page, "pageSize": limit}
 
+@router.get("/d/{short_token}")
+async def resolve_short_download(short_token: str):
+    from app.dependencies import get_redis_client
+    import json
+    
+    try:
+        redis = get_redis_client()
+        data = await redis.get(f"short_dl:{short_token}")
+        if not data:
+            raise HTTPException(status_code=404, detail="Download link expired or invalid")
+            
+        payload = json.loads(data)
+        user_id = payload["user_id"]
+        clean_url = payload["url"]
+        
+        # Generate a temporary access token for this user to bypass auth
+        from app.core.security import create_access_token
+        from datetime import timedelta
+        
+        # Determine email (dummy or lookup if strictly needed, auth usually just needs sub/roles)
+        token = create_access_token(
+            data={"sub": user_id, "roles": ["user"], "type": "access"}, 
+            expires_delta=timedelta(minutes=15)
+        )
+        
+        # Append token
+        connector = "&" if "?" in clean_url else "?"
+        final_url = f"{clean_url}{connector}access_token={token}"
+        
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=final_url)
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        import logging
+        logging.getLogger(__name__).error(f"Error resolving short download: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{dataset_id}/short-download-url")
+async def get_short_download_url(
+    dataset_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+):
+    import uuid
+    import urllib.parse
+    import json
+    from app.dependencies import get_redis_client
+    
+    # 1. Reuse existing logic to determine which stream URL to use
+    result = await get_dataset_download_url(dataset_id, request, db, current_user)
+    real_url = result["url"]
+    
+    # 2. Strip any existing access_token from the URL so it's a clean base URL
+    parsed = urllib.parse.urlparse(real_url)
+    query_params = dict(urllib.parse.parse_qsl(parsed.query))
+    query_params.pop("access_token", None)
+    clean_url = parsed._replace(query=urllib.parse.urlencode(query_params)).geturl()
+    
+    # 3. Generate short token and save to Redis (valid for 15 mins)
+    short_token = uuid.uuid4().hex[:8]
+    redis = get_redis_client()
+    payload = {
+        "user_id": str(current_user.user_id),
+        "url": clean_url
+    }
+    await redis.set(f"short_dl:{short_token}", json.dumps(payload), ex=900)
+    
+    return {"url": f"/api/v1/datasets/d/{short_token}"}
+
 
 @router.get("/{dataset_id}/download-url")
 async def get_dataset_download_url(

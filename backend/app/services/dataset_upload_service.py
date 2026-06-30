@@ -500,7 +500,7 @@ class DatasetUploadService:
                 tags=resolved_tags,
                 version=normalized_version,
                 storage_path=raw_uri,
-                size_bytes=upload_size,
+                size_bytes=len(raw),
                 item_count=parsed.item_count,
                 schema_snapshot=parsed.schema_snapshot,
                 split_info=parsed.split_info,

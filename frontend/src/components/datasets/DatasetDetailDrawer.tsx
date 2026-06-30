@@ -76,7 +76,11 @@ export function DatasetDetailDrawer({
     if (downloadUrlQuery.isLoading) return "Generating URL...";
     if (downloadUrlQuery.isError) return "Failed to generate URL";
     const safeName = (dataset?.name || "dataset").replace(/\s+/g, "_");
-    return `curl -L -o "${safeName}.zip" "${downloadUrlQuery.data?.url || ""}"`;
+    let url = downloadUrlQuery.data?.url || "";
+    if (url && url.startsWith("/") && typeof window !== "undefined") {
+      url = `${window.location.origin}${url}`;
+    }
+    return `curl -L -H "ngrok-skip-browser-warning: true" -o "${safeName}.zip" "${url}"`;
   };
 
   if (!open || !dataset) return null;

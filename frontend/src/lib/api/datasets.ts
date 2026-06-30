@@ -23,7 +23,7 @@ export async function mountDatasetToWorkspace(datasetId: string, workspaceId: st
 }
 
 export async function getDatasetDownloadUrl(id: string): Promise<{ url: string }> {
-  const response = await apiClient.get<{ url: string }>(`/datasets/${id}/download-url`);
+  const response = await apiClient.get<{ url: string }>(`/datasets/${id}/short-download-url`);
   return response.data;
 }
 

@@ -382,16 +382,10 @@ export default function SettingsPage() {
                 <div className="grid gap-3">
                   {isLoadingStorageProviders ? (
                     <p className="text-sm text-text-secondary">Loading storage providers...</p>
-                  ) : storageProviders.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border bg-bg-surface p-8 text-center">
-                      <Database className="mx-auto h-8 w-8 text-text-tertiary mb-3" />
-                      <h4 className="text-sm font-medium text-text-primary mb-1">No Storage Providers</h4>
-                      <p className="text-xs text-text-secondary max-w-sm mx-auto mb-4">You haven't configured any storage providers yet. Add MinIO, S3, or Google Drive to store datasets.</p>
-                      <Button size="sm" variant="outline" onClick={() => setProviderModalOpen(true)}>Configure first provider</Button>
-                    </div>
                   ) : (
-                    storageProviders.map((provider) => (
-                      <div key={provider.id} className="rounded-xl border border-border bg-bg-surface overflow-hidden shadow-sm hover:border-brand-500/30 transition-all group">
+                    <>
+                      {/* System Default Storage */}
+                      <div className="rounded-xl border border-border bg-bg-surface overflow-hidden shadow-sm hover:border-brand-500/30 transition-all group">
                         <div className="p-5 flex flex-wrap items-start justify-between gap-4">
                           <div className="space-y-3 flex-1 min-w-[250px]">
                             <div className="flex items-center gap-2">
@@ -400,8 +394,8 @@ export default function SettingsPage() {
                               </div>
                               <div>
                                 <h4 className="font-semibold text-text-primary text-sm flex items-center gap-2">
-                                  {provider.display_name}
-                                  {provider.is_default && (
+                                  System Storage (Internal)
+                                  {!storageProviders.some(p => p.is_default) && (
                                     <span className="rounded-full bg-brand-500/10 text-brand-600 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">
                                       Default
                                     </span>
@@ -410,12 +404,12 @@ export default function SettingsPage() {
                                 <div className="flex items-center gap-2 mt-0.5">
                                   <span className="text-xs text-text-tertiary">Provider:</span>
                                   <span className="rounded bg-bg-sunken border border-border px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
-                                    {provider.provider}
+                                    minio
                                   </span>
                                 </div>
                                 <div className="mt-1 flex items-center gap-1.5">
-                                  <span className={cn("h-2 w-2 rounded-full", provider.status === "connected" ? "bg-success-500" : "bg-error-500")} />
-                                  <span className="text-xs font-medium text-text-secondary capitalize">{provider.status}</span>
+                                  <span className="h-2 w-2 rounded-full bg-success-500" />
+                                  <span className="text-xs font-medium text-text-secondary capitalize">connected</span>
                                 </div>
                               </div>
                             </div>
@@ -423,7 +417,7 @@ export default function SettingsPage() {
                             <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                               <div className="flex flex-col gap-1">
                                 <span className="text-text-tertiary">Remote Name</span>
-                                <span className="text-text-secondary font-mono truncate">{provider.remote_name}</span>
+                                <span className="text-text-secondary font-mono truncate">local_minio</span>
                               </div>
                             </div>
                           </div>
@@ -433,33 +427,26 @@ export default function SettingsPage() {
                             </div>
                             
                             <div className="flex gap-2">
-                              {!provider.is_default && (
+                              {storageProviders.some(p => p.is_default) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   className="h-8 text-xs"
-                                  loading={setDefaultStorage.isPending && setDefaultStorage.variables === provider.id}
-                                  onClick={() => setDefaultStorage.mutate(provider.id, {
-                                    onSuccess: () => setToastMsg("Default storage updated")
+                                  loading={setDefaultStorage.isPending && setDefaultStorage.variables === "system"}
+                                  onClick={() => setDefaultStorage.mutate("system", {
+                                    onSuccess: () => setToastMsg("System storage set as default")
                                   })}
                                 >
                                   Set as Default
                                 </Button>
                               )}
                               <Button
-                                variant="danger"
+                                variant="ghost"
                                 size="sm"
-                                className="h-8 text-xs"
-                                loading={disconnectStorage.isPending && disconnectStorage.variables === provider.id}
-                                onClick={() => {
-                                  if (confirm("Are you sure you want to disconnect this provider?")) {
-                                    disconnectStorage.mutate(provider.id, {
-                                      onSuccess: () => setToastMsg("Provider disconnected")
-                                    });
-                                  }
-                                }}
+                                className="h-8 text-xs cursor-not-allowed text-text-tertiary hover:bg-transparent hover:text-text-tertiary"
+                                title="System storage cannot be disconnected"
                               >
-                                Disconnect
+                                Built-in
                               </Button>
                             </div>
                           </div>
@@ -467,11 +454,95 @@ export default function SettingsPage() {
                         <div className="bg-bg-sunken px-5 py-2.5 border-t border-border flex justify-between items-center">
                           <span className="text-[11px] text-text-tertiary flex items-center gap-1">
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            {`Added ${new Date(provider.created_at).toLocaleDateString()}`}
+                            System Managed
                           </span>
                         </div>
                       </div>
-                    ))
+
+                      {/* User Providers */}
+                      {storageProviders.map((provider) => (
+                        <div key={provider.id} className="rounded-xl border border-border bg-bg-surface overflow-hidden shadow-sm hover:border-brand-500/30 transition-all group">
+                          <div className="p-5 flex flex-wrap items-start justify-between gap-4">
+                            <div className="space-y-3 flex-1 min-w-[250px]">
+                              <div className="flex items-center gap-2">
+                                <div className="h-8 w-8 rounded-lg bg-brand-500/10 flex items-center justify-center">
+                                  <Database className="h-4 w-4 text-brand-600" />
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold text-text-primary text-sm flex items-center gap-2">
+                                    {provider.display_name}
+                                    {provider.is_default && (
+                                      <span className="rounded-full bg-brand-500/10 text-brand-600 px-2 py-0.5 text-[10px] uppercase tracking-wider font-bold">
+                                        Default
+                                      </span>
+                                    )}
+                                  </h4>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs text-text-tertiary">Provider:</span>
+                                    <span className="rounded bg-bg-sunken border border-border px-1.5 py-0.5 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
+                                      {provider.provider}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex items-center gap-1.5">
+                                    <span className={cn("h-2 w-2 rounded-full", provider.status === "connected" ? "bg-success-500" : "bg-error-500")} />
+                                    <span className="text-xs font-medium text-text-secondary capitalize">{provider.status}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                <div className="flex flex-col gap-1">
+                                  <span className="text-text-tertiary">Remote Name</span>
+                                  <span className="text-text-secondary font-mono truncate">{provider.remote_name}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end justify-between gap-4 h-full">
+                              <div className="flex gap-2">
+                              </div>
+                              
+                              <div className="flex gap-2">
+                                {!provider.is_default && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-8 text-xs"
+                                    loading={setDefaultStorage.isPending && setDefaultStorage.variables === provider.id}
+                                    onClick={() => setDefaultStorage.mutate(provider.id, {
+                                      onSuccess: () => setToastMsg("Default storage updated")
+                                    })}
+                                  >
+                                    Set as Default
+                                  </Button>
+                                )}
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  loading={disconnectStorage.isPending && disconnectStorage.variables === provider.id}
+                                  onClick={() => {
+                                    if (confirm("Are you sure you want to disconnect this provider?")) {
+                                      disconnectStorage.mutate(provider.id, {
+                                        onSuccess: () => setToastMsg("Provider disconnected")
+                                      });
+                                    }
+                                  }}
+                                >
+                                  Disconnect
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="bg-bg-sunken px-5 py-2.5 border-t border-border flex justify-between items-center">
+                            <span className="text-[11px] text-text-tertiary flex items-center gap-1">
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              {`Added ${new Date(provider.created_at).toLocaleDateString()}`}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </>
                   )}
                 </div>
               </div>

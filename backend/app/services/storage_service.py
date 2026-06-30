@@ -62,7 +62,7 @@ class StorageService:
         """List all connections for a user."""
         return await self.repository.get_by_user_id(user_id)
         
-    async def set_default(self, connection_id: str, user_id: str) -> StorageConnection:
+    async def set_default(self, connection_id: str, user_id: str) -> StorageConnection | dict:
         """Set a connection as the default for the user."""
         # Get all connections for the user
         connections = await self.list_connections(user_id)
@@ -75,6 +75,11 @@ class StorageService:
             else:
                 conn.is_default = False
                 
+        if connection_id == "system":
+            # If "system" is selected, just ensure all other connections are not default
+            await self.db.commit()
+            return {"message": "System storage set as default"}
+            
         if not target_connection:
             raise HTTPException(status_code=404, detail="Storage connection not found")
             

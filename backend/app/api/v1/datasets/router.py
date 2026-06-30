@@ -299,6 +299,12 @@ async def get_dataset_download_url(
 ) -> dict:
     from app.clients.minio_client import get_minio_client
 
+    token = ""
+    if hasattr(request, "headers"):
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+
     dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
     
     # Prioritize latest version for downloading
@@ -346,11 +352,6 @@ async def get_dataset_download_url(
                         dvc_prefix = parsed_prefix + "/"
                 else:
                     # Not an S3 remote, fallback to proxy stream URL
-                    token = ""
-                    if hasattr(request, "headers"):
-                        auth_header = request.headers.get("Authorization")
-                        if auth_header and auth_header.startswith("Bearer "):
-                            token = auth_header.split(" ")[1]
                     return {"url": f"/api/v1/datasets/{dataset_id}/stream-download?access_token={token}"}
         
         object_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
@@ -361,6 +362,8 @@ async def get_dataset_download_url(
         if storage_path.startswith("s3://"):
             _, rest = storage_path.split("s3://", 1)
             bucket, _, object_name = rest.partition("/")
+        elif storage_path.startswith("gdrive://"):
+            return {"url": f"/api/v1/datasets/{dataset_id}/gdrive-stream?access_token={token}"}
         else:
             object_name = storage_path.replace("\\", "/", -1).lstrip("/")
             
@@ -406,14 +409,96 @@ async def get_dataset_download_url(
                         len(merged_raw),
                         content_type=content_type,
                     )
-                    url = client.presigned_get_url(merged_object, bucket=bucket, expires_seconds=3600)
+                    url = f"/api/v1/datasets/{dataset_id}/minio-stream?access_token={token}&reconstructed=true"
                     return {"url": url, "reconstructed": True}
             except Exception:
                 # Fallback to returning the delta file directly if reconstruction fails
                 pass
 
-    url = client.presigned_get_url(object_name, bucket=bucket, expires_seconds=3600)
+    url = f"/api/v1/datasets/{dataset_id}/minio-stream?access_token={token}"
     return {"url": url}
+
+@router.get("/{dataset_id}/minio-stream")
+async def minio_dataset_stream(
+    dataset_id: str,
+    reconstructed: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+):
+    from fastapi.responses import StreamingResponse
+    import io as _io
+    
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    
+    latest_version = (
+        await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.dataset_id == dataset.id, DatasetVersion.is_latest.is_(True))
+        )
+    ).scalar_one_or_none()
+
+    storage_path = None
+    dvc_md5 = None
+    if latest_version:
+        storage_path = latest_version.storage_path
+        dvc_md5 = latest_version.dvc_md5
+
+    if not storage_path and not dvc_md5:
+        storage_path = dataset.storage_path
+        if not storage_path:
+            pub_ds = await db.get(Dataset, dataset_id)
+            if pub_ds:
+                storage_path = pub_ds.storage_path
+
+    bucket = None
+    object_name = None
+
+    if dvc_md5:
+        dvc_prefix = "dvc/"
+        if dataset.dvc_profile_id:
+            from app.models.mlops_tracking import DVCProfile
+            profile_row = await db.get(DVCProfile, dataset.dvc_profile_id)
+            if profile_row and profile_row.remote_url:
+                import re
+                match = re.match(r"s3://([^/]+)(/.*)?", profile_row.remote_url.strip())
+                if match:
+                    bucket = match.group(1)
+                    if match.group(2):
+                        dvc_prefix = match.group(2).strip("/") + "/"
+        
+        object_name = f"{dvc_prefix}files/md5/{dvc_md5[:2]}/{dvc_md5[2:]}"
+    elif storage_path and storage_path.startswith("s3://"):
+        _, rest = storage_path.split("s3://", 1)
+        bucket, _, object_name = rest.partition("/")
+    elif storage_path:
+        object_name = storage_path.replace("\\", "/", -1).lstrip("/")
+
+    if not object_name:
+        raise HTTPException(status_code=404, detail="Dataset file not found")
+
+    client = get_minio_client()
+
+    if reconstructed and latest_version:
+        snapshot = latest_version.metadata_snapshot or {}
+        delta_type = snapshot.get("delta_type", "zip")
+        ext = ".zip" if delta_type == "zip" else f".{delta_type}"
+        object_name = f"datasets/reconstructed/{latest_version.id}/merged{ext}"
+
+    try:
+        exists = await client.object_exists(object_name, bucket=bucket)
+        if not exists:
+            raise HTTPException(status_code=404, detail="Object not found in MinIO")
+            
+        filename = f"{dataset.name}.zip" if not object_name.endswith(".csv") and not object_name.endswith(".json") else object_name.split("/")[-1]
+        
+        return StreamingResponse(
+            client.stream_object(object_name, bucket=bucket),
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to stream dataset: {e}")
+
 
 
 
@@ -501,6 +586,121 @@ async def stream_dataset_download(
     return StreamingResponse(
         zip_streamer(),
         media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+@router.get("/{dataset_id}/gdrive-stream")
+async def gdrive_dataset_download(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserContext = Depends(get_current_user),
+):
+    from fastapi.responses import StreamingResponse
+    import httpx
+    import json
+    from app.models.storage_connection import StorageConnection
+    from app.core.security import decrypt_credentials
+    
+    dataset = await _resolve_mlops_dataset(db, dataset_id, current_user)
+    
+    latest_version = (
+        await db.execute(
+            select(DatasetVersion)
+            .where(DatasetVersion.dataset_id == dataset.id, DatasetVersion.is_latest.is_(True))
+        )
+    ).scalar_one_or_none()
+
+    storage_path = None
+    if latest_version and latest_version.storage_path:
+        storage_path = latest_version.storage_path
+
+    if not storage_path:
+        storage_path = dataset.storage_path
+        if not storage_path:
+            pub_ds = await db.get(Dataset, dataset_id)
+            if pub_ds:
+                storage_path = pub_ds.storage_path
+
+    if not storage_path or not storage_path.startswith("gdrive://"):
+        raise HTTPException(status_code=404, detail="Dataset is not a Google Drive file")
+
+    file_id = storage_path.replace("gdrive://", "")
+
+    # Get Google Drive connection for the user
+    provider = (
+        await db.execute(
+            select(StorageConnection)
+            .where(StorageConnection.user_id == current_user.user_id)
+            .where(StorageConnection.provider == "gdrive")
+            .order_by(StorageConnection.is_default.desc(), StorageConnection.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if not provider or not provider.encrypted_credentials:
+        raise HTTPException(status_code=400, detail="Google Drive connection not found. Please reconnect Google Drive in Settings.")
+
+    try:
+        raw_creds_json = decrypt_credentials(provider.encrypted_credentials)
+        raw_creds = json.loads(raw_creds_json)
+        access_token = raw_creds.get("access_token")
+        refresh_token = raw_creds.get("refresh_token")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Google Drive credentials. Please reconnect.")
+
+    async def _refresh_token() -> str:
+        from app.config import get_settings
+        settings = get_settings()
+        token_url = "https://oauth2.googleapis.com/token"
+        data = {
+            "refresh_token": refresh_token,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "grant_type": "refresh_token",
+        }
+        async with httpx.AsyncClient() as client:
+            response = await client.post(token_url, data=data)
+            if response.status_code == 200:
+                return response.json().get("access_token", access_token)
+        return access_token
+
+    async def stream_gdrive_file():
+        nonlocal access_token
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        async with httpx.AsyncClient() as client:
+            req = client.build_request(
+                "GET",
+                f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                headers=headers
+            )
+            resp = await client.send(req, stream=True, follow_redirects=True)
+            if resp.status_code == 401 and refresh_token:
+                await resp.aclose()
+                access_token = await _refresh_token()
+                headers = {"Authorization": f"Bearer {access_token}"}
+                req = client.build_request(
+                    "GET",
+                    f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
+                    headers=headers
+                )
+                resp = await client.send(req, stream=True, follow_redirects=True)
+                
+            if resp.status_code != 200:
+                await resp.aclose()
+                yield b""
+                return
+                
+            try:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+            finally:
+                await resp.aclose()
+
+    filename = f"{dataset.name}.zip"
+    return StreamingResponse(
+        stream_gdrive_file(),
+        media_type="application/octet-stream",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
     

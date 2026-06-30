@@ -122,11 +122,13 @@ export function DatasetDetailDrawer({
       <motion.button initial={{ opacity: 0 }} animate={{ opacity: 0.3 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black backdrop-blur-sm" onClick={onClose} />
       <motion.aside initial={{ x: "100%" }} animate={{ x: 0 }} transition={{ duration: 0.25, ease: "easeOut" }} className="absolute right-0 top-0 h-full w-full max-w-[520px] overflow-hidden border-l border-border bg-bg-surface md:w-[520px]">
         <div className="flex items-start justify-between border-b border-border px-5 py-4">
-          <div>
-            <h2 className="text-xl font-bold text-text-primary">{dataset.name}</h2>
-            <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
+          <div className="min-w-0 pr-4">
+            <h2 className="truncate text-xl font-bold text-text-primary">{dataset.name}</h2>
+            <div className="mt-1.5">
+              <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>
+            </div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-1">
+          <div className="flex shrink-0 items-center justify-end gap-1">
             <Button size="sm" variant="outline" className="px-2.5" onClick={() => setMetadataModalOpen(true)} title="Edit">
               <Pencil size={14} className="mr-1" /> Edit
             </Button>
@@ -187,14 +189,38 @@ export function DatasetDetailDrawer({
           {tab === "preview" ? (
             <div>
               {dataset.type === "tabular" ? (
-                <div className="rounded-lg border border-border p-3 text-sm">Tabular preview ({preview.data?.samples.length ?? 0} rows)</div>
+                <div className="rounded-lg border border-border p-3 text-sm">Tabular preview ({preview.data?.samples?.length ?? 0} rows)</div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  {(preview.data?.samples ?? []).slice(0, 12).map((sample) => (
-                    <div key={sample.id} className="overflow-hidden rounded-md border border-border">
-                      <img src={sample.thumbnail_url} alt={sample.content} className="h-20 w-full object-cover" />
+                <div className="space-y-4">
+                  {preview.data?.split_info && Object.keys(preview.data.split_info).length > 0 ? (
+                    <div className="rounded-lg border border-border p-3 text-sm">
+                      <p className="mb-2 font-semibold">Dataset Splits</p>
+                      <ul className="list-inside list-disc text-text-secondary">
+                        {Object.entries(preview.data.split_info).map(([key, value]) => (
+                          <li key={key} className="capitalize">
+                            {key}: {value} items
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                  ))}
+                  ) : null}
+                  {preview.data?.class_distribution && Object.keys(preview.data.class_distribution).length > 0 ? (
+                    <div className="rounded-lg border border-border p-3 text-sm">
+                      <p className="mb-2 font-semibold">Class Distribution</p>
+                      <ul className="max-h-48 list-inside list-disc overflow-y-auto text-text-secondary">
+                        {Object.entries(preview.data.class_distribution).map(([key, value]) => (
+                          <li key={key}>
+                            {key}: {value} items
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {(!preview.data?.split_info && !preview.data?.class_distribution) ? (
+                    <div className="rounded-lg border border-border p-4 text-center text-sm text-text-secondary">
+                      Detailed preview summary is not available for this dataset.
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

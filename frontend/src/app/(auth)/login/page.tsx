@@ -98,8 +98,9 @@ export default function LoginPage() {
       setTimeout(() => {
         window.location.assign("/dashboard");
       }, 300);
-    } catch {
-      setToast({ type: "error", message: "Email or password is incorrect" });
+    } catch (err: any) {
+      const isNetworkErr = err.message === "Request failed" || err.message === "Failed to fetch" || err.name === "TypeError";
+      setToast({ type: "error", message: isNetworkErr ? "Network error. Please check your connection to the server." : "Email or password is incorrect" });
       setShake(true);
       setTimeout(() => setShake(false), 350);
     }

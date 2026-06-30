@@ -51,7 +51,7 @@ async def disconnect_storage(
     await service.disconnect(id, str(current_user.user_id))
     return {"message": "Successfully disconnected"}
 
-@router.post("/{id}/default", response_model=StorageConnectionResponse)
+@router.post("/{id}/default")
 async def set_default_storage(
     id: str,
     current_user: UserContext = Depends(get_current_user),

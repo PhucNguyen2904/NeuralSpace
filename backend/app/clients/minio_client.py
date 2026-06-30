@@ -171,6 +171,25 @@ class MinIOClient:
 
         return await asyncio.to_thread(_get)
 
+    async def stream_object(self, object_name: str, bucket: str | None = None):
+        """Stream an object from MinIO as an async generator."""
+        target = bucket or self._bucket
+
+        response = None
+        try:
+            # get_object must run in a thread because it can block doing DNS/TCP
+            response = await asyncio.to_thread(self._client.get_object, target, object_name)
+            while True:
+                # read chunk by chunk in thread pool
+                chunk = await asyncio.to_thread(response.read, 64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            if response:
+                response.close()
+                response.release_conn()
+
     # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------

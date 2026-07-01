@@ -37,7 +37,11 @@ def run_migrations_offline() -> None:
 
 def do_run_migrations(connection: Connection) -> None:
     """Configure context and run migrations."""
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection, 
+        target_metadata=target_metadata,
+        version_table=config.get_main_option("version_table", "alembic_version")
+    )
     with context.begin_transaction():
         context.run_migrations()
 

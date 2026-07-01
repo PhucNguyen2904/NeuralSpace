@@ -20,9 +20,23 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO mlops.dataset_versions (id, dataset_id, version, size_bytes, item_count, storage_path, created_by, is_latest, status) VALUES
 ('621d285a-99e2-4d69-af92-41f05e8e738d', 'f0eabbb3-69e3-46d6-8354-ba803ed7f966', 'v1', 104857600, 150, 'migration/server/datasets/ds_001/iris_sample.csv', '22222222-2222-2222-2222-222222222222', true, 'validated'),
 ('52cce21b-9439-4570-bcaf-a26ca4b2ba0a', '610bb1c8-afc5-449d-a6cc-0b147bbeed78', 'v1', 52428800, 5000, 'migration/server/datasets/ds_002/sample.csv', '22222222-2222-2222-2222-222222222222', true, 'validated'),
-('802508c3-caff-49ec-8cdf-e7c97c5b95c9', '8e230adb-62b9-40d4-b976-fca6c37a4790', 'v1', 18874368, 25000, 'migration/server/datasets/ds_003/tweets_sample.txt', '22222222-2222-2222-2222-222222222222', true, 'validated'),
-('b58c9b2a-44d1-42f8-aa53-9b5149932fdd', 'e1d307b3-a76b-4030-9960-b60ec9c4877e', 'v1', 73400320, 1200, 'migration/server/datasets/ds_004/audio_manifest.csv', '22222222-2222-2222-2222-222222222222', true, 'validated'),
-('16e18056-f7d6-4cc1-923d-4bb5b43b771a', '5bfe70df-b933-4043-8b5a-8ba4cbfccbe4', 'v1', 188743680, 320, 'migration/server/datasets/ds_005/video_manifest.csv', '22222222-2222-2222-2222-222222222222', true, 'validated'),
-('2f3583e1-84af-4880-a18a-244572a5e3bf', '065b0a1e-78a0-4b75-a2b8-44d14fb43225', 'v1', 16384, 150, 'migration/server/datasets/iris_dataset/iris.csv', '22222222-2222-2222-2222-222222222222', true, 'validated'),
-('74391d68-19b0-4b1f-8c3e-05c2db627644', '6225ba35-b3d7-46a3-8619-253c70cdd01a', 'v1', 3221225472, 120000, 'migration/server/datasets/coco_2017_detection/sample_0001.jpg', '22222222-2222-2222-2222-222222222222', true, 'validated')
+('802508c3-caff-49ec-8cdf-e7c97c5b95c9', '8e230adb-62b9-40d4-b976-fca6c37a4790', 'v1', 18874368, 25000, 'migration/server/datasets/ds_003/tweets_sample.txt', '22222222-2222-2222-2222-222222222222', true, 'validated')
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Seed Sample Experiments
+INSERT INTO mlops.experiments (id, mlflow_experiment_id, name, description, owner_id) VALUES
+('33333333-3333-3333-3333-333333333333', 1, 'Computer Vision Sandbox', 'Experiment for testing object detection and classification models.', '22222222-2222-2222-2222-222222222222')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Sample Runs
+INSERT INTO mlops.runs (id, mlflow_run_id, experiment_id, name, status, source_type, user_id) VALUES
+('44444444-4444-4444-4444-444444444441', 'abcdef1234567890abcdef1234567891', '33333333-3333-3333-3333-333333333333', 'YOLOv8 Fine-tuning', 'FINISHED', 'NOTEBOOK', '22222222-2222-2222-2222-222222222222'),
+('44444444-4444-4444-4444-444444444442', 'abcdef1234567890abcdef1234567892', '33333333-3333-3333-3333-333333333333', 'ResNet50 Classification', 'FINISHED', 'LOCAL', '22222222-2222-2222-2222-222222222222')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed Sample Model Versions
+INSERT INTO mlops.model_versions (id, mlflow_name, mlflow_version, run_id, description, stage, status, source, framework, task_type, size_bytes, created_by, approved_by, approved_at) VALUES
+('55555555-5555-5555-5555-555555555551', 'YOLOv8-Custom', 1, '44444444-4444-4444-4444-444444444441', 'Custom YOLOv8 trained on COCO subset', 'Production', 'READY', 's3://mlflow-artifacts/1/abcdef1234567891/artifacts/model', 'pytorch', 'object-detection', 22500000, '22222222-2222-2222-2222-222222222222', '22222222-2222-2222-2222-222222222222', now()),
+('55555555-5555-5555-5555-555555555552', 'ResNet50-Base', 1, '44444444-4444-4444-4444-444444444442', 'Base ResNet50 model', 'Staging', 'READY', 's3://mlflow-artifacts/1/abcdef1234567892/artifacts/model', 'tensorflow', 'classification', 98000000, '22222222-2222-2222-2222-222222222222', NULL, NULL)
 ON CONFLICT (id) DO NOTHING;

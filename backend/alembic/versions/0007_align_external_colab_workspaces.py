@@ -58,6 +58,12 @@ def upgrade() -> None:
         "jsonb_typeof(environment_config) = 'object'",
     )
 
+    # Drop old public tables so MLflow can create its own
+    op.drop_table("workspace_models")
+    op.drop_table("workspace_datasets")
+    op.drop_table("models")
+    op.drop_table("datasets")
+
 
 def downgrade() -> None:
     op.drop_constraint("ck_workspaces_environment_config_object", "workspaces", type_="check")

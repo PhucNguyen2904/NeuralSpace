@@ -40,4 +40,4 @@ Thư mục `frontend` không cần thiết phải cấu hình `.env` phức tạ
 Tuy nhiên, nếu cần thiết lập biến môi trường đặc biệt, hãy tạo file `.env.local` ở bên trong folder `frontend`.
 
 ---
-*➡ Tiếp theo: Hãy chuyển sang **03-backend-setup.md** để khởi động các dịch vụ backend.*
+*➡ Tiếp theo: Hãy chuyển sang **[database-setup.md](file:///d:/Documents/Lap_trinh/NeuralSpace/docs/setup/database-setup.md)** để cấu hình và khởi tạo cơ sở dữ liệu.*

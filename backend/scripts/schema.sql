@@ -1,4 +1,155 @@
+-- =============================================================================
+-- NeuralSpace Platform - Full Database Schema
+-- Generated from Alembic migration chain (canonical source of truth)
+-- Last updated: 2026-07-01
+-- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- Schemas
+-- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS mlops;
+
+-- ---------------------------------------------------------------------------
+-- Enum Types (public schema)
+-- ---------------------------------------------------------------------------
+
+
+CREATE TYPE workspace_status AS ENUM (
+    'READY',
+    'RUNNING',
+    'STOPPED',
+    'ERROR'
+);
+
+
+CREATE TYPE runtime_session_status AS ENUM (
+    'CREATED',
+    'CONNECTED',
+    'REVOKED',
+    'EXPIRED'
+);
+
+
+CREATE TYPE git_provider_type AS ENUM (
+    'github',
+    'gitlab',
+    'bitbucket'
+);
+
+
+CREATE TYPE storage_provider_type AS ENUM (
+    'minio',
+    's3',
+    'gdrive'
+);
+
+-- ---------------------------------------------------------------------------
+-- Enum Types (mlops schema)
+-- ---------------------------------------------------------------------------
+
+
+CREATE TYPE mlops_dataset_type AS ENUM (
+    'image',
+    'tabular',
+    'text',
+    'audio',
+    'video',
+    'custom'
+);
+
+CREATE TYPE mlops_dataset_status AS ENUM (
+    'active',
+    'archived',
+    'deprecated'
+);
+
+CREATE TYPE mlops_dataset_version_status AS ENUM (
+    'draft',
+    'validated',
+    'deprecated'
+);
+
+CREATE TYPE mlops_experiment_lifecycle AS ENUM (
+    'active',
+    'deleted'
+);
+
+CREATE TYPE mlops_run_status AS ENUM (
+    'RUNNING',
+    'SCHEDULED',
+    'FINISHED',
+    'FAILED',
+    'KILLED'
+);
+
+CREATE TYPE mlops_run_source_type AS ENUM (
+    'NOTEBOOK',
+    'JOB',
+    'PROJECT',
+    'LOCAL',
+    'UNKNOWN'
+);
+
+CREATE TYPE mlops_model_stage AS ENUM (
+    'None',
+    'Staging',
+    'Production',
+    'Archived'
+);
+
+CREATE TYPE mlops_model_status AS ENUM (
+    'PENDING_REGISTRATION',
+    'READY',
+    'FAILED'
+);
+
+CREATE TYPE mlops_link_type AS ENUM (
+    'train',
+    'val',
+    'test',
+    'eval'
+);
+
+CREATE TYPE mlops_approval_target_stage AS ENUM (
+    'Staging',
+    'Production'
+);
+
+CREATE TYPE mlops_approval_status AS ENUM (
+    'pending',
+    'approved',
+    'rejected',
+    'cancelled'
+);
+
+
+CREATE TYPE mlops_dvc_profile_scope AS ENUM (
+    'global',
+    'team',
+    'user',
+    'workspace'
+);
+
+
+CREATE TYPE mlops_dvc_profile_status AS ENUM (
+    'ready',
+    'inactive',
+    'error',
+    'pending_oauth',
+    'pending_repo_selection',
+    'active',
+    'archived'
+);
+
+
+CREATE TYPE mlops_dvc_profile_repo_mode AS ENUM (
+    'managed_git',
+    'existing_path'
+);
+
+-- ---------------------------------------------------------------------------
+-- Tables (public schema) — dependency order
+-- ---------------------------------------------------------------------------
 
 CREATE TABLE users (
 	id UUID NOT NULL, 
@@ -8,6 +159,116 @@ CREATE TABLE users (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id)
 );
+
+CREATE TABLE workspaces (
+	id VARCHAR(20) NOT NULL, 
+	user_id UUID NOT NULL, 
+	name VARCHAR(255), 
+	status workspace_status DEFAULT 'READY' NOT NULL, 
+	tier VARCHAR(30) NOT NULL, 
+	k8s_namespace VARCHAR(63), 
+	k8s_pod_name VARCHAR(63), 
+	pod_ip VARCHAR(45), 
+	access_url TEXT, 
+	jupyter_token_hash VARCHAR(64), 
+	dataset_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
+	model_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
+	environment_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	resource_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	started_at TIMESTAMP WITH TIME ZONE, 
+	stopped_at TIMESTAMP WITH TIME ZONE, 
+	last_heartbeat TIMESTAMP WITH TIME ZONE, 
+	last_kernel_activity TIMESTAMP WITH TIME ZONE, 
+	auto_kill_at TIMESTAMP WITH TIME ZONE, 
+	error_message TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	CONSTRAINT ck_workspaces_external_colab_tier CHECK (tier = 'external-colab'),
+	CONSTRAINT ck_workspaces_dataset_ids_array CHECK (jsonb_typeof(dataset_ids) = 'array'),
+	CONSTRAINT ck_workspaces_model_ids_array CHECK (jsonb_typeof(model_ids) = 'array'),
+	CONSTRAINT ck_workspaces_environment_config_object CHECK (jsonb_typeof(environment_config) = 'object'),
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+-- Indexes on workspaces (created by 0001)
+CREATE INDEX ix_workspaces_user_id ON workspaces (user_id);
+CREATE INDEX ix_workspaces_user_id_status ON workspaces (user_id, status);
+CREATE INDEX ix_workspaces_status_auto_kill_at_running ON workspaces (status, auto_kill_at) WHERE status = 'RUNNING';
+CREATE INDEX ix_workspaces_k8s_namespace_lookup ON workspaces (k8s_namespace);
+
+CREATE TABLE workspace_events (
+	id BIGSERIAL NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	event_type VARCHAR(50) NOT NULL, 
+	actor VARCHAR(50) NOT NULL, 
+	details JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE
+);
+-- Indexes on workspace_events (created by 0001)
+CREATE INDEX ix_workspace_events_workspace_id ON workspace_events (workspace_id);
+CREATE INDEX ix_workspace_events_workspace_id_created_at_desc ON workspace_events (workspace_id, created_at DESC);
+
+CREATE TABLE external_runtime_sessions (
+	id UUID NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	user_id UUID NOT NULL, 
+	provider VARCHAR(30) DEFAULT 'google_colab' NOT NULL, 
+	status runtime_session_status DEFAULT 'CREATED' NOT NULL, 
+	token_jti VARCHAR(64), 
+	capabilities JSONB DEFAULT '[]'::jsonb NOT NULL, 
+	connected_at TIMESTAMP WITH TIME ZONE, 
+	last_heartbeat_at TIMESTAMP WITH TIME ZONE, 
+	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+	revoked_at TIMESTAMP WITH TIME ZONE, 
+	revoke_reason TEXT, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+	UNIQUE (token_jti)
+);
+-- Indexes on external_runtime_sessions (created by 0006)
+CREATE INDEX ix_runtime_sessions_user_status ON external_runtime_sessions (user_id, status);
+CREATE INDEX ix_runtime_sessions_workspace_created ON external_runtime_sessions (workspace_id, created_at);
+
+-- storage_providers table (created by dfe7f8b43b50)
+CREATE TABLE storage_providers (
+	id UUID NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	type storage_provider_type NOT NULL,
+	config JSONB NOT NULL,
+	created_by UUID,
+	is_active BOOLEAN DEFAULT 'true' NOT NULL,
+	is_default BOOLEAN DEFAULT 'false' NOT NULL,
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (name),
+	FOREIGN KEY(created_by) REFERENCES users (id)
+);
+
+-- storage_connections table (created by a5e6bded0f6a, columns added by 5e23d17f8b5b, c14bbe97f431)
+CREATE TABLE storage_connections (
+	id UUID NOT NULL, 
+	user_id UUID NOT NULL, 
+	provider VARCHAR(50) NOT NULL, 
+	remote_name VARCHAR(100) NOT NULL, 
+	config_path TEXT NOT NULL, 
+	display_name VARCHAR(255) NOT NULL, 
+	encrypted_credentials TEXT, 
+	status VARCHAR(50) DEFAULT 'connected' NOT NULL, 
+	is_default BOOLEAN DEFAULT 'false' NOT NULL, 
+	last_sync_at TIMESTAMP WITH TIME ZONE, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+-- git_accounts table (created by 6a1b2c3d4e5f)
 CREATE TABLE git_accounts (
 	user_id UUID NOT NULL, 
 	provider git_provider_type NOT NULL, 
@@ -19,6 +280,25 @@ CREATE TABLE git_accounts (
 	PRIMARY KEY (id), 
 	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
 );
+
+-- git_repositories table (created by 6a1b2c3d4e5f, columns added by 10ff4a5a9b38)
+CREATE TABLE git_repositories (
+	git_account_id UUID NOT NULL, 
+	repo_name VARCHAR(255) NOT NULL, 
+	repo_url VARCHAR(1024) NOT NULL, 
+	is_private BOOLEAN DEFAULT 'false' NOT NULL, 
+	is_tracked BOOLEAN DEFAULT 'false' NOT NULL, 
+	tracked_branch VARCHAR(255) DEFAULT 'main' NOT NULL, 
+	last_sync_time TIMESTAMP WITH TIME ZONE, 
+	sync_status VARCHAR(50), 
+	id UUID NOT NULL, 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(git_account_id) REFERENCES git_accounts (id) ON DELETE CASCADE
+);
+
+-- git_sync_preferences table (created by 10ff4a5a9b38)
 CREATE TABLE git_sync_preferences (
 	user_id UUID NOT NULL, 
 	auto_sync_experiments BOOLEAN DEFAULT 'true' NOT NULL, 
@@ -32,20 +312,40 @@ CREATE TABLE git_sync_preferences (
 	UNIQUE (user_id), 
 	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
 );
-CREATE TABLE mlops.audit_logs (
-	id BIGSERIAL NOT NULL, 
-	entity_type VARCHAR(50) NOT NULL, 
-	entity_id UUID NOT NULL, 
-	action VARCHAR(50) NOT NULL, 
-	actor_id UUID NOT NULL, 
-	actor_role VARCHAR(50), 
-	old_value JSONB, 
-	new_value JSONB, 
-	metadata JSONB, 
-	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+
+-- workspace_datasets table (created by 0002, restructured — now references mlops.dataset_versions)
+CREATE TABLE workspace_datasets (
+	id SERIAL NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	dataset_id UUID NOT NULL, 
+	mount_path VARCHAR(255) NOT NULL, 
+	mounted_by VARCHAR(64), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(actor_id) REFERENCES users (id)
+	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(dataset_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE
 );
+
+-- workspace_models table (created by 0002, restructured — now references mlops.model_versions)
+CREATE TABLE workspace_models (
+	id SERIAL NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	model_id UUID NOT NULL, 
+	mount_path VARCHAR(255) NOT NULL, 
+	mounted_by VARCHAR(64), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(model_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE
+);
+
+-- ---------------------------------------------------------------------------
+-- Tables (mlops schema) — dependency order
+-- ---------------------------------------------------------------------------
+
+-- mlops.dvc_profiles (created by 0009_dvc_profiles, columns added by 5d80ae5b92b3)
 CREATE TABLE mlops.dvc_profiles (
 	id UUID NOT NULL, 
 	name VARCHAR(255) NOT NULL, 
@@ -75,99 +375,10 @@ CREATE TABLE mlops.dvc_profiles (
 	CONSTRAINT uq_mlops_dvc_profiles_name_scope UNIQUE (name, scope, scope_id), 
 	FOREIGN KEY(created_by) REFERENCES users (id)
 );
-CREATE TABLE mlops.experiments (
-	id UUID NOT NULL, 
-	mlflow_experiment_id BIGINT NOT NULL, 
-	name VARCHAR(255) NOT NULL, 
-	description TEXT, 
-	owner_id UUID NOT NULL, 
-	team_id UUID, 
-	tags JSONB DEFAULT '{}'::jsonb NOT NULL, 
-	artifact_location VARCHAR(500), 
-	lifecycle_stage mlops_experiment_lifecycle DEFAULT 'active' NOT NULL, 
-	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	UNIQUE (mlflow_experiment_id), 
-	FOREIGN KEY(owner_id) REFERENCES users (id)
-);
-CREATE TABLE storage_connections (
-	id UUID NOT NULL, 
-	user_id UUID NOT NULL, 
-	provider VARCHAR(50) NOT NULL, 
-	remote_name VARCHAR(100) NOT NULL, 
-	config_path TEXT NOT NULL, 
-	display_name VARCHAR(255) NOT NULL, 
-	encrypted_credentials TEXT, 
-	status VARCHAR(50) DEFAULT 'connected' NOT NULL, 
-	is_default BOOLEAN DEFAULT 'false' NOT NULL, 
-	last_sync_at TIMESTAMP WITH TIME ZONE, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
-);
-CREATE TABLE workspaces (
-	id VARCHAR(20) NOT NULL, 
-	user_id UUID NOT NULL, 
-	name VARCHAR(255), 
-	status workspace_status DEFAULT 'READY' NOT NULL, 
-	tier VARCHAR(30) NOT NULL, 
-	k8s_namespace VARCHAR(63), 
-	k8s_pod_name VARCHAR(63), 
-	pod_ip VARCHAR(45), 
-	access_url TEXT, 
-	jupyter_token_hash VARCHAR(64), 
-	dataset_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
-	model_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
-	environment_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
-	resource_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
-	started_at TIMESTAMP WITH TIME ZONE, 
-	stopped_at TIMESTAMP WITH TIME ZONE, 
-	last_heartbeat TIMESTAMP WITH TIME ZONE, 
-	last_kernel_activity TIMESTAMP WITH TIME ZONE, 
-	auto_kill_at TIMESTAMP WITH TIME ZONE, 
-	error_message TEXT, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
-);
-CREATE TABLE external_runtime_sessions (
-	id UUID NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	user_id UUID NOT NULL, 
-	provider VARCHAR(30) DEFAULT 'google_colab' NOT NULL, 
-	status runtime_session_status DEFAULT 'CREATED' NOT NULL, 
-	token_jti VARCHAR(64), 
-	capabilities JSONB DEFAULT '[]'::jsonb NOT NULL, 
-	connected_at TIMESTAMP WITH TIME ZONE, 
-	last_heartbeat_at TIMESTAMP WITH TIME ZONE, 
-	expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
-	revoked_at TIMESTAMP WITH TIME ZONE, 
-	revoke_reason TEXT, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
-	UNIQUE (token_jti)
-);
-CREATE TABLE git_repositories (
-	git_account_id UUID NOT NULL, 
-	repo_name VARCHAR(255) NOT NULL, 
-	repo_url VARCHAR(1024) NOT NULL, 
-	is_private BOOLEAN DEFAULT 'false' NOT NULL, 
-	is_tracked BOOLEAN DEFAULT 'false' NOT NULL, 
-	tracked_branch VARCHAR(255) DEFAULT 'main' NOT NULL, 
-	last_sync_time TIMESTAMP WITH TIME ZONE, 
-	sync_status VARCHAR(50), 
-	id UUID NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(git_account_id) REFERENCES git_accounts (id) ON DELETE CASCADE
-);
+-- Indexes on mlops.dvc_profiles (created by 0009_dvc_profiles)
+CREATE INDEX ix_mlops_dvc_profiles_scope ON mlops.dvc_profiles (scope, scope_id);
+
+-- mlops.datasets (created by 0005, dvc_profile_id column added by 0009_dvc_profiles)
 CREATE TABLE mlops.datasets (
 	id UUID NOT NULL, 
 	name VARCHAR(255) NOT NULL, 
@@ -187,16 +398,8 @@ CREATE TABLE mlops.datasets (
 	FOREIGN KEY(owner_id) REFERENCES users (id), 
 	FOREIGN KEY(dvc_profile_id) REFERENCES mlops.dvc_profiles (id) ON DELETE SET NULL
 );
-CREATE TABLE workspace_events (
-	id BIGSERIAL NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	event_type VARCHAR(50) NOT NULL, 
-	actor VARCHAR(50) NOT NULL, 
-	details JSONB DEFAULT '{}'::jsonb NOT NULL, 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE
-);
+
+-- mlops.dataset_versions (created by 0005, columns added by 0009_dataset_upload_metadata and 0009_dvc_profiles)
 CREATE TABLE mlops.dataset_versions (
 	id UUID NOT NULL, 
 	dataset_id UUID NOT NULL, 
@@ -228,6 +431,30 @@ CREATE TABLE mlops.dataset_versions (
 	FOREIGN KEY(dvc_profile_id) REFERENCES mlops.dvc_profiles (id) ON DELETE SET NULL, 
 	FOREIGN KEY(created_by) REFERENCES users (id)
 );
+-- Indexes on mlops.dataset_versions (created by 0005)
+CREATE INDEX ix_mlops_dataset_versions_dvc_md5 ON mlops.dataset_versions (dvc_md5);
+CREATE INDEX ix_mlops_dataset_versions_dvc_commit ON mlops.dataset_versions (dvc_commit);
+CREATE UNIQUE INDEX uq_mlops_dataset_versions_latest_per_dataset ON mlops.dataset_versions (dataset_id) WHERE is_latest = true;
+
+-- mlops.experiments (created by 0005)
+CREATE TABLE mlops.experiments (
+	id UUID NOT NULL, 
+	mlflow_experiment_id BIGINT NOT NULL, 
+	name VARCHAR(255) NOT NULL, 
+	description TEXT, 
+	owner_id UUID NOT NULL, 
+	team_id UUID, 
+	tags JSONB DEFAULT '{}'::jsonb NOT NULL, 
+	artifact_location VARCHAR(500), 
+	lifecycle_stage mlops_experiment_lifecycle DEFAULT 'active' NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	UNIQUE (mlflow_experiment_id), 
+	FOREIGN KEY(owner_id) REFERENCES users (id)
+);
+
+-- mlops.runs (created by 0005, workspace_id + runtime_session_id added by 0008)
 CREATE TABLE mlops.runs (
 	id UUID NOT NULL, 
 	mlflow_run_id VARCHAR(32) NOT NULL, 
@@ -257,18 +484,26 @@ CREATE TABLE mlops.runs (
 	FOREIGN KEY(user_id) REFERENCES users (id), 
 	FOREIGN KEY(dvc_dataset_version_id) REFERENCES mlops.dataset_versions (id)
 );
-CREATE TABLE workspace_datasets (
-	id SERIAL NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	dataset_id UUID NOT NULL, 
-	mount_path VARCHAR(255) NOT NULL, 
-	mounted_by VARCHAR(64), 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+-- Indexes on mlops.runs (created by 0005 and 0008)
+CREATE INDEX ix_mlops_runs_dvc_dataset_version_id ON mlops.runs (dvc_dataset_version_id);
+CREATE INDEX ix_mlops_runs_runtime_session_created ON mlops.runs (runtime_session_id, created_at);
+
+-- mlops.run_logs (created by 0008)
+CREATE TABLE mlops.run_logs (
+	id BIGSERIAL NOT NULL, 
+	run_id UUID NOT NULL, 
+	runtime_session_id UUID NOT NULL, 
+	level VARCHAR(10) NOT NULL, 
+	message TEXT NOT NULL, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(dataset_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE
+	FOREIGN KEY(run_id) REFERENCES mlops.runs (id) ON DELETE CASCADE, 
+	FOREIGN KEY(runtime_session_id) REFERENCES external_runtime_sessions (id) ON DELETE CASCADE
 );
+-- Indexes on mlops.run_logs (created by 0008)
+CREATE INDEX ix_mlops_run_logs_run_created ON mlops.run_logs (run_id, created_at);
+
+-- mlops.model_versions (created by 0005)
 CREATE TABLE mlops.model_versions (
 	id UUID NOT NULL, 
 	mlflow_name VARCHAR(255) NOT NULL, 
@@ -295,17 +530,10 @@ CREATE TABLE mlops.model_versions (
 	FOREIGN KEY(approved_by) REFERENCES users (id), 
 	FOREIGN KEY(created_by) REFERENCES users (id)
 );
-CREATE TABLE mlops.run_logs (
-	id BIGSERIAL NOT NULL, 
-	run_id UUID NOT NULL, 
-	runtime_session_id UUID NOT NULL, 
-	level VARCHAR(10) NOT NULL, 
-	message TEXT NOT NULL, 
-	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(run_id) REFERENCES mlops.runs (id) ON DELETE CASCADE, 
-	FOREIGN KEY(runtime_session_id) REFERENCES external_runtime_sessions (id) ON DELETE CASCADE
-);
+-- Indexes on mlops.model_versions (created by 0005)
+CREATE INDEX ix_mlops_model_versions_stage ON mlops.model_versions (stage);
+
+-- mlops.approval_requests (created by 0005)
 CREATE TABLE mlops.approval_requests (
 	id UUID NOT NULL, 
 	model_version_id UUID NOT NULL, 
@@ -323,6 +551,10 @@ CREATE TABLE mlops.approval_requests (
 	FOREIGN KEY(requested_by) REFERENCES users (id), 
 	FOREIGN KEY(reviewer_id) REFERENCES users (id)
 );
+-- Indexes on mlops.approval_requests (created by 0005)
+CREATE INDEX ix_mlops_approval_requests_model_version_status ON mlops.approval_requests (model_version_id, status);
+
+-- mlops.model_dataset_links (created by 0005)
 CREATE TABLE mlops.model_dataset_links (
 	id UUID NOT NULL, 
 	model_version_id UUID NOT NULL, 
@@ -337,15 +569,42 @@ CREATE TABLE mlops.model_dataset_links (
 	FOREIGN KEY(dataset_version_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE, 
 	FOREIGN KEY(created_by) REFERENCES users (id)
 );
-CREATE TABLE workspace_models (
-	id SERIAL NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	model_id UUID NOT NULL, 
-	mount_path VARCHAR(255) NOT NULL, 
-	mounted_by VARCHAR(64), 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+
+-- mlops.audit_logs (created by 0005)
+CREATE TABLE mlops.audit_logs (
+	id BIGSERIAL NOT NULL, 
+	entity_type VARCHAR(50) NOT NULL, 
+	entity_id UUID NOT NULL, 
+	action VARCHAR(50) NOT NULL, 
+	actor_id UUID NOT NULL, 
+	actor_role VARCHAR(50), 
+	old_value JSONB, 
+	new_value JSONB, 
+	metadata JSONB, 
+	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(model_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE
+	FOREIGN KEY(actor_id) REFERENCES users (id)
 );
+-- Indexes on mlops.audit_logs (created by 0005)
+CREATE INDEX ix_mlops_audit_logs_entity_entity_id_created ON mlops.audit_logs (entity_type, entity_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Triggers: audit_logs is append-only (created by 0005)
+-- ---------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION mlops.prevent_audit_logs_mutation()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'mlops.audit_logs is append-only: % not allowed', TG_OP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_mlops_audit_logs_no_update
+BEFORE UPDATE ON mlops.audit_logs
+FOR EACH ROW
+EXECUTE FUNCTION mlops.prevent_audit_logs_mutation();
+
+CREATE TRIGGER trg_mlops_audit_logs_no_delete
+BEFORE DELETE ON mlops.audit_logs
+FOR EACH ROW
+EXECUTE FUNCTION mlops.prevent_audit_logs_mutation();

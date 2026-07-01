@@ -372,100 +372,7 @@ def _runtime_model_status(run_status: str) -> str:
     return "ready"
 
 
-async def _sync_runtime_output_models(db: AsyncSession, run: Run, identity: RuntimeIdentity) -> None:
-    output_model_ids = _runtime_output_model_ids(run)
-    if not output_model_ids:
-        return
 
-    now = datetime.utcnow()
-    metrics = _numeric_metrics(run.metrics_snapshot or {})
-    primary_name, primary_value = _primary_metric(metrics)
-    model_status = _runtime_model_status(run.status)
-
-    for model_id in output_model_ids:
-        # models.id is String(50). Longer artifact ids still appear in lineage,
-        # but cannot be mirrored into the registry without a separate id mapping.
-        if len(model_id) > 50:
-            continue
-
-        row = await db.get(ModelRegistry, model_id)
-        if row is None:
-            row = ModelRegistry(
-                id=model_id,
-                name=model_id,
-                architecture="unknown",
-                framework="generic",
-                task_type=None,
-                status=model_status,
-                version="colab",
-                size_bytes=0,
-                parameter_count=0,
-                primary_metric_name=primary_name or "accuracy",
-                primary_metric_value=primary_value or 0,
-                all_metrics=metrics,
-                tags=["colab-output"],
-                storage_path=None,
-                created_by=str(identity.user_id),
-                source_payload={},
-            )
-            db.add(row)
-        else:
-            row.status = model_status
-            if row.version is None:
-                row.version = "colab"
-            if "colab-output" not in (row.tags or []):
-                row.tags = [*(row.tags or []), "colab-output"]
-
-        if metrics:
-            row.all_metrics = metrics
-            if primary_name is not None:
-                row.primary_metric_name = primary_name
-            if primary_value is not None:
-                row.primary_metric_value = primary_value
-
-        source_payload = dict(row.source_payload or {})
-        colab_history = list(source_payload.get("colab_runs") or [])
-        history_item = {
-            "run_id": run.id,
-            "run_name": run.name,
-            "run_status": run.status,
-            "metrics": metrics,
-            "synced_at": now.isoformat(),
-        }
-        colab_history = [item for item in colab_history if item.get("run_id") != run.id]
-        colab_history.append(history_item)
-        source_payload.update(
-            {
-                "last_colab_run_id": run.id,
-                "last_colab_run_name": run.name,
-                "last_colab_run_status": run.status,
-                "last_colab_synced_at": now.isoformat(),
-                "metrics": metrics,
-                "colab_runs": colab_history[-20:],
-                "workspace_id": identity.session.workspace_id,
-                "runtime_session_id": identity.session.id,
-            }
-        )
-        row.source_payload = source_payload
-        row.updated_at = now
-
-        existing_link = (
-            await db.execute(
-                select(WorkspaceModel).where(
-                    WorkspaceModel.workspace_id == identity.session.workspace_id,
-                    WorkspaceModel.model_id == model_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if existing_link is None:
-            db.add(
-                WorkspaceModel(
-                    workspace_id=identity.session.workspace_id,
-                    model_id=model_id,
-                    mount_path=f"/workspace/models/{model_id}",
-                    mounted_by=str(identity.user_id),
-                )
-            )
 
 
 def _runtime_run_status(value: str) -> str:
@@ -579,7 +486,7 @@ async def create_runtime_run(
     for item in payload.outputs:
         _append_runtime_asset(run, "outputs", item)
     await db.flush()
-    await _sync_runtime_output_models(db, run, identity)
+
     await db.commit()
     await db.refresh(run)
     audit_event(
@@ -605,7 +512,7 @@ async def finish_runtime_run(
     run.status = _runtime_run_status(payload.status)
     if run.status in {"FINISHED", "FAILED", "KILLED"} and run.end_time is None:
         run.end_time = datetime.utcnow()
-    await _sync_runtime_output_models(db, run, identity)
+
     await db.commit()
     return {"run_id": run.id, "status": run.status, "ended_at": run.end_time}
 
@@ -634,7 +541,7 @@ async def log_runtime_output(
     _require_capability(identity, "run:write")
     run = await _owned_run(db, run_id, identity)
     asset = _append_runtime_asset(run, "outputs", payload)
-    await _sync_runtime_output_models(db, run, identity)
+
     await db.commit()
     return {"run_id": run.id, "output": asset, "lineage": (run.tags_snapshot or {}).get("colab_lineage", {})}
 
@@ -649,7 +556,7 @@ async def log_runtime_metrics(
     _require_capability(identity, "run:write")
     run = await _owned_run(db, run_id, identity)
     run.metrics_snapshot = {**(run.metrics_snapshot or {}), **payload.values}
-    await _sync_runtime_output_models(db, run, identity)
+
     await db.commit()
     return {"run_id": run.id, "metrics": run.metrics_snapshot}
 

@@ -50,6 +50,7 @@ export interface ModelVersion {
   version: string;
   note: string;
   created_at: string;
+  created_by?: string;
   current?: boolean;
 }
 

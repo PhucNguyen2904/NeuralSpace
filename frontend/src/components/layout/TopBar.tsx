@@ -24,8 +24,13 @@ const SEGMENT_LABELS: Record<string, string> = {
   approvals: "Approvals",
 };
 
+function safeDecode(val: string) {
+  try { return decodeURIComponent(val); } catch { return val; }
+}
+
 function segmentLabel(seg: string): string {
-  return SEGMENT_LABELS[seg] ?? (seg.length > 12 ? `${seg.slice(0, 10)}…` : seg);
+  const decoded = safeDecode(seg);
+  return SEGMENT_LABELS[decoded] ?? (decoded.length > 18 ? `${decoded.slice(0, 16)}…` : decoded);
 }
 
 function useBreadcrumbs() {

@@ -38,7 +38,6 @@ class StorageService:
         
         config_path = self._get_user_config_path(user_id)
         
-        auth_url = None
         if request.provider == "drive":
             import re
             import os
@@ -73,11 +72,6 @@ class StorageService:
                 except Exception:
                     pass
                 raise HTTPException(status_code=500, detail="Failed to start Google Drive authentication")
-                
-            # Leave process running to receive callback
-            async def wait_process():
-                await process.wait()
-            asyncio.create_task(wait_process())
         else:
             # Save config via provider before saving to DB
             dummy_conn = StorageConnection(
@@ -90,7 +84,7 @@ class StorageService:
                 await asyncio.to_thread(self.provider.connect, dummy_conn, request.params)
             except StorageException as e:
                 raise HTTPException(status_code=e.status_code, detail=str(e))
-            
+                
         # Save to DB
         connection = await self.repository.create(user_id, config_path, request)
         
@@ -101,8 +95,49 @@ class StorageService:
         await self.db.commit()
         await self.db.refresh(connection)
         
+        if request.provider == "drive":
+            # Leave process running to receive callback
+            async def wait_process(conn_id: str):
+                await process.wait()
+                import configparser
+                import httpx
+                from app.dependencies import get_db
+                try:
+                    config = configparser.ConfigParser()
+                    config.read(config_path)
+                    remote_name = request.remote_name or "drive"
+                    if remote_name in config and 'token' in config[remote_name]:
+                        token_str = config[remote_name]['token']
+                        token_data = json.loads(token_str)
+                        access_token = token_data.get('access_token')
+                        
+                        if access_token:
+                            async with httpx.AsyncClient() as client:
+                                resp = await client.get(
+                                    "https://www.googleapis.com/drive/v3/about?fields=user",
+                                    headers={"Authorization": f"Bearer {access_token}"}
+                                )
+                                if resp.status_code == 200:
+                                    email = resp.json().get("user", {}).get("emailAddress")
+                                    if email:
+                                        async for session in get_db():
+                                            from app.repositories.storage_connection_repository import StorageConnectionRepository
+                                            repo = StorageConnectionRepository(session)
+                                            conn = await repo.get_by_id(conn_id)
+                                            if conn:
+                                                # Avoid duplicate email append if retried
+                                                if f"({email})" not in conn.display_name:
+                                                    conn.display_name = f"{conn.display_name} ({email})"
+                                                await session.commit()
+                                            break
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to fetch Google Drive user info: {e}")
+
+            asyncio.create_task(wait_process(str(connection.id)))
+
         # Hack to attach auth_url to response model
-        connection.auth_url = auth_url
+        connection.auth_url = auth_url if 'auth_url' in locals() else None
         return connection
 
     async def list_connections(self, user_id: str) -> Sequence[StorageConnection]:

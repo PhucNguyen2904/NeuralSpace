@@ -53,7 +53,7 @@ function ChartBox({ title, children }: { title: string; children: ReactElement }
     <div className="rounded-lg border border-border p-3">
       <p className="mb-2 text-sm font-medium">{title}</p>
       <div className="h-[260px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           {children}
         </ResponsiveContainer>
       </div>

@@ -1,39 +1,57 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, UploadCloud } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui";
 import { StageBadge } from "@/components/shared";
 import { VersionTimeline } from "@/components/models/registry/VersionTimeline";
+import { UploadVersionModal } from "@/components/models/registry/UploadVersionModal";
 import { useModelVersions } from "@/lib/hooks/useModelRegistry";
+import { useModels } from "@/lib/hooks/useModels";
 
 type Tab = "versions" | "experiments" | "settings";
 
 export default function ModelRegistryDetailPage() {
   const params = useParams<{ name: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const modelName = safeDecode(params?.name ?? "");
   const [tab, setTab] = useState<Tab>("versions");
+  const [uploadOpen, setUploadOpen] = useState(false);
   const versions = useModelVersions(modelName);
   const latest = versions.data?.[0];
 
+  // Find the matching model from the main model list to get its internal id
+  const modelsQuery = useModels({ search: modelName, frameworks: [], taskTypes: [], status: "all", sizeCategory: "all", sort: "newest", view: "grid" });
+  const matchedModel = modelsQuery.data?.items.find((m) => m.name === modelName) ?? null;
+
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="outline" onClick={() => router.push("/models")}>
-          <ArrowLeft size={14} /> Back
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold">{modelName}</h1>
-          <p className="text-sm text-text-secondary">Framework: PyTorch | Task: Image Classification</p>
-          {latest ? (
-            <div className="mt-2 flex items-center gap-2 text-sm">
-              <span>Latest: {latest.version}</span>
-              <StageBadge stage={latest.stage} />
-            </div>
-          ) : null}
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Button size="sm" variant="outline" onClick={() => router.push("/models")}>
+            <ArrowLeft size={14} /> Back
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">{modelName}</h1>
+            {latest ? (
+              <div className="mt-1 flex items-center gap-2 text-sm">
+                <span className="text-text-secondary">Latest: {latest.version}</span>
+                <StageBadge stage={latest.stage} />
+              </div>
+            ) : null}
+          </div>
         </div>
+        <Button
+          className="bg-violet-600 text-white hover:bg-violet-500"
+          onClick={() => setUploadOpen(true)}
+          disabled={!matchedModel}
+          title={!matchedModel ? "Model not found in registry" : undefined}
+        >
+          <UploadCloud size={14} /> Upload version
+        </Button>
       </header>
 
       <div className="flex gap-2 border-b border-border pb-2">
@@ -51,6 +69,24 @@ export default function ModelRegistryDetailPage() {
       ) : null}
       {tab === "experiments" ? <Placeholder text="Experiments list linked to MLflow runs for this model." /> : null}
       {tab === "settings" ? <Placeholder text="Registry settings: tags, ownership, retention policy." /> : null}
+
+      {matchedModel ? (
+        <UploadVersionModal
+          open={uploadOpen}
+          onClose={() => setUploadOpen(false)}
+          modelId={matchedModel.id}
+          modelName={matchedModel.name}
+          currentVersion={matchedModel.version}
+          primaryMetricName={matchedModel.primary_metric_name}
+          primaryMetricValue={matchedModel.primary_metric_value}
+          defaultMode={matchedModel.framework === "ultralytics" ? "yolo" : "general"}
+          onUploaded={() => {
+            setUploadOpen(false);
+            void queryClient.invalidateQueries({ queryKey: ["registry-model-versions", modelName] });
+            void queryClient.invalidateQueries({ queryKey: ["models"] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

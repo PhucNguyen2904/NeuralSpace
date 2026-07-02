@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getModelVersions as getMlflowModelVersions } from "@/lib/api/mlflow";
+import { getModelVersions as getMlflowModelVersions, transitionModelVersionStage } from "@/lib/api/mlflow";
 import type { Stage } from "@/types/mlflow";
 
 export interface RegistryModelVersion {
@@ -181,8 +181,8 @@ export function useModelVersions(modelName: string) {
 export function usePromoteModel() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { modelName: string; version: string; targetStage: "Staging" | "Production"; reason: string; reviewers: string[] }) => {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+    mutationFn: async (payload: { modelName: string; version: string; targetStage: "Staging" | "Production" }) => {
+      await transitionModelVersionStage(payload.modelName, payload.version, payload.targetStage);
       return payload;
     },
     onSuccess: async (_, vars) => {
@@ -232,10 +232,9 @@ export function useRealtimePreflight(targetStage: "Staging" | "Production", metr
     return [
       { key: "ready", label: "Model status: READY", state: tick > 0 ? "pass" : "running" },
       { key: "tags", label: "Required tags: dvc.md5, git.commit", state: tick > 1 ? "pass" : "running" },
-      { key: "metrics", label: "Evaluation metrics meet the threshold", detail: `accuracy ${metrics.accuracy} >= 0.90, loss ${metrics.loss} <= 0.15`, state: tick > 2 ? (accuracyPass && lossPass ? "pass" : "fail") : "running" },
-      { key: "approval", label: targetStage === "Production" ? "No approval request exists -> one will be created" : "Staging auto-approved", state: targetStage === "Production" ? "warn" : "pass" }
+      { key: "metrics", label: "Evaluation metrics meet the threshold", detail: `accuracy ${metrics.accuracy} >= 0.90, loss ${metrics.loss} <= 0.15`, state: tick > 2 ? (accuracyPass && lossPass ? "pass" : "warn") : "running" },
     ];
-  }, [metrics.accuracy, metrics.loss, targetStage, tick]);
+  }, [metrics.accuracy, metrics.loss, tick]);
 
   return checks;
 }

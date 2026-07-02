@@ -148,8 +148,8 @@ async def _resolve_user_names(db: AsyncSession, items: list[dict], keys: list[st
                     pass
     if not user_ids:
         return
-    rows = (await db.execute(select(User.id, User.full_name).where(User.id.in_(list(user_ids))))).all()
-    mapping = {str(r.id): r.full_name or "Unknown User" for r in rows}
+    rows = (await db.execute(select(User.id, User.full_name, User.email).where(User.id.in_(list(user_ids))))).all()
+    mapping = {str(r.id): r.full_name or r.email or "Unknown User" for r in rows}
     for item in items:
         for key in keys:
             val = item.get(key)

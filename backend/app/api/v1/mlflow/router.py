@@ -22,6 +22,31 @@ def _object_from_storage_path(storage_path: str | None) -> tuple[str | None, str
     normalized = storage_path.replace("\\", "/").lstrip("/")
     return (None, normalized) if normalized else None
 
+async def _resolve_user_names(db: AsyncSession, items: list[dict], keys: list[str] | None = None) -> None:
+    if keys is None:
+        keys = ["user_id"]
+    from app.models.user import User
+    import uuid
+    user_ids = set()
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val != "system":
+                try:
+                    uuid.UUID(str(val))
+                    user_ids.add(val)
+                except ValueError:
+                    pass
+    if not user_ids:
+        return
+    rows = (await db.execute(select(User.id, User.full_name, User.email).where(User.id.in_(list(user_ids))))).all()
+    mapping = {str(r.id): r.full_name or r.email or "Unknown User" for r in rows}
+    for item in items:
+        for key in keys:
+            val = item.get(key)
+            if val and val in mapping:
+                item[key] = mapping[val]
+
 
 def _run_payload(row: Run) -> dict:
     metrics = [
@@ -237,8 +262,10 @@ async def list_runs(
     stmt = stmt.order_by(Run.created_at.desc()).offset((page - 1) * limit).limit(limit)
     rows = (await db.execute(stmt)).scalars().all()
     total = int((await db.execute(count_stmt)).scalar() or 0)
+    payloads = [_run_payload(row) for row in rows]
+    await _resolve_user_names(db, payloads)
     return {
-        "items": [_run_payload(row) for row in rows],
+        "items": payloads,
         "total": total,
         "page": page,
         "pageSize": limit,
@@ -254,7 +281,9 @@ async def get_run(
     row = await db.get(Run, run_id)
     if row is None or row.user_id != current_user.user_id:
         return {}
-    return _run_payload(row)
+    payload = _run_payload(row)
+    await _resolve_user_names(db, [payload])
+    return payload
 
 
 @router.delete("/runs/{run_id}")

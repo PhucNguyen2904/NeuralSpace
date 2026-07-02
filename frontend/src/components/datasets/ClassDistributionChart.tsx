@@ -10,7 +10,7 @@ export function ClassDistributionChart({ distribution }: { distribution: Record<
 
   return (
     <div className="h-72 w-full">
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <BarChart data={entries} layout="vertical" margin={{ top: 4, right: 20, bottom: 4, left: 20 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#D1FAE5" />
           <XAxis type="number" tick={{ fill: "#5a6070", fontSize: 12 }} />

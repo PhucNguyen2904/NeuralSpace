@@ -21,7 +21,7 @@ export function ParallelCoordinatesChart({ runs }: ParallelCoordinatesChartProps
     <div className="rounded-lg border border-border p-3">
       <p className="mb-2 text-sm font-medium">Parallel Coordinates (Radar fallback)</p>
       <div className="h-[320px]">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0}>
           <RadarChart data={data}>
             <PolarGrid />
             <PolarAngleAxis dataKey="metric" />

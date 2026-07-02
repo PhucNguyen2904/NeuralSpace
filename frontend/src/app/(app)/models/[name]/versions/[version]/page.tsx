@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { ApprovalStatusBanner, MetricDelta, StageBadge } from "@/components/shared";
+import { MetricDelta, StageBadge } from "@/components/shared";
 import { PromoteModal } from "@/components/models/registry/PromoteModal";
 import { useModelVersions } from "@/lib/hooks/useModelRegistry";
 
@@ -37,19 +37,10 @@ export default function ModelVersionDetailPage() {
           <StageBadge stage={current.stage} />
         </div>
         <button className="ml-auto rounded-md border border-border px-3 py-1.5 text-sm hover:bg-bg-elevated" onClick={() => setPromoteOpen(true)}>
-          Rollback/Promote
+          Promote
         </button>
       </header>
 
-      {current.approvalStatus ? (
-        <ApprovalStatusBanner
-          status={current.approvalStatus}
-          reviewer={current.approvalReviewer}
-          reason={current.approvalReason}
-          approvedAgo={current.approvalStatus === "APPROVED" ? "2h ago" : undefined}
-          remaining={current.approvalStatus === "PENDING" ? "23h" : undefined}
-        />
-      ) : null}
 
       <div className="flex gap-2 border-b border-border pb-2">
         <TabButton label="Overview" active={tab === "overview"} onClick={() => setTab("overview")} />
@@ -105,6 +96,7 @@ export default function ModelVersionDetailPage() {
         onClose={() => setPromoteOpen(false)}
         modelName={modelName}
         version={current.version}
+        currentStage={current.stage}
         accuracy={current.accuracy}
         loss={current.loss}
       />

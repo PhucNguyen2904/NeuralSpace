@@ -3,7 +3,9 @@
 import * as React from "react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { AlertTriangle, FileJson, Link2, Pencil, Plus, Trash2, UploadCloud, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { AlertTriangle, FileJson, GitBranch, Link2, Pencil, Plus, Trash2, X, UploadCloud } from "lucide-react";
 import { Button, Modal } from "@/components/ui";
 import { MetricsChart } from "@/components/models/MetricsChart";
 import { VersionTimeline } from "@/components/models/VersionTimeline";
@@ -24,6 +26,7 @@ export function ModelDetailDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const { toast } = useToast();
   const { detail, metrics, versions } = useModelDetail(modelId ?? "");
   const updateModel = useUpdateModel();
@@ -242,9 +245,13 @@ export function ModelDetailDrawer({
             <Button size="sm" variant="outline" onClick={() => setMetadataModalOpen(true)}>
               <Pencil size={14} /> Edit
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setVersionModalOpen(true)}>
-              <UploadCloud size={14} /> New version
-            </Button>
+            <Link
+              href={`/models/${encodeURIComponent(model.name)}`}
+              onClick={onClose}
+              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border px-2.5 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-elevated"
+            >
+              <GitBranch size={14} /> Versions
+            </Link>
             <Button size="sm" variant="ghost" className="text-error-600 hover:text-error-700" onClick={() => setDeleteModalOpen(true)}>
               <Trash2 size={14} />
             </Button>
@@ -317,7 +324,7 @@ export function ModelDetailDrawer({
               </div>
             </div>
           ) : null}
-          {tab === "versions" ? <VersionTimeline versions={versions.data ?? []} /> : null}
+          {tab === "versions" ? <VersionTimeline versions={versions.data ?? []} modelName={model.name} /> : null}
         </div>
       </motion.aside>
       <Modal

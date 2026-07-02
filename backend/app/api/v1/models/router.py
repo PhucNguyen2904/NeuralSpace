@@ -652,8 +652,8 @@ async def _resolve_user_names(db: AsyncSession, items: list[dict], keys: list[st
                     pass
     if not user_ids:
         return
-    rows = (await db.execute(select(User.id, User.full_name).where(User.id.in_(list(user_ids))))).all()
-    mapping = {str(r.id): r.full_name or "Unknown User" for r in rows}
+    rows = (await db.execute(select(User.id, User.full_name, User.email).where(User.id.in_(list(user_ids))))).all()
+    mapping = {str(r.id): r.full_name or r.email or "Unknown User" for r in rows}
     for item in items:
         for key in keys:
             val = item.get(key)
@@ -762,6 +762,7 @@ async def _create_tracked_model_version(
         source_type="LOCAL",
         source_name="models/upload",
         user_id=str(getattr(user, "user_id", "upload-user")),
+        git_commit=parsed.get("git_commit") or parsed.get("commit"),
         metrics_snapshot=metrics,
         params_snapshot={
             "architecture": architecture,
@@ -774,7 +775,10 @@ async def _create_tracked_model_version(
             "dataset_id": parsed.get("dataset_id"),
             "training_duration_seconds": parsed.get("training_duration_seconds"),
         },
-        tags_snapshot={"uploaded": "true"},
+        tags_snapshot={
+            "uploaded": "true",
+            "branch": parsed.get("branch") or "main"
+        },
     )
     db.add(run)
     await db.flush()

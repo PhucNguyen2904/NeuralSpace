@@ -51,7 +51,7 @@ export function ModelCompareTool({
           </table>
         </div>
         <div className="h-64 min-w-0 overflow-hidden rounded-md bg-bg-elevated/40 p-2">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0}>
             <RadarChart outerRadius="70%" data={radar}>
               <PolarGrid />
               <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "var(--color-text-secondary)" }} />

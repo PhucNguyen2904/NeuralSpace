@@ -12,7 +12,7 @@ const STAGE_CONFIG: Record<
   }
 > = {
   None: {
-    label: "Unregistered",
+    label: "Development",
     dot: "bg-stage-none",
     bg: "bg-slate-100",
     text: "text-slate-600"

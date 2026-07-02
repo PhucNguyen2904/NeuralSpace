@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.core.logging import audit_event, get_logger
 from app.dependencies import UserContext, get_current_user, get_db, get_redis
-from app.models.mlops_tracking import Experiment, ModelVersion, Run, RunLog, DatasetVersion
-from app.models.workspace_assets import WorkspaceModel
+from app.models.mlops_tracking import Experiment, ModelVersion, Run, RunLog, DatasetVersion, MLDataset
+
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.colab import (
     ColabAssetsResponse,
@@ -103,22 +103,47 @@ async def _workspace_assets_payload(
     if dataset_ids:
         dataset_rows = (
             await db.execute(
-                select(DatasetVersion).where(DatasetVersion.id.in_(dataset_ids))
+                select(MLDataset, DatasetVersion)
+                .join(DatasetVersion, MLDataset.id == DatasetVersion.dataset_id)
+                .where(MLDataset.id.in_(dataset_ids), DatasetVersion.is_latest.is_(True))
             )
-        ).scalars().all()
+        ).all()
         public_client = _minio_client(public=True)
-        for row in dataset_rows:
-            if not row.storage_path:
-                continue
-            bucket, object_name = _storage_location(row.storage_path, settings.MINIO_BUCKET)
-            signed_url = _presigned_existing_object(
-                internal_client,
-                public_client,
-                bucket,
-                object_name,
-                expires,
-            )
-            datasets.append(ColabDatasetPayload(dataset_id=row.id, name=row.name, signed_url=signed_url))
+        for ds, ver in dataset_rows:
+            signed_url = None
+            object_name = None
+            bucket = settings.MINIO_BUCKET
+
+            if ver.dvc_md5:
+                object_name = f"dvc/files/md5/{ver.dvc_md5[:2].lower()}/{ver.dvc_md5[2:].lower()}"
+                
+                # Check for custom dvc profile prefix if needed
+                if ds.dvc_profile_id:
+                    from app.models.mlops_tracking import DVCProfile
+                    profile_row = await db.get(DVCProfile, ds.dvc_profile_id)
+                    if profile_row and profile_row.remote_url:
+                        import re
+                        match = re.match(r"s3://([^/]+)(/.*)?", profile_row.remote_url.strip())
+                        if match:
+                            bucket = match.group(1)
+                            parsed_prefix = match.group(2).strip("/") if match.group(2) else ""
+                            dvc_prefix = parsed_prefix + "/" if parsed_prefix else "dvc/"
+                            object_name = f"{dvc_prefix}files/md5/{ver.dvc_md5[:2].lower()}/{ver.dvc_md5[2:].lower()}"
+
+            elif ver.storage_path and not ver.storage_path.endswith(".dvc"):
+                bucket, object_name = _storage_location(ver.storage_path, settings.MINIO_BUCKET)
+            elif ds.storage_path and not ds.storage_path.endswith(".dvc"):
+                bucket, object_name = _storage_location(ds.storage_path, settings.MINIO_BUCKET)
+
+            if object_name:
+                signed_url = _presigned_existing_object(
+                    internal_client,
+                    public_client,
+                    bucket,
+                    object_name,
+                    expires,
+                )
+            datasets.append(ColabDatasetPayload(dataset_id=ds.id, name=ds.name, signed_url=signed_url))
 
     if model_ids:
         model_rows = (
@@ -130,8 +155,8 @@ async def _workspace_assets_payload(
             public_client = _minio_client(public=True)
         for row in model_rows:
             signed_url = None
-            if row.storage_path:
-                bucket, object_name = _storage_location(row.storage_path, settings.MINIO_BUCKET)
+            if row.source:
+                bucket, object_name = _storage_location(row.source, settings.MINIO_BUCKET)
                 signed_url = _presigned_existing_object(
                     internal_client,
                     public_client,
@@ -142,8 +167,8 @@ async def _workspace_assets_payload(
             models.append(
                 ColabModelPayload(
                     model_id=row.id,
-                    name=row.name,
-                    version=row.version,
+                    name=row.mlflow_name,
+                    version=str(row.mlflow_version),
                     framework=row.framework,
                     task_type=row.task_type,
                     signed_url=signed_url,

@@ -88,6 +88,18 @@ class RcloneStorageProvider(StorageProvider):
             provider_type=connection.provider,
             params=params,
         )
+        
+        if connection.provider == "drive" and "token" not in params:
+            import configparser
+            config = configparser.ConfigParser()
+            config.read(connection.config_path)
+            if config.has_section(connection.remote_name):
+                if config.has_option(connection.remote_name, "token"):
+                    params["token"] = config.get(connection.remote_name, "token")
+                if config.has_option(connection.remote_name, "client_id"):
+                    params["client_id"] = config.get(connection.remote_name, "client_id")
+                if config.has_option(connection.remote_name, "client_secret"):
+                    params["client_secret"] = config.get(connection.remote_name, "client_secret")
 
     def disconnect(self, connection: StorageConnection) -> None:
         """Remove the remote from the rclone configuration."""

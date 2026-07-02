@@ -143,6 +143,7 @@ services:
       - ./storage-configs:/storage-configs
     ports:
       - "8000:8000"
+      - "53682:53682"
     depends_on:
       postgres:
         condition: service_started

@@ -95,6 +95,6 @@ class DatasetVersionService:
         )
         self.db.add(dataset_version)
         await self.db.commit()
-                await self.db.refresh(mlops_dataset)
+        await self.db.refresh(mlops_dataset)
         await self.db.refresh(dataset_version)
         return mlops_dataset, dataset_version

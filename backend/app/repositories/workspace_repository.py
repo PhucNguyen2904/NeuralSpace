@@ -10,7 +10,7 @@ from sqlalchemy import Select, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.workspace import Workspace, WorkspaceStatus
-from app.models.workspace_assets import WorkspaceDataset, WorkspaceModel
+
 from app.models.workspace_event import WorkspaceEvent
 from app.schemas.workspace import WorkspaceCreateRequest
 
@@ -30,24 +30,6 @@ class WorkspaceRepository:
         )
         db.add(workspace)
         await db.flush()
-        for dataset_id in data.dataset_ids:
-            db.add(
-                WorkspaceDataset(
-                    workspace_id=workspace.id,
-                    dataset_id=dataset_id,
-                    mount_path=f"/workspace/datasets/{WorkspaceRepository._mount_name(dataset_id)}",
-                    mounted_by=user_id,
-                )
-            )
-        for model_id in data.model_ids:
-            db.add(
-                WorkspaceModel(
-                    workspace_id=workspace.id,
-                    model_id=model_id,
-                    mount_path=f"/workspace/models/{WorkspaceRepository._mount_name(model_id)}",
-                    mounted_by=user_id,
-                )
-            )
         await db.refresh(workspace)
         return workspace
 
@@ -62,27 +44,7 @@ class WorkspaceRepository:
         workspace.dataset_ids = dataset_ids
         workspace.model_ids = model_ids
 
-        await db.execute(delete(WorkspaceDataset).where(WorkspaceDataset.workspace_id == workspace.id))
-        await db.execute(delete(WorkspaceModel).where(WorkspaceModel.workspace_id == workspace.id))
 
-        for dataset_id in dataset_ids:
-            db.add(
-                WorkspaceDataset(
-                    workspace_id=workspace.id,
-                    dataset_id=dataset_id,
-                    mount_path=f"/workspace/datasets/{WorkspaceRepository._mount_name(dataset_id)}",
-                    mounted_by=user_id,
-                )
-            )
-        for model_id in model_ids:
-            db.add(
-                WorkspaceModel(
-                    workspace_id=workspace.id,
-                    model_id=model_id,
-                    mount_path=f"/workspace/models/{WorkspaceRepository._mount_name(model_id)}",
-                    mounted_by=user_id,
-                )
-            )
 
         await db.flush()
         await db.refresh(workspace)

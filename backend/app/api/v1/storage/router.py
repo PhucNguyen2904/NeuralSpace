@@ -15,10 +15,7 @@ from app.schemas.storage import (
 )
 from app.services.storage_service import StorageService
 
-from app.api.v1.storage.oauth import router as oauth_router
-
 router = APIRouter(tags=["storage"])
-router.include_router(oauth_router)
 
 
 def get_storage_service(db: AsyncSession = Depends(get_db)) -> StorageService:

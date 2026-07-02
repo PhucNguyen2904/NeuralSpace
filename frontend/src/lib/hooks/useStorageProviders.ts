@@ -12,19 +12,10 @@ export interface StorageConnection {
   status: string;
   is_default: boolean;
   last_sync_at?: string | null;
+  auth_url?: string | null;
 }
 
-export function useConnectGoogleDrive() {
-  return useMutation({
-    mutationFn: async (displayName: string) => {
-      const searchParams = new URLSearchParams({ display_name: displayName });
-      return unwrapResponse(apiClient.get(`/storage/google/oauth/url?${searchParams.toString()}`));
-    },
-    onSuccess: (data: { url: string }) => {
-      window.location.href = data.url;
-    },
-  });
-}
+
 
 export function useStorageConnections() {
   return useQuery({

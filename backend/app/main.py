@@ -44,6 +44,40 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up application", version=__version__)
     configure_logging()
+    
+    # TCP Proxy for Rclone OAuth (0.0.0.0:53682 -> 127.0.0.1:53682)
+    async def rclone_proxy_handler(client_reader, client_writer):
+        try:
+            remote_reader, remote_writer = await asyncio.open_connection("127.0.0.1", 53682)
+            async def forward(src, dst):
+                try:
+                    while True:
+                        data = await src.read(4096)
+                        if not data:
+                            break
+                        dst.write(data)
+                        await dst.drain()
+                except Exception:
+                    pass
+                finally:
+                    dst.close()
+            asyncio.create_task(forward(client_reader, remote_writer))
+            asyncio.create_task(forward(remote_reader, client_writer))
+        except Exception:
+            client_writer.close()
+
+    try:
+        import socket
+        container_ip = socket.gethostbyname(socket.gethostname())
+        if container_ip == "127.0.0.1":
+            # Fallback for some strange environments, but might conflict
+            container_ip = "0.0.0.0"
+            
+        rclone_proxy_server = await asyncio.start_server(rclone_proxy_handler, container_ip, 53682)
+        logger.info(f"Rclone TCP Proxy started on {container_ip}:53682")
+    except Exception as e:
+        logger.warning(f"Failed to start Rclone TCP proxy: {e}")
+        rclone_proxy_server = None
 
     try:
         await init_db()
@@ -78,6 +112,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down application")
+    if rclone_proxy_server:
+        rclone_proxy_server.close()
+        try:
+            await rclone_proxy_server.wait_closed()
+        except Exception:
+            pass
     try:
         await close_db()
         logger.info("Database closed")
@@ -191,6 +231,25 @@ def create_app() -> FastAPI:
                 "error_code": "http_error",
                 "message": exc.detail,
                 "status_code": exc.status_code,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Handle all unhandled exceptions to preserve CORS headers."""
+        logger.exception(
+            "Unhandled exception",
+            request_id=request.headers.get("X-Request-ID", ""),
+            method=request.method,
+            path=request.url.path,
+            error=str(exc)
+        )
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error_code": "internal_error",
+                "message": "Internal server error",
+                "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR,
             },
         )
 

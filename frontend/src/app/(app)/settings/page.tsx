@@ -36,7 +36,7 @@ import {
   useUpdateGitSyncPrefs
 } from "@/lib/hooks/useSettings";
 import { useCreateDvcProfile, useDvcProfiles, useUpdateDvcProfile, useDeleteDvcProfile } from "@/lib/hooks/useDatasetVersions";
-import { useStorageConnections, useConnectStorage, useDisconnectStorage, useConnectGoogleDrive, useSetDefaultStorage } from "@/lib/hooks/useStorageProviders";
+import { useStorageConnections, useConnectStorage, useDisconnectStorage, useSetDefaultStorage } from "@/lib/hooks/useStorageProviders";
 import { useGitAccounts, useGitOAuthLogin, useDisconnectGitAccount, useGitRepositories, useTrackedRepositories, useUntrackedRepositories, useTrackRepository, useGitActivities } from "@/lib/hooks/useGitIntegration";
 import { useAuthStore } from "@/lib/stores/authStore";
 import { cn } from "@/lib/utils/cn";
@@ -127,7 +127,6 @@ export default function SettingsPage() {
   const { data: storageProviders = [], isLoading: isLoadingStorageProviders } = useStorageConnections();
   const connectStorage = useConnectStorage();
   const disconnectStorage = useDisconnectStorage();
-  const connectGoogleDrive = useConnectGoogleDrive();
   const setDefaultStorage = useSetDefaultStorage();
   const { data: gitAccounts = [], isLoading: isLoadingGitAccounts } = useGitAccounts();
   const gitOAuthLogin = useGitOAuthLogin();
@@ -150,23 +149,22 @@ export default function SettingsPage() {
 
   const onSubmitProvider = async (values: any) => {
     try {
-      if (values.provider === "drive") {
-        // Trigger Google OAuth flow
-        // The display_name is sent in the URL so it's retained during the OAuth redirect
-        await connectGoogleDrive.mutateAsync(values.display_name);
-        return; // Navigation handles the rest
-      }
-
       const params: Record<string, string> = {};
-      params.endpoint = values.endpoint;
-      params.bucket = values.bucket;
-      params.access_key_id = values.access_key_id;
-      params.secret_access_key = values.secret_access_key;
-      params.env_auth = "false";
+      
+      if (values.provider === "drive") {
+        if (values.client_id) params.client_id = values.client_id;
+        if (values.client_secret) params.client_secret = values.client_secret;
+      } else {
+        params.endpoint = values.endpoint;
+        params.bucket = values.bucket;
+        params.access_key_id = values.access_key_id;
+        params.secret_access_key = values.secret_access_key;
+        params.env_auth = "false";
+      }
       
       const remote_name = values.display_name.toLowerCase().replace(/[^a-z0-9]/g, "_");
 
-      await connectStorage.mutateAsync({
+      const response = await connectStorage.mutateAsync({
         display_name: values.display_name,
         provider: values.provider,
         remote_name: remote_name,
@@ -175,7 +173,13 @@ export default function SettingsPage() {
       setProviderModalOpen(false);
       providerForm.reset();
       setShowAdvanced(false);
-      setToastMsg("Storage provider connected");
+      
+      if (response && response.auth_url) {
+        window.open(response.auth_url, "_blank", "width=800,height=600");
+        setToastMsg("Please complete authentication in the popup window");
+      } else {
+        setToastMsg("Storage provider connected");
+      }
     } catch (err: any) {
       setToastMsg(err.message || "Failed to connect provider");
     }
@@ -619,11 +623,9 @@ export default function SettingsPage() {
                   )}
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="ghost" type="button" onClick={() => setProviderModalOpen(false)}>Cancel</Button>
-                    {providerForm.watch("provider") === "drive" ? (
-                      <Button type="button" onClick={providerForm.handleSubmit(onSubmitProvider)} loading={connectGoogleDrive.isPending}>Connect Google Drive</Button>
-                    ) : (
-                      <Button type="submit" loading={connectStorage.isPending}>Save Provider</Button>
-                    )}
+                    <Button type="submit" loading={connectStorage.isPending}>
+                      {providerForm.watch("provider") === "drive" ? "Connect Google Drive" : "Save Provider"}
+                    </Button>
                   </div>
                 </form>
               </Modal>

@@ -96,7 +96,7 @@ export default function WorkspacesPage() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Projects" description="Manage Colab launch contexts and attached MLOps assets." action={<Link href="/workspaces/new"><Button size="sm">+ New Project</Button></Link>} />
+      <PageHeader title="Projects" description="Manage Colab launch contexts and attached MLOps assets." action={<Link href="/workspaces/new" onClick={() => sessionStorage.removeItem("neuralspace-create-workspace")}><Button size="sm">+ New Project</Button></Link>} />
 
       <div className="rounded-lg border border-border bg-bg-surface p-4">
         <div className="mb-4 flex flex-wrap items-center gap-3">

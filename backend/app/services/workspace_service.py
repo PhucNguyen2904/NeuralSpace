@@ -13,7 +13,7 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.models.workspace import Workspace, WorkspaceStatus
-from app.models.mlops_tracking import DatasetVersion, ModelVersion
+from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelVersion
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.workspace import (
     WorkspaceAssetsUpdateRequest,
@@ -41,7 +41,7 @@ class WorkspaceService:
             set(
                 (
                     await db.execute(
-                        select(DatasetVersion.id).where(DatasetVersion.id.in_(dataset_ids))
+                        select(MLDataset.id).where(MLDataset.id.in_(dataset_ids))
                     )
                 ).scalars().all()
             )

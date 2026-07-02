@@ -52,7 +52,7 @@ class RcloneService:
             
         return StorageException(f"rclone command failed: {stderr.strip()}")
 
-    def command(self, cmd_args: list[str], config_path: str, provider: str = "unknown") -> subprocess.CompletedProcess:
+    def command(self, cmd_args: list[str], config_path: str, provider: str = "unknown", capture_output: bool = True) -> subprocess.CompletedProcess:
         """Execute an rclone command safely."""
         full_cmd = ["rclone"] + cmd_args + ["--config", config_path]
         
@@ -61,8 +61,8 @@ class RcloneService:
         try:
             result = subprocess.run(
                 full_cmd,
-                capture_output=True,
-                text=True,
+                capture_output=capture_output,
+                text=True if capture_output else False,
                 check=False,
             )
             duration = time.time() - start_time
@@ -75,8 +75,9 @@ class RcloneService:
             if result.returncode == 0:
                 logger.info(log_msg)
             else:
-                logger.error(f"{log_msg} | stderr: {result.stderr.strip()}")
-                raise self._map_error(result.stderr, provider=provider, path=str(cmd_args))
+                stderr_output = result.stderr.strip() if result.stderr else "Error output not captured."
+                logger.error(f"{log_msg} | stderr: {stderr_output}")
+                raise self._map_error(stderr_output, provider=provider, path=str(cmd_args))
                 
             return result
         except FileNotFoundError:
@@ -88,19 +89,39 @@ class RcloneService:
         config_file = Path(config_path)
         config_file.parent.mkdir(parents=True, exist_ok=True)
         
-        config = configparser.ConfigParser()
-        if config_file.exists():
-            config.read(config_file)
+        if provider_type == "drive" and "token" not in params:
+            from app.config import get_settings
+            settings = get_settings()
             
-        if not config.has_section(remote_name):
-            config.add_section(remote_name)
+            client_id = params.get("client_id") or settings.GOOGLE_CLIENT_ID
+            client_secret = params.get("client_secret") or settings.GOOGLE_CLIENT_SECRET
             
-        config.set(remote_name, "type", provider_type)
-        for key, value in params.items():
-            config.set(remote_name, key, str(value))
+            cmd = ["config", "create", remote_name, "drive", "config_is_local", "true"]
             
-        with open(config_file, "w") as f:
-            config.write(f)
+            if client_id:
+                cmd.extend(["client_id", client_id])
+                logger.info("Using application's OAuth Client ID for Google Drive.")
+            else:
+                logger.info("Using default Rclone OAuth Client for Google Drive.")
+                
+            if client_secret:
+                cmd.extend(["client_secret", client_secret])
+                
+            self.command(cmd, config_path=config_path, provider=provider_type, capture_output=False)
+        else:
+            config = configparser.ConfigParser()
+            if config_file.exists():
+                config.read(config_file)
+                
+            if not config.has_section(remote_name):
+                config.add_section(remote_name)
+                
+            config.set(remote_name, "type", provider_type)
+            for key, value in params.items():
+                config.set(remote_name, key, str(value))
+                
+            with open(config_file, "w") as f:
+                config.write(f)
 
     def delete_remote(self, config_path: str, remote_name: str) -> None:
         """Delete a remote from the rclone config file."""

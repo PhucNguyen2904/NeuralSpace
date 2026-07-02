@@ -75,7 +75,6 @@ class Settings(BaseSettings):
     # Google OAuth App
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/storage/google/oauth/callback"
     OAUTH_ENCRYPTION_KEY: str = "your-encryption-key-must-be-32-url-safe-base64-bytes"
 
     def __init__(self, **data):

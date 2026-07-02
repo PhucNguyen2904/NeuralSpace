@@ -128,8 +128,8 @@ export function DatasetDetailDrawer({
         <Button size="sm" variant="ghost" className="absolute right-4 top-4 z-10 px-2" onClick={onClose} title="Close">
           <X size={16} />
         </Button>
-        <div className="flex items-start justify-between border-b border-border px-5 py-4">
-          <div className="min-w-0 pr-8">
+        <div className="flex items-start justify-between border-b border-border pl-5 pr-14 py-4">
+          <div className="min-w-0 pr-4">
             <h2 className="truncate text-xl font-bold text-text-primary">{dataset.name}</h2>
             <div className="mt-1.5">
               <span className="rounded-full bg-[#ECFDF5] px-2 py-1 text-xs text-emerald-700">{dataset.label_status}</span>

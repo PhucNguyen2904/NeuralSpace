@@ -16,7 +16,7 @@ from app.models.mlops_tracking import (
 from app.models.user import User
 from app.models.runtime_session import ExternalRuntimeSession, RuntimeSessionStatus
 from app.models.workspace import Workspace, WorkspaceStatus
-from app.models.workspace_assets import WorkspaceDataset, WorkspaceModel
+
 from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 
 from app.models.storage_connection import StorageConnection
@@ -41,8 +41,7 @@ __all__ = [
     "ExternalRuntimeSession",
     "RuntimeSessionStatus",
     "Workspace",
-    "WorkspaceDataset",
-    "WorkspaceModel",
+
     "WorkspaceEvent",
     "WorkspaceStatus",
     "WorkspaceEventType",

@@ -33,19 +33,63 @@ class StorageService:
 
     async def connect(self, user_id: str, request: StorageConnectRequest) -> StorageConnection:
         """Connect to a new storage provider."""
+        import asyncio
+        from uuid import uuid4
+        
         config_path = self._get_user_config_path(user_id)
         
-        # Save config via provider before saving to DB
-        dummy_conn = StorageConnection(
-            user_id=user_id,
-            provider=request.provider,
-            remote_name=request.remote_name,
-            config_path=config_path,
-        )
-        try:
-            self.provider.connect(dummy_conn, request.params)
-        except StorageException as e:
-            raise HTTPException(status_code=e.status_code, detail=str(e))
+        auth_url = None
+        if request.provider == "drive":
+            import re
+            import os
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            remote_name = request.remote_name or "drive"
+            cmd = [
+                "rclone", "config", "create", remote_name, "drive",
+                "config_is_local", "true",
+                "--config", config_path
+            ]
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT
+            )
+            
+            # Read stdout line by line to find the link
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                line_str = line.decode().strip()
+                match = re.search(r'(http://127\.0\.0\.1:53682/auth\?state=[a-zA-Z0-9_-]+)', line_str)
+                if match:
+                    # Replace 127.0.0.1 with localhost since we proxy it, and localhost is safe for CORS/cookies
+                    auth_url = match.group(1).replace("127.0.0.1", "localhost")
+                    break
+                    
+            if not auth_url:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+                raise HTTPException(status_code=500, detail="Failed to start Google Drive authentication")
+                
+            # Leave process running to receive callback
+            async def wait_process():
+                await process.wait()
+            asyncio.create_task(wait_process())
+        else:
+            # Save config via provider before saving to DB
+            dummy_conn = StorageConnection(
+                user_id=user_id,
+                provider=request.provider,
+                remote_name=request.remote_name,
+                config_path=config_path,
+            )
+            try:
+                await asyncio.to_thread(self.provider.connect, dummy_conn, request.params)
+            except StorageException as e:
+                raise HTTPException(status_code=e.status_code, detail=str(e))
             
         # Save to DB
         connection = await self.repository.create(user_id, config_path, request)
@@ -56,6 +100,9 @@ class StorageService:
         connection.encrypted_credentials = encrypt_credentials(json.dumps(request.params))
         await self.db.commit()
         await self.db.refresh(connection)
+        
+        # Hack to attach auth_url to response model
+        connection.auth_url = auth_url
         return connection
 
     async def list_connections(self, user_id: str) -> Sequence[StorageConnection]:
@@ -105,7 +152,8 @@ class StorageService:
                 decrypted_json = decrypt_credentials(connection.encrypted_credentials)
                 params = json.loads(decrypted_json)
                 # Ensure the provider connects to generate the file
-                self.provider.connect(connection, params)
+                import asyncio
+                await asyncio.to_thread(self.provider.connect, connection, params)
             except Exception:
                 # Fallback if decryption fails or json is malformed
                 pass
@@ -130,7 +178,8 @@ class StorageService:
         """List files in the remote path."""
         connection = await self.get_connection(connection_id, user_id)
         try:
-            return self.provider.list_files(connection, path)
+            import asyncio
+            return await asyncio.to_thread(self.provider.list_files, connection, path)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))
 
@@ -138,7 +187,8 @@ class StorageService:
         """Create a directory in the remote."""
         connection = await self.get_connection(connection_id, user_id)
         try:
-            self.provider.create_directory(connection, path)
+            import asyncio
+            await asyncio.to_thread(self.provider.create_directory, connection, path)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))
 
@@ -146,7 +196,8 @@ class StorageService:
         """Delete a file or directory."""
         connection = await self.get_connection(connection_id, user_id)
         try:
-            self.provider.delete(connection, path, is_dir=is_dir)
+            import asyncio
+            await asyncio.to_thread(self.provider.delete, connection, path, is_dir=is_dir)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))
 
@@ -154,7 +205,8 @@ class StorageService:
         """Synchronize files."""
         connection = await self.get_connection(connection_id, user_id)
         try:
-            self.provider.sync(connection, src_path, dest_path)
+            import asyncio
+            await asyncio.to_thread(self.provider.sync, connection, src_path, dest_path)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))
 
@@ -164,7 +216,8 @@ class StorageService:
         try:
             # We use copy to upload
             remote_dest = self.provider._get_remote_path(connection, remote_path)
-            self.rclone_service.copy(connection.config_path, local_path, remote_dest, provider=connection.provider)
+            import asyncio
+            await asyncio.to_thread(self.rclone_service.copy, connection.config_path, local_path, remote_dest, provider=connection.provider)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))
             
@@ -173,6 +226,7 @@ class StorageService:
         connection = await self.get_connection(connection_id, user_id)
         try:
             remote_src = self.provider._get_remote_path(connection, remote_path)
-            return self.rclone_service.cat(connection.config_path, remote_src, provider=connection.provider)
+            import asyncio
+            return await asyncio.to_thread(self.rclone_service.cat, connection.config_path, remote_src, provider=connection.provider)
         except StorageException as e:
             raise HTTPException(status_code=e.status_code, detail=str(e))

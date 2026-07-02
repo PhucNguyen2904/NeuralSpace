@@ -23,7 +23,8 @@ class StorageConnectionResponse(BaseModel):
     display_name: str
     status: str
     is_default: bool
-    last_sync_at: Optional[datetime] = None
+    last_sync_at: datetime | None = None
+    auth_url: str | None = None
     created_at: datetime
     updated_at: datetime
 

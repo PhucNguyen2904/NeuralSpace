@@ -88,7 +88,7 @@ apiClient.interceptors.response.use(
         const refreshResponse = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { timeout: 10000 }
+          { timeout: 10000, withCredentials: true }
         );
         const nextAccessToken = refreshResponse.data?.access_token as string | undefined;
         const nextExpiresIn = Number(refreshResponse.data?.expires_in ?? 0);

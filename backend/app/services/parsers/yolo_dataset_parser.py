@@ -175,4 +175,6 @@ def extract_zip_safely(zip_path: Path, target_dir: Path) -> ValidationResult:
                 archive.extract(member, target_dir)
     except zipfile.BadZipFile:
         validation.add_error("ZIP_INVALID", "Uploaded file is not a valid ZIP archive", zip_path.name)
+    except Exception as e:
+        validation.add_error("ZIP_EXTRACTION_FAILED", f"Failed to extract ZIP archive: {e}", zip_path.name)
     return validation

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.mlops_tracking import DatasetVersion, MLDataset, ModelDatasetLink, ModelVersion, Run
-from app.models.workspace_assets import WorkspaceDataset
+
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -1000,7 +1000,7 @@ async def delete_dataset(
         await db.execute(delete(ModelDatasetLink).where(ModelDatasetLink.dataset_version_id.in_(version_ids)))
         await db.execute(delete(DatasetVersion).where(DatasetVersion.id.in_(version_ids)))
     if row is not None:
-        await db.execute(delete(WorkspaceDataset).where(WorkspaceDataset.dataset_id == row.id))
+
         await db.delete(row)
     if mlops_dataset is not None:
         await db.delete(mlops_dataset)

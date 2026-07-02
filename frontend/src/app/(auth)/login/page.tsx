@@ -95,9 +95,8 @@ export default function LoginPage() {
       login(data.access_token, user);
       document.cookie = `auth_token=${encodeURIComponent(data.access_token)}; Path=/; Max-Age=${Math.max(0, data.expires_in)}; SameSite=Lax`;
       setSuccess(true);
-      setTimeout(() => {
-        window.location.assign("/dashboard");
-      }, 300);
+      // The useRedirectIfAuthed hook will automatically handle the redirect to /dashboard
+      // as soon as the Zustand state is updated by login() above.
     } catch (err: any) {
       const isNetworkErr = err.message === "Request failed" || err.message === "Failed to fetch" || err.name === "TypeError";
       setToast({ type: "error", message: isNetworkErr ? "Network error. Please check your connection to the server." : "Email or password is incorrect" });

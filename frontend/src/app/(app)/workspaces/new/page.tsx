@@ -192,7 +192,7 @@ export default function NewWorkspacePage() {
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-6 lg:py-8">
       <div className="mb-5">
-        <Link href="/workspaces" className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
+        <Link href="/workspaces" onClick={() => sessionStorage.removeItem("neuralspace-create-workspace")} className="inline-flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
           <ChevronLeft size={14} /> Back to Projects
         </Link>
         <div className="mt-3 flex items-start justify-between gap-4">

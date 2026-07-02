@@ -33,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
-        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[120] focus:rounded-md focus:bg-bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary">
+        <a href="#main-content" className="absolute top-4 left-4 z-[120] -translate-y-[150%] rounded-md bg-bg-surface px-3 py-2 text-sm text-text-primary shadow-lg transition-transform focus:translate-y-0 focus:outline-none focus:ring-2 focus:ring-brand-500">
           Skip to main content
         </a>
         <Providers>{children}</Providers>

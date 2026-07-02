@@ -25,6 +25,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/metrics",
         "/api/v1/auth/login",
         "/api/v1/auth/register",
+        "/api/v1/auth/refresh",
         "/api/v1/colab/claims/exchange",
         "/api/v1/git/accounts/oauth/callback",
         "/api/v1/storage/google/oauth/callback",

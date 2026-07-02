@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import UserContext, get_current_user, get_db
 from app.models.mlops_tracking import ApprovalRequest, DatasetVersion, Experiment, ModelDatasetLink, ModelVersion, Run, RunLog
-from app.models.workspace_assets import WorkspaceModel
+
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -1225,7 +1225,7 @@ async def delete_model(
     try:
         await db.execute(delete(ApprovalRequest).where(ApprovalRequest.model_version_id == row.id))
         await db.execute(delete(ModelDatasetLink).where(ModelDatasetLink.model_version_id == row.id))
-        await db.execute(delete(WorkspaceModel).where(WorkspaceModel.model_id == row.id))
+
         
         await db.refresh(row)
         await db.delete(row)

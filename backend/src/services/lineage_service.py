@@ -369,7 +369,7 @@ class LineageService:
 
         if dataset_ids:
             datasets = (
-                await self.db.execute(select(DatasetVersion).where(DatasetVersion.id.in_(dataset_ids)))
+                await self.db.execute(select(MLDataset).where(MLDataset.id.in_(dataset_ids)))
             ).scalars().all()
             datasets_by_id = {str(d.id): d for d in datasets}
         else:
@@ -405,12 +405,12 @@ class LineageService:
                         "id": asset_id,
                         "type": "dataset",
                         "dataset_id": asset_id,
-                        "name": dataset.version if dataset else asset_id,
+                        "name": dataset.name if dataset else asset_id,
                         "version": "workspace",
                         "status": "validated",
                         "created_at": dataset.created_at.isoformat() if dataset and dataset.created_at else None,
-                        "size": _format_size(dataset.size_bytes) if dataset else None,
-                        "items": dataset.item_count if dataset else None,
+                        "size": None,
+                        "items": None,
                     }
                     add_edge(asset_id, run_node_id, "used_for_training")
                 elif item.get("asset_type") == "model":
@@ -419,11 +419,11 @@ class LineageService:
                         "id": asset_id,
                         "type": "model",
                         "model_id": asset_id,
-                        "name": model.name if model else asset_id,
-                        "version": model.version or "workspace" if model else "workspace",
+                        "name": model.mlflow_name if model else asset_id,
+                        "version": f"v{model.mlflow_version}" if model else "workspace",
                         "stage": "None",
                         "status": model.status if model else "ready",
-                        "metrics": model.all_metrics if model else {},
+                        "metrics": model.metrics if model else {},
                         "created_at": model.created_at.isoformat() if model and model.created_at else None,
                         "user": str(model.created_by) if model and model.created_by else None,
                     }
@@ -460,11 +460,11 @@ class LineageService:
                     "id": asset_id,
                     "type": "model",
                     "model_id": asset_id,
-                    "name": model.name if model else asset_id,
-                    "version": model.version or "workspace" if model else "workspace",
+                    "name": model.mlflow_name if model else asset_id,
+                    "version": f"v{model.mlflow_version}" if model else "workspace",
                     "stage": "None",
                     "status": model.status if model else "ready",
-                    "metrics": run.metrics_snapshot or (model.all_metrics if model else {}),
+                    "metrics": run.metrics_snapshot or (model.metrics if model else {}),
                     "created_at": model.created_at.isoformat() if model and model.created_at else None,
                     "user": str(model.created_by) if model and model.created_by else None,
                 }

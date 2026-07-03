@@ -87,7 +87,7 @@ function processRunData(run: Run): RunDetailData {
   
   return {
     ...run,
-    name: run.name || run.id || "Unnamed Run",
+    name: run.name || run.run_id || "Unnamed Run",
     branch: run.tags?.branch || "main",
     commit: run.git_commit || run.tags?.commit || "-",
     durationLabel: formatDuration(run.duration_ms) || "-",
@@ -219,7 +219,7 @@ export function useCompareRuns(runIds: string[]) {
           return processRunData(run);
         } catch {
           // fallback to empty if missing
-          return processRunData({ id, name: id, status: "FAILED", start_time: new Date().toISOString(), tags: {}, params: [], metrics: [], user_id: "" } as any);
+          return processRunData({ run_id: id, name: id, status: "FAILED", start_time: new Date().toISOString(), tags: {}, params: [], metrics: [], user_id: "" } as any);
         }
       }));
       return details;
@@ -230,7 +230,7 @@ export function useCompareRuns(runIds: string[]) {
     const runs = runsQuery.data ?? [];
     const metrics = ["accuracy", "loss", "f1_score"];
     return metrics.map((metric) => {
-      const values = runs.map((run) => ({ runId: run.id, value: run.metricsMap[metric] ?? 0 }));
+      const values = runs.map((run) => ({ runId: run.run_id, value: run.metricsMap[metric] ?? 0 }));
       const best = metric === "loss"
         ? values.reduce((min, item) => (item.value < min.value ? item : min), values[0] ?? { runId: "", value: 0 }).runId
         : values.reduce((max, item) => (item.value > max.value ? item : max), values[0] ?? { runId: "", value: 0 }).runId;

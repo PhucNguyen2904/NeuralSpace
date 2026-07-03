@@ -102,6 +102,9 @@ export interface UploadModelVersionMetadata {
   primary_metric_name?: string;
   primary_metric_value?: number;
   metrics?: Record<string, number>;
+  branch?: string;
+  git_commit?: string;
+  commit?: string;
 }
 
 export interface ModelInspectIssue {

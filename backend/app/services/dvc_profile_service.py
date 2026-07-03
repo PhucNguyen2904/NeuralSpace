@@ -45,6 +45,9 @@ class ResolvedDVCProfile:
 
 
 def environment_dvc_profile(settings: Settings) -> dict:
+    # Trong production (Render), không có persistent disk nên server default không hoạt động.
+    # User phải tạo DVC profile riêng với git remote + R2/S3 storage.
+    is_production = settings.ENVIRONMENT == "production"
     return {
         "id": ENV_DEFAULT_DVC_PROFILE_ID,
         "name": "Server default",
@@ -57,9 +60,14 @@ def environment_dvc_profile(settings: Settings) -> dict:
         "remote_name": settings.DVC_REMOTE_NAME,
         "remote_url": None,
         "endpoint_url": None,
-        "is_default": True,
-        "status": "ready",
-        "status_message": "Uses the server default DVC path configured by the administrator",
+        "is_default": not is_production,
+        "status": "inactive" if is_production else "ready",
+        "status_message": (
+            "Không khả dụng trong môi trường production (ephemeral disk). "
+            "Vui lòng tạo DVC Profile riêng với Git repo và R2/S3 remote storage."
+            if is_production
+            else "Uses the server default DVC path configured by the administrator"
+        ),
         "is_environment_default": True,
     }
 

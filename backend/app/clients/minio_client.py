@@ -21,16 +21,34 @@ class MinIOClient:
 
     def __init__(self) -> None:
         settings = get_settings()
-        self._client = Minio(
-            endpoint=settings.MINIO_ENDPOINT,
-            access_key=settings.MINIO_ACCESS_KEY,
-            secret_key=settings.MINIO_SECRET_KEY,
-            secure=False,  # Internal connection is always plain HTTP
-            region="us-east-1",
-        )
-        self._bucket = settings.MINIO_BUCKET
-        self._public_endpoint = settings.MINIO_PUBLIC_ENDPOINT
-        self._public_secure = settings.MINIO_PUBLIC_SECURE
+
+        if settings.is_r2_configured():
+            # Cloudflare R2: dùng S3-compatible endpoint với HTTPS
+            endpoint = settings.get_r2_endpoint()
+            # minio-python cần endpoint không có scheme
+            endpoint_no_scheme = endpoint.replace("https://", "")
+            self._client = Minio(
+                endpoint=endpoint_no_scheme,
+                access_key=settings.R2_ACCESS_KEY_ID,
+                secret_key=settings.R2_SECRET_ACCESS_KEY,
+                secure=True,
+                region="auto",
+            )
+            self._bucket = settings.R2_BUCKET_NAME or settings.MINIO_BUCKET
+            self._public_endpoint = endpoint_no_scheme
+            self._public_secure = True
+        else:
+            # MinIO local
+            self._client = Minio(
+                endpoint=settings.MINIO_ENDPOINT,
+                access_key=settings.MINIO_ACCESS_KEY,
+                secret_key=settings.MINIO_SECRET_KEY,
+                secure=False,  # Internal connection is always plain HTTP
+                region="us-east-1",
+            )
+            self._bucket = settings.MINIO_BUCKET
+            self._public_endpoint = settings.MINIO_PUBLIC_ENDPOINT
+            self._public_secure = settings.MINIO_PUBLIC_SECURE
 
     # ------------------------------------------------------------------
     # Bucket helpers

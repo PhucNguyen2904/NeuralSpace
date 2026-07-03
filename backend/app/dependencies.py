@@ -31,11 +31,20 @@ class UserContext:
 async def init_db() -> None:
     global _db_engine, _async_session_maker
     settings = get_settings()
+
+    # Neon PostgreSQL cần SSL và pool_pre_ping để xử lý serverless cold start
+    is_neon = "neon.tech" in settings.DATABASE_URL
+    connect_args: dict = {}
+    if is_neon:
+        connect_args["ssl"] = "require"
+
     _db_engine = create_async_engine(
         settings.DATABASE_URL,
         echo=settings.ENVIRONMENT == "development",
-        pool_size=20,
-        max_overflow=0,
+        pool_size=settings.DB_POOL_SIZE,
+        max_overflow=settings.DB_MAX_OVERFLOW,
+        pool_pre_ping=True,
+        connect_args=connect_args,
     )
     _async_session_maker = async_sessionmaker(_db_engine, class_=AsyncSession, expire_on_commit=False)
 

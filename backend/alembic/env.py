@@ -1,5 +1,6 @@
 """Alembic environment script."""
 
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -23,7 +24,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
+    url = os.getenv("DATABASE_URL", config.get_main_option("sqlalchemy.url"))
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -48,8 +49,12 @@ def do_run_migrations(connection: Connection) -> None:
 
 async def run_migrations_online() -> None:
     """Run migrations in 'online' mode using async engine."""
+    configuration = config.get_section(config.config_ini_section, {})
+    if "DATABASE_URL" in os.environ:
+        configuration["sqlalchemy.url"] = os.environ["DATABASE_URL"]
+
     connectable = async_engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

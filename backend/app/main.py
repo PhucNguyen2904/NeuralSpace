@@ -45,39 +45,39 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up application", version=__version__)
     configure_logging()
     
-    # TCP Proxy for Rclone OAuth (0.0.0.0:53682 -> 127.0.0.1:53682)
-    async def rclone_proxy_handler(client_reader, client_writer):
-        try:
-            remote_reader, remote_writer = await asyncio.open_connection("127.0.0.1", 53682)
-            async def forward(src, dst):
-                try:
-                    while True:
-                        data = await src.read(4096)
-                        if not data:
-                            break
-                        dst.write(data)
-                        await dst.drain()
-                except Exception:
-                    pass
-                finally:
-                    dst.close()
-            asyncio.create_task(forward(client_reader, remote_writer))
-            asyncio.create_task(forward(remote_reader, client_writer))
-        except Exception:
-            client_writer.close()
+    # TCP Proxy for Rclone OAuth — chỉ cần ở dev (Render production không cần)
+    rclone_proxy_server = None
+    settings_startup = get_settings()
+    if settings_startup.ENVIRONMENT == "development":
+        async def rclone_proxy_handler(client_reader, client_writer):
+            try:
+                remote_reader, remote_writer = await asyncio.open_connection("127.0.0.1", 53682)
+                async def forward(src, dst):
+                    try:
+                        while True:
+                            data = await src.read(4096)
+                            if not data:
+                                break
+                            dst.write(data)
+                            await dst.drain()
+                    except Exception:
+                        pass
+                    finally:
+                        dst.close()
+                asyncio.create_task(forward(client_reader, remote_writer))
+                asyncio.create_task(forward(remote_reader, client_writer))
+            except Exception:
+                client_writer.close()
 
-    try:
-        import socket
-        container_ip = socket.gethostbyname(socket.gethostname())
-        if container_ip == "127.0.0.1":
-            # Fallback for some strange environments, but might conflict
-            container_ip = "0.0.0.0"
-            
-        rclone_proxy_server = await asyncio.start_server(rclone_proxy_handler, container_ip, 53682)
-        logger.info(f"Rclone TCP Proxy started on {container_ip}:53682")
-    except Exception as e:
-        logger.warning(f"Failed to start Rclone TCP proxy: {e}")
-        rclone_proxy_server = None
+        try:
+            import socket
+            container_ip = socket.gethostbyname(socket.gethostname())
+            if container_ip == "127.0.0.1":
+                container_ip = "0.0.0.0"
+            rclone_proxy_server = await asyncio.start_server(rclone_proxy_handler, container_ip, 53682)
+            logger.info(f"Rclone TCP Proxy started on {container_ip}:53682")
+        except Exception as e:
+            logger.warning(f"Failed to start Rclone TCP proxy: {e}")
 
     try:
         await init_db()

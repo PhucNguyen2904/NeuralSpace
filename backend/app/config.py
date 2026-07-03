@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/cloud_ide"
 
+    # Database pool — giảm xuống cho Neon/PgBouncer serverless
+    DB_POOL_SIZE: int = 10
+    DB_MAX_OVERFLOW: int = 0
+
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
@@ -28,13 +32,20 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
-    # MinIO
+    # MinIO / Cloudflare R2 (S3-compatible)
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_ENDPOINT: str = "localhost:9000"
     MINIO_PUBLIC_SECURE: bool = False
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
     MINIO_BUCKET: str = "workspace-data"
+
+    # Cloudflare R2 — nếu R2_ACCOUNT_ID được set, sẽ override MinIO endpoint
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET_NAME: str = ""
+    R2_PUBLIC_URL: str = ""  # URL public bucket (nếu bật public access trên R2)
 
     # Upstream module
     UPSTREAM_BASE_URL: str = "http://localhost:9000"
@@ -60,7 +71,7 @@ class Settings(BaseSettings):
     MLFLOW_WEBHOOK_SECRET: str = ""
 
     # DVC – local git+dvc working directory used for dataset tracking
-    # Must be a path to an already-initialised `git init && dvc init` repo.
+    # In production (Render), dùng /tmp vì ephemeral disk — auto re-clone khi cần.
     DVC_REPO_PATH: str = "/srv/dvc-repo"
     DVC_REMOTE_NAME: str = "minio"
     DVC_MANAGED_REPO_ROOT: str = "/srv/dvc-repos"
@@ -118,10 +129,16 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in self.CORS_ORIGINS.split(",")]
         return self.CORS_ORIGINS
 
+    def is_r2_configured(self) -> bool:
+        """Return True nếu Cloudflare R2 được cấu hình."""
+        return bool(self.R2_ACCOUNT_ID and self.R2_ACCESS_KEY_ID and self.R2_SECRET_ACCESS_KEY)
+
+    def get_r2_endpoint(self) -> str:
+        """Return R2 S3-compatible endpoint URL."""
+        return f"https://{self.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
 
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
-
-# Trigger reload

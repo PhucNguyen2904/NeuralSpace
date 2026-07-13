@@ -88,6 +88,17 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     OAUTH_ENCRYPTION_KEY: str = "your-encryption-key-must-be-32-url-safe-base64-bytes"
 
+    # Microsoft OneDrive OAuth App
+    ONEDRIVE_CLIENT_ID: str = ""
+    ONEDRIVE_CLIENT_SECRET: str = ""
+
+    # Dropbox OAuth App
+    DROPBOX_APP_KEY: str = ""
+    DROPBOX_APP_SECRET: str = ""
+
+    # Storage configs directory (persistent volume)
+    STORAGE_CONFIGS_DIR: str = "/storage-configs"
+
     def __init__(self, **data):
         """Initialize settings with environment-based docs visibility."""
         super().__init__(**data)

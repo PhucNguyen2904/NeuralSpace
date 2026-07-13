@@ -13,6 +13,7 @@ from app.api.v1.settings.router import router as settings_router
 from app.api.v1.workspaces import router as workspaces_router
 from app.api.v1.git_accounts.router import router as git_accounts_router
 from app.api.v1.storage.router import router as storage_router
+from app.api.v1.storage.oauth_router import router as storage_oauth_router
 
 router = APIRouter()
 
@@ -28,3 +29,4 @@ router.include_router(mlflow_router)
 router.include_router(settings_router)
 router.include_router(git_accounts_router, prefix="/git/accounts", tags=["git-integration"])
 router.include_router(storage_router, prefix="/storage")
+router.include_router(storage_oauth_router, prefix="/storage")

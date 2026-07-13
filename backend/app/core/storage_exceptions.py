@@ -52,3 +52,37 @@ class StorageUnavailable(StorageException):
     
     def __init__(self, provider: str, message: str = "") -> None:
         super().__init__(f"Storage provider '{provider}' is currently unavailable: {message}", provider=provider)
+
+
+class UnsupportedProvider(StorageException):
+    """Raised when an unsupported storage provider is requested."""
+    status_code = 400
+    error_code = "unsupported_provider"
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(f"Storage provider '{provider}' is not supported", provider=provider)
+
+
+class CredentialExpired(StorageException):
+    """Raised when a stored credential (OAuth token, SAS token) has expired."""
+    status_code = 401
+    error_code = "credential_expired"
+
+    def __init__(self, provider: str, connection_id: str = "") -> None:
+        super().__init__(
+            f"Credential for provider '{provider}' has expired. Please reconnect.",
+            provider=provider,
+            connection_id=connection_id,
+        )
+
+
+class TokenRefreshFailed(StorageException):
+    """Raised when automatic OAuth token refresh fails."""
+    status_code = 502
+    error_code = "token_refresh_failed"
+
+    def __init__(self, provider: str, reason: str = "") -> None:
+        super().__init__(
+            f"Failed to refresh token for provider '{provider}': {reason}",
+            provider=provider,
+        )

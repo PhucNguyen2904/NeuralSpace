@@ -21,6 +21,8 @@ from app.models.workspace_event import WorkspaceEvent, WorkspaceEventType
 
 from app.models.storage_connection import StorageConnection
 from app.models.git_integration import GitAccount, GitRepository
+from app.models.sync_job import SyncJob
+from app.models.storage_audit_log import StorageAuditLog
 
 __all__ = [
     "Base",
@@ -47,6 +49,8 @@ __all__ = [
     "WorkspaceEventType",
 
     "StorageConnection",
+    "SyncJob",
+    "StorageAuditLog",
     "GitAccount",
     "GitRepository",
 ]

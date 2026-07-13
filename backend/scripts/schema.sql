@@ -14,7 +14,7 @@ CREATE SCHEMA IF NOT EXISTS mlops;
 -- ---------------------------------------------------------------------------
 
 
-CREATE TYPE workspace_status AS ENUM (
+CREATE TYPE public.workspace_status AS ENUM (
     'READY',
     'RUNNING',
     'STOPPED',
@@ -22,7 +22,7 @@ CREATE TYPE workspace_status AS ENUM (
 );
 
 
-CREATE TYPE runtime_session_status AS ENUM (
+CREATE TYPE public.runtime_session_status AS ENUM (
     'CREATED',
     'CONNECTED',
     'REVOKED',
@@ -30,25 +30,25 @@ CREATE TYPE runtime_session_status AS ENUM (
 );
 
 
-CREATE TYPE git_provider_type AS ENUM (
+CREATE TYPE public.git_provider_type AS ENUM (
     'github',
     'gitlab',
     'bitbucket'
 );
 
 
-CREATE TYPE storage_provider_type AS ENUM (
+CREATE TYPE public.storage_provider_type AS ENUM (
     'minio',
     's3',
     'gdrive'
 );
 
 -- ---------------------------------------------------------------------------
--- Enum Types (mlops schema)
+-- Enum Types (mlops schema) — declared inside mlops schema for proper namespacing
 -- ---------------------------------------------------------------------------
 
 
-CREATE TYPE mlops_dataset_type AS ENUM (
+CREATE TYPE mlops.dataset_type AS ENUM (
     'image',
     'tabular',
     'text',
@@ -57,24 +57,24 @@ CREATE TYPE mlops_dataset_type AS ENUM (
     'custom'
 );
 
-CREATE TYPE mlops_dataset_status AS ENUM (
+CREATE TYPE mlops.dataset_status AS ENUM (
     'active',
     'archived',
     'deprecated'
 );
 
-CREATE TYPE mlops_dataset_version_status AS ENUM (
+CREATE TYPE mlops.dataset_version_status AS ENUM (
     'draft',
     'validated',
     'deprecated'
 );
 
-CREATE TYPE mlops_experiment_lifecycle AS ENUM (
+CREATE TYPE mlops.experiment_lifecycle AS ENUM (
     'active',
     'deleted'
 );
 
-CREATE TYPE mlops_run_status AS ENUM (
+CREATE TYPE mlops.run_status AS ENUM (
     'RUNNING',
     'SCHEDULED',
     'FINISHED',
@@ -82,7 +82,7 @@ CREATE TYPE mlops_run_status AS ENUM (
     'KILLED'
 );
 
-CREATE TYPE mlops_run_source_type AS ENUM (
+CREATE TYPE mlops.run_source_type AS ENUM (
     'NOTEBOOK',
     'JOB',
     'PROJECT',
@@ -90,32 +90,32 @@ CREATE TYPE mlops_run_source_type AS ENUM (
     'UNKNOWN'
 );
 
-CREATE TYPE mlops_model_stage AS ENUM (
+CREATE TYPE mlops.model_stage AS ENUM (
     'None',
     'Staging',
     'Production',
     'Archived'
 );
 
-CREATE TYPE mlops_model_status AS ENUM (
+CREATE TYPE mlops.model_status AS ENUM (
     'PENDING_REGISTRATION',
     'READY',
     'FAILED'
 );
 
-CREATE TYPE mlops_link_type AS ENUM (
+CREATE TYPE mlops.link_type AS ENUM (
     'train',
     'val',
     'test',
     'eval'
 );
 
-CREATE TYPE mlops_approval_target_stage AS ENUM (
+CREATE TYPE mlops.approval_target_stage AS ENUM (
     'Staging',
     'Production'
 );
 
-CREATE TYPE mlops_approval_status AS ENUM (
+CREATE TYPE mlops.approval_status AS ENUM (
     'pending',
     'approved',
     'rejected',
@@ -123,7 +123,7 @@ CREATE TYPE mlops_approval_status AS ENUM (
 );
 
 
-CREATE TYPE mlops_dvc_profile_scope AS ENUM (
+CREATE TYPE mlops.dvc_profile_scope AS ENUM (
     'global',
     'team',
     'user',
@@ -131,7 +131,7 @@ CREATE TYPE mlops_dvc_profile_scope AS ENUM (
 );
 
 
-CREATE TYPE mlops_dvc_profile_status AS ENUM (
+CREATE TYPE mlops.dvc_profile_status AS ENUM (
     'ready',
     'inactive',
     'error',
@@ -142,7 +142,7 @@ CREATE TYPE mlops_dvc_profile_status AS ENUM (
 );
 
 
-CREATE TYPE mlops_dvc_profile_repo_mode AS ENUM (
+CREATE TYPE mlops.dvc_profile_repo_mode AS ENUM (
     'managed_git',
     'existing_path'
 );
@@ -151,7 +151,7 @@ CREATE TYPE mlops_dvc_profile_repo_mode AS ENUM (
 -- Tables (public schema) — dependency order
 -- ---------------------------------------------------------------------------
 
-CREATE TABLE users (
+CREATE TABLE public.users (
 	id UUID NOT NULL, 
 	email TEXT, 
 	full_name TEXT, 
@@ -160,11 +160,11 @@ CREATE TABLE users (
 	PRIMARY KEY (id)
 );
 
-CREATE TABLE workspaces (
+CREATE TABLE public.workspaces (
 	id VARCHAR(20) NOT NULL, 
 	user_id UUID NOT NULL, 
 	name VARCHAR(255), 
-	status workspace_status DEFAULT 'READY' NOT NULL, 
+	status public.workspace_status DEFAULT 'READY' NOT NULL, 
 	tier VARCHAR(30) NOT NULL, 
 	k8s_namespace VARCHAR(63), 
 	k8s_pod_name VARCHAR(63), 
@@ -184,19 +184,18 @@ CREATE TABLE workspaces (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	CONSTRAINT ck_workspaces_external_colab_tier CHECK (tier = 'external-colab'),
 	CONSTRAINT ck_workspaces_dataset_ids_array CHECK (jsonb_typeof(dataset_ids) = 'array'),
 	CONSTRAINT ck_workspaces_model_ids_array CHECK (jsonb_typeof(model_ids) = 'array'),
 	CONSTRAINT ck_workspaces_environment_config_object CHECK (jsonb_typeof(environment_config) = 'object'),
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE
 );
 -- Indexes on workspaces (created by 0001)
-CREATE INDEX ix_workspaces_user_id ON workspaces (user_id);
-CREATE INDEX ix_workspaces_user_id_status ON workspaces (user_id, status);
-CREATE INDEX ix_workspaces_status_auto_kill_at_running ON workspaces (status, auto_kill_at) WHERE status = 'RUNNING';
-CREATE INDEX ix_workspaces_k8s_namespace_lookup ON workspaces (k8s_namespace);
+CREATE INDEX ix_workspaces_user_id ON public.workspaces (user_id);
+CREATE INDEX ix_workspaces_user_id_status ON public.workspaces (user_id, status);
+CREATE INDEX ix_workspaces_status_auto_kill_at_running ON public.workspaces (status, auto_kill_at) WHERE status = 'RUNNING';
+CREATE INDEX ix_workspaces_k8s_namespace_lookup ON public.workspaces (k8s_namespace);
 
-CREATE TABLE workspace_events (
+CREATE TABLE public.workspace_events (
 	id BIGSERIAL NOT NULL, 
 	workspace_id VARCHAR(20) NOT NULL, 
 	event_type VARCHAR(50) NOT NULL, 
@@ -204,18 +203,18 @@ CREATE TABLE workspace_events (
 	details JSONB DEFAULT '{}'::jsonb NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE
+	FOREIGN KEY(workspace_id) REFERENCES public.workspaces (id) ON DELETE CASCADE
 );
 -- Indexes on workspace_events (created by 0001)
-CREATE INDEX ix_workspace_events_workspace_id ON workspace_events (workspace_id);
-CREATE INDEX ix_workspace_events_workspace_id_created_at_desc ON workspace_events (workspace_id, created_at DESC);
+CREATE INDEX ix_workspace_events_workspace_id ON public.workspace_events (workspace_id);
+CREATE INDEX ix_workspace_events_workspace_id_created_at_desc ON public.workspace_events (workspace_id, created_at DESC);
 
-CREATE TABLE external_runtime_sessions (
+CREATE TABLE public.external_runtime_sessions (
 	id UUID NOT NULL, 
 	workspace_id VARCHAR(20) NOT NULL, 
 	user_id UUID NOT NULL, 
 	provider VARCHAR(30) DEFAULT 'google_colab' NOT NULL, 
-	status runtime_session_status DEFAULT 'CREATED' NOT NULL, 
+	status public.runtime_session_status DEFAULT 'CREATED' NOT NULL, 
 	token_jti VARCHAR(64), 
 	capabilities JSONB DEFAULT '[]'::jsonb NOT NULL, 
 	connected_at TIMESTAMP WITH TIME ZONE, 
@@ -226,19 +225,19 @@ CREATE TABLE external_runtime_sessions (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+	FOREIGN KEY(workspace_id) REFERENCES public.workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE, 
 	UNIQUE (token_jti)
 );
 -- Indexes on external_runtime_sessions (created by 0006)
-CREATE INDEX ix_runtime_sessions_user_status ON external_runtime_sessions (user_id, status);
-CREATE INDEX ix_runtime_sessions_workspace_created ON external_runtime_sessions (workspace_id, created_at);
+CREATE INDEX ix_runtime_sessions_user_status ON public.external_runtime_sessions (user_id, status);
+CREATE INDEX ix_runtime_sessions_workspace_created ON public.external_runtime_sessions (workspace_id, created_at);
 
 -- storage_providers table (created by dfe7f8b43b50)
-CREATE TABLE storage_providers (
+CREATE TABLE public.storage_providers (
 	id UUID NOT NULL,
 	name VARCHAR(255) NOT NULL,
-	type storage_provider_type NOT NULL,
+	type public.storage_provider_type NOT NULL,
 	config JSONB NOT NULL,
 	created_by UUID,
 	is_active BOOLEAN DEFAULT 'true' NOT NULL,
@@ -247,11 +246,11 @@ CREATE TABLE storage_providers (
 	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
 	PRIMARY KEY (id),
 	UNIQUE (name),
-	FOREIGN KEY(created_by) REFERENCES users (id)
+	FOREIGN KEY(created_by) REFERENCES public.users (id)
 );
 
 -- storage_connections table (created by a5e6bded0f6a, columns added by 5e23d17f8b5b, c14bbe97f431)
-CREATE TABLE storage_connections (
+CREATE TABLE public.storage_connections (
 	id UUID NOT NULL, 
 	user_id UUID NOT NULL, 
 	provider VARCHAR(50) NOT NULL, 
@@ -265,24 +264,24 @@ CREATE TABLE storage_connections (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE
 );
 
 -- git_accounts table (created by 6a1b2c3d4e5f)
-CREATE TABLE git_accounts (
+CREATE TABLE public.git_accounts (
 	user_id UUID NOT NULL, 
-	provider git_provider_type NOT NULL, 
+	provider public.git_provider_type NOT NULL, 
 	username VARCHAR(255) NOT NULL, 
 	access_token VARCHAR(1024) NOT NULL, 
 	id UUID NOT NULL, 
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE
 );
 
 -- git_repositories table (created by 6a1b2c3d4e5f, columns added by 10ff4a5a9b38)
-CREATE TABLE git_repositories (
+CREATE TABLE public.git_repositories (
 	git_account_id UUID NOT NULL, 
 	repo_name VARCHAR(255) NOT NULL, 
 	repo_url VARCHAR(1024) NOT NULL, 
@@ -295,11 +294,11 @@ CREATE TABLE git_repositories (
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(git_account_id) REFERENCES git_accounts (id) ON DELETE CASCADE
+	FOREIGN KEY(git_account_id) REFERENCES public.git_accounts (id) ON DELETE CASCADE
 );
 
 -- git_sync_preferences table (created by 10ff4a5a9b38)
-CREATE TABLE git_sync_preferences (
+CREATE TABLE public.git_sync_preferences (
 	user_id UUID NOT NULL, 
 	auto_sync_experiments BOOLEAN DEFAULT 'true' NOT NULL, 
 	commit_checkpoints BOOLEAN DEFAULT 'false' NOT NULL, 
@@ -310,35 +309,7 @@ CREATE TABLE git_sync_preferences (
 	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	UNIQUE (user_id), 
-	FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
-);
-
--- workspace_datasets table (created by 0002, restructured — now references mlops.dataset_versions)
-CREATE TABLE workspace_datasets (
-	id SERIAL NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	dataset_id UUID NOT NULL, 
-	mount_path VARCHAR(255) NOT NULL, 
-	mounted_by VARCHAR(64), 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(dataset_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE
-);
-
--- workspace_models table (created by 0002, restructured — now references mlops.model_versions)
-CREATE TABLE workspace_models (
-	id SERIAL NOT NULL, 
-	workspace_id VARCHAR(20) NOT NULL, 
-	model_id UUID NOT NULL, 
-	mount_path VARCHAR(255) NOT NULL, 
-	mounted_by VARCHAR(64), 
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-	PRIMARY KEY (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE CASCADE, 
-	FOREIGN KEY(model_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE
+	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE
 );
 
 -- ---------------------------------------------------------------------------
@@ -349,9 +320,9 @@ CREATE TABLE workspace_models (
 CREATE TABLE mlops.dvc_profiles (
 	id UUID NOT NULL, 
 	name VARCHAR(255) NOT NULL, 
-	scope mlops_dvc_profile_scope DEFAULT 'global' NOT NULL, 
+	scope mlops.dvc_profile_scope DEFAULT 'global' NOT NULL, 
 	scope_id VARCHAR(64), 
-	repo_mode mlops_dvc_profile_repo_mode DEFAULT 'managed_git' NOT NULL, 
+	repo_mode mlops.dvc_profile_repo_mode DEFAULT 'managed_git' NOT NULL, 
 	git_repo_url VARCHAR(500), 
 	git_branch VARCHAR(100) DEFAULT 'main' NOT NULL, 
 	repo_path VARCHAR(500) NOT NULL, 
@@ -359,7 +330,7 @@ CREATE TABLE mlops.dvc_profiles (
 	remote_url VARCHAR(500), 
 	endpoint_url VARCHAR(500), 
 	is_default BOOLEAN DEFAULT 'false' NOT NULL, 
-	status mlops_dvc_profile_status DEFAULT 'ready' NOT NULL, 
+	status mlops.dvc_profile_status DEFAULT 'ready' NOT NULL, 
 	status_message TEXT, 
 	git_ssh_url TEXT, 
 	git_repo_owner VARCHAR(255), 
@@ -373,7 +344,7 @@ CREATE TABLE mlops.dvc_profiles (
 	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_mlops_dvc_profiles_name_scope UNIQUE (name, scope, scope_id), 
-	FOREIGN KEY(created_by) REFERENCES users (id)
+	FOREIGN KEY(created_by) REFERENCES public.users (id)
 );
 -- Indexes on mlops.dvc_profiles (created by 0009_dvc_profiles)
 CREATE INDEX ix_mlops_dvc_profiles_scope ON mlops.dvc_profiles (scope, scope_id);
@@ -383,19 +354,19 @@ CREATE TABLE mlops.datasets (
 	id UUID NOT NULL, 
 	name VARCHAR(255) NOT NULL, 
 	description TEXT, 
-	type mlops_dataset_type NOT NULL, 
+	type mlops.dataset_type NOT NULL, 
 	owner_id UUID NOT NULL, 
 	team_id UUID, 
 	dvc_profile_id UUID, 
 	dvc_repo_url VARCHAR(500), 
 	storage_path VARCHAR(500), 
 	tags JSONB DEFAULT '[]'::jsonb NOT NULL, 
-	status mlops_dataset_status DEFAULT 'active' NOT NULL, 
+	status mlops.dataset_status DEFAULT 'active' NOT NULL, 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	UNIQUE (name), 
-	FOREIGN KEY(owner_id) REFERENCES users (id), 
+	UNIQUE (name, owner_id), 
+	FOREIGN KEY(owner_id) REFERENCES public.users (id), 
 	FOREIGN KEY(dvc_profile_id) REFERENCES mlops.dvc_profiles (id) ON DELETE SET NULL
 );
 
@@ -424,12 +395,12 @@ CREATE TABLE mlops.dataset_versions (
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	changelog TEXT, 
 	is_latest BOOLEAN DEFAULT 'false' NOT NULL, 
-	status mlops_dataset_version_status DEFAULT 'draft' NOT NULL, 
+	status mlops.dataset_version_status DEFAULT 'draft' NOT NULL, 
 	PRIMARY KEY (id), 
 	CONSTRAINT uq_mlops_dataset_versions_dataset_version UNIQUE (dataset_id, version), 
 	FOREIGN KEY(dataset_id) REFERENCES mlops.datasets (id) ON DELETE CASCADE, 
 	FOREIGN KEY(dvc_profile_id) REFERENCES mlops.dvc_profiles (id) ON DELETE SET NULL, 
-	FOREIGN KEY(created_by) REFERENCES users (id)
+	FOREIGN KEY(created_by) REFERENCES public.users (id)
 );
 -- Indexes on mlops.dataset_versions (created by 0005)
 CREATE INDEX ix_mlops_dataset_versions_dvc_md5 ON mlops.dataset_versions (dvc_md5);
@@ -446,12 +417,12 @@ CREATE TABLE mlops.experiments (
 	team_id UUID, 
 	tags JSONB DEFAULT '{}'::jsonb NOT NULL, 
 	artifact_location VARCHAR(500), 
-	lifecycle_stage mlops_experiment_lifecycle DEFAULT 'active' NOT NULL, 
+	lifecycle_stage mlops.experiment_lifecycle DEFAULT 'active' NOT NULL, 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	UNIQUE (mlflow_experiment_id), 
-	FOREIGN KEY(owner_id) REFERENCES users (id)
+	FOREIGN KEY(owner_id) REFERENCES public.users (id)
 );
 
 -- mlops.runs (created by 0005, workspace_id + runtime_session_id added by 0008)
@@ -462,11 +433,11 @@ CREATE TABLE mlops.runs (
 	workspace_id VARCHAR(20), 
 	runtime_session_id UUID, 
 	name VARCHAR(255), 
-	status mlops_run_status NOT NULL, 
+	status mlops.run_status NOT NULL, 
 	start_time TIMESTAMP WITHOUT TIME ZONE, 
 	end_time TIMESTAMP WITHOUT TIME ZONE, 
 	artifact_uri VARCHAR(500), 
-	source_type mlops_run_source_type, 
+	source_type mlops.run_source_type, 
 	source_name VARCHAR(500), 
 	git_commit VARCHAR(40), 
 	user_id UUID NOT NULL, 
@@ -479,9 +450,9 @@ CREATE TABLE mlops.runs (
 	PRIMARY KEY (id), 
 	UNIQUE (mlflow_run_id), 
 	FOREIGN KEY(experiment_id) REFERENCES mlops.experiments (id), 
-	FOREIGN KEY(workspace_id) REFERENCES workspaces (id) ON DELETE SET NULL, 
-	FOREIGN KEY(runtime_session_id) REFERENCES external_runtime_sessions (id) ON DELETE SET NULL, 
-	FOREIGN KEY(user_id) REFERENCES users (id), 
+	FOREIGN KEY(workspace_id) REFERENCES public.workspaces (id) ON DELETE SET NULL, 
+	FOREIGN KEY(runtime_session_id) REFERENCES public.external_runtime_sessions (id) ON DELETE SET NULL, 
+	FOREIGN KEY(user_id) REFERENCES public.users (id), 
 	FOREIGN KEY(dvc_dataset_version_id) REFERENCES mlops.dataset_versions (id)
 );
 -- Indexes on mlops.runs (created by 0005 and 0008)
@@ -498,7 +469,7 @@ CREATE TABLE mlops.run_logs (
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(run_id) REFERENCES mlops.runs (id) ON DELETE CASCADE, 
-	FOREIGN KEY(runtime_session_id) REFERENCES external_runtime_sessions (id) ON DELETE CASCADE
+	FOREIGN KEY(runtime_session_id) REFERENCES public.external_runtime_sessions (id) ON DELETE CASCADE
 );
 -- Indexes on mlops.run_logs (created by 0008)
 CREATE INDEX ix_mlops_run_logs_run_created ON mlops.run_logs (run_id, created_at);
@@ -510,8 +481,8 @@ CREATE TABLE mlops.model_versions (
 	mlflow_version INTEGER NOT NULL, 
 	run_id UUID NOT NULL, 
 	description TEXT, 
-	stage mlops_model_stage DEFAULT 'None' NOT NULL, 
-	status mlops_model_status DEFAULT 'PENDING_REGISTRATION' NOT NULL, 
+	stage mlops.model_stage DEFAULT 'None' NOT NULL, 
+	status mlops.model_status DEFAULT 'PENDING_REGISTRATION' NOT NULL, 
 	source VARCHAR(500), 
 	framework VARCHAR(50), 
 	task_type VARCHAR(50), 
@@ -527,8 +498,8 @@ CREATE TABLE mlops.model_versions (
 	CONSTRAINT uq_mlops_model_versions_mlflow_name_version UNIQUE (mlflow_name, mlflow_version), 
 	CONSTRAINT ck_mlops_model_versions_prod_requires_approval CHECK ((stage <> 'Production') OR (approved_by IS NOT NULL AND approved_at IS NOT NULL)), 
 	FOREIGN KEY(run_id) REFERENCES mlops.runs (id), 
-	FOREIGN KEY(approved_by) REFERENCES users (id), 
-	FOREIGN KEY(created_by) REFERENCES users (id)
+	FOREIGN KEY(approved_by) REFERENCES public.users (id), 
+	FOREIGN KEY(created_by) REFERENCES public.users (id)
 );
 -- Indexes on mlops.model_versions (created by 0005)
 CREATE INDEX ix_mlops_model_versions_stage ON mlops.model_versions (stage);
@@ -539,8 +510,8 @@ CREATE TABLE mlops.approval_requests (
 	model_version_id UUID NOT NULL, 
 	requested_by UUID NOT NULL, 
 	requested_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
-	target_stage mlops_approval_target_stage NOT NULL, 
-	status mlops_approval_status DEFAULT 'pending' NOT NULL, 
+	target_stage mlops.approval_target_stage NOT NULL, 
+	status mlops.approval_status DEFAULT 'pending' NOT NULL, 
 	reviewer_id UUID, 
 	reviewed_at TIMESTAMP WITHOUT TIME ZONE, 
 	review_note TEXT, 
@@ -548,8 +519,8 @@ CREATE TABLE mlops.approval_requests (
 	expires_at TIMESTAMP WITHOUT TIME ZONE, 
 	PRIMARY KEY (id), 
 	FOREIGN KEY(model_version_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE, 
-	FOREIGN KEY(requested_by) REFERENCES users (id), 
-	FOREIGN KEY(reviewer_id) REFERENCES users (id)
+	FOREIGN KEY(requested_by) REFERENCES public.users (id), 
+	FOREIGN KEY(reviewer_id) REFERENCES public.users (id)
 );
 -- Indexes on mlops.approval_requests (created by 0005)
 CREATE INDEX ix_mlops_approval_requests_model_version_status ON mlops.approval_requests (model_version_id, status);
@@ -559,7 +530,7 @@ CREATE TABLE mlops.model_dataset_links (
 	id UUID NOT NULL, 
 	model_version_id UUID NOT NULL, 
 	dataset_version_id UUID NOT NULL, 
-	link_type mlops_link_type NOT NULL, 
+	link_type mlops.link_type NOT NULL, 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	created_by UUID NOT NULL, 
 	notes TEXT, 
@@ -567,7 +538,7 @@ CREATE TABLE mlops.model_dataset_links (
 	CONSTRAINT uq_mlops_model_dataset_links_model_dataset_type UNIQUE (model_version_id, dataset_version_id, link_type), 
 	FOREIGN KEY(model_version_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE, 
 	FOREIGN KEY(dataset_version_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE, 
-	FOREIGN KEY(created_by) REFERENCES users (id)
+	FOREIGN KEY(created_by) REFERENCES public.users (id)
 );
 
 -- mlops.audit_logs (created by 0005)
@@ -583,10 +554,42 @@ CREATE TABLE mlops.audit_logs (
 	metadata JSONB, 
 	created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL, 
 	PRIMARY KEY (id), 
-	FOREIGN KEY(actor_id) REFERENCES users (id)
+	FOREIGN KEY(actor_id) REFERENCES public.users (id)
 );
 -- Indexes on mlops.audit_logs (created by 0005)
 CREATE INDEX ix_mlops_audit_logs_entity_entity_id_created ON mlops.audit_logs (entity_type, entity_id, created_at);
+
+-- ---------------------------------------------------------------------------
+-- Cross-schema Tables (public schema, depends on mlops)
+-- ---------------------------------------------------------------------------
+
+-- workspace_datasets table (created by 0002, restructured — now references mlops.dataset_versions)
+CREATE TABLE public.workspace_datasets (
+	id SERIAL NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	dataset_id UUID NOT NULL, 
+	mount_path VARCHAR(255) NOT NULL, 
+	mounted_by VARCHAR(64), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(workspace_id) REFERENCES public.workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(dataset_id) REFERENCES mlops.dataset_versions (id) ON DELETE CASCADE
+);
+
+-- workspace_models table (created by 0002, restructured — now references mlops.model_versions)
+CREATE TABLE public.workspace_models (
+	id SERIAL NOT NULL, 
+	workspace_id VARCHAR(20) NOT NULL, 
+	model_id UUID NOT NULL, 
+	mount_path VARCHAR(255) NOT NULL, 
+	mounted_by VARCHAR(64), 
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(workspace_id) REFERENCES public.workspaces (id) ON DELETE CASCADE, 
+	FOREIGN KEY(model_id) REFERENCES mlops.model_versions (id) ON DELETE CASCADE
+);
 
 -- ---------------------------------------------------------------------------
 -- Triggers: audit_logs is append-only (created by 0005)

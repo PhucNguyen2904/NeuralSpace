@@ -1,4 +1,4 @@
-# Database Schema Summary: NeuralSpace Platform
+ # Database Schema Summary: NeuralSpace Platform
 
 Tài liệu này cung cấp bản tóm tắt về cấu trúc cơ sở dữ liệu của nền tảng NeuralSpace, dựa trên nội dung của file schema.
 

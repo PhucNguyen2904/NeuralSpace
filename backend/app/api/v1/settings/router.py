@@ -40,8 +40,6 @@ async def get_settings(
             "avatarUrl": None,
         },
         "defaults": {
-            "tier": "cpu-standard",
-            "pythonVersion": "3.11",
             "idleTimeoutMinutes": 30,
             "autoSaveEnabled": True,
             "autoSaveIntervalMinutes": 5,

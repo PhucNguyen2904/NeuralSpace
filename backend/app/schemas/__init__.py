@@ -8,9 +8,9 @@ from app.schemas.auth import (
 )
 from app.schemas.workspace import (
     HeartbeatResponse,
+    WorkspaceAssetsUpdateRequest,
     WorkspaceCreateRequest,
     WorkspaceDetailResponse,
-    WorkspaceEnvironmentConfig,
     WorkspaceListResponse,
     WorkspaceOperationResponse,
     WorkspaceCreateAcceptedResponse,
@@ -25,7 +25,7 @@ __all__ = [
     "LoginRequest",
     "AuthUserResponse",
     "AuthTokenResponse",
-    "WorkspaceEnvironmentConfig",
+    "WorkspaceAssetsUpdateRequest",
     "WorkspaceCreateRequest",
     "WorkspaceStopRequest",
     "WorkspaceStatusResponse",

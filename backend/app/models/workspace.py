@@ -51,7 +51,6 @@ class Workspace(TimestampMixin, Base):
         default=WorkspaceStatus.READY,
         server_default=WorkspaceStatus.READY.value,
     )
-    tier: Mapped[str] = mapped_column(String(30), nullable=False)
     access_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     passcode_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dataset_ids: Mapped[list[str]] = mapped_column(

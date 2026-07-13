@@ -58,7 +58,6 @@ async def create_workspace(
             user_id=current_user.user_id,
             workspace_id=workspace.id,
             workspace_name=workspace.name,
-            tier=workspace.tier,
         )
         return WorkspaceCreateAcceptedResponse(
             workspace_id=workspace.id,

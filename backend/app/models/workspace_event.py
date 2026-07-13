@@ -18,7 +18,6 @@ class WorkspaceEventType(str, Enum):
     """Workspace event type."""
 
     START_REQUESTED = "START_REQUESTED"
-    PROVISIONING = "PROVISIONING"
     RUNNING = "RUNNING"
     STOP_REQUESTED = "STOP_REQUESTED"
     STOPPED = "STOPPED"

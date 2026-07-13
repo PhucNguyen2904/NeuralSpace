@@ -14,20 +14,10 @@ const mapping: Record<
     className: "bg-success-50 text-success-500",
     pulse: false
   },
-  PROVISIONING: {
-    label: "Ready",
-    className: "bg-success-50 text-success-500",
-    pulse: false
-  },
   RUNNING: {
     label: "Running",
     className: "bg-success-50 text-success-500",
     pulse: true
-  },
-  STOPPING: {
-    label: "Ready",
-    className: "bg-success-50 text-success-500",
-    pulse: false
   },
   STOPPED: {
     label: "Ready",

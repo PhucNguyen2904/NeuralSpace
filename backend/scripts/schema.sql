@@ -8,7 +8,7 @@
 -- Schemas
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS mlops;
-
+create shcema if note exists public;
 -- ---------------------------------------------------------------------------
 -- Enum Types (public schema)
 -- ---------------------------------------------------------------------------
@@ -166,15 +166,10 @@ CREATE TABLE public.workspaces (
 	name VARCHAR(255), 
 	status public.workspace_status DEFAULT 'READY' NOT NULL, 
 	tier VARCHAR(30) NOT NULL, 
-	k8s_namespace VARCHAR(63), 
-	k8s_pod_name VARCHAR(63), 
-	pod_ip VARCHAR(45), 
 	access_url TEXT, 
-	jupyter_token_hash VARCHAR(64), 
+	passcode_hash VARCHAR(64), 
 	dataset_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
 	model_ids JSONB DEFAULT '[]'::jsonb NOT NULL, 
-	environment_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
-	resource_config JSONB DEFAULT '{}'::jsonb NOT NULL, 
 	started_at TIMESTAMP WITH TIME ZONE, 
 	stopped_at TIMESTAMP WITH TIME ZONE, 
 	last_heartbeat TIMESTAMP WITH TIME ZONE, 
@@ -186,14 +181,12 @@ CREATE TABLE public.workspaces (
 	PRIMARY KEY (id), 
 	CONSTRAINT ck_workspaces_dataset_ids_array CHECK (jsonb_typeof(dataset_ids) = 'array'),
 	CONSTRAINT ck_workspaces_model_ids_array CHECK (jsonb_typeof(model_ids) = 'array'),
-	CONSTRAINT ck_workspaces_environment_config_object CHECK (jsonb_typeof(environment_config) = 'object'),
 	FOREIGN KEY(user_id) REFERENCES public.users (id) ON DELETE CASCADE
 );
 -- Indexes on workspaces (created by 0001)
 CREATE INDEX ix_workspaces_user_id ON public.workspaces (user_id);
 CREATE INDEX ix_workspaces_user_id_status ON public.workspaces (user_id, status);
 CREATE INDEX ix_workspaces_status_auto_kill_at_running ON public.workspaces (status, auto_kill_at) WHERE status = 'RUNNING';
-CREATE INDEX ix_workspaces_k8s_namespace_lookup ON public.workspaces (k8s_namespace);
 
 CREATE TABLE public.workspace_events (
 	id BIGSERIAL NOT NULL, 

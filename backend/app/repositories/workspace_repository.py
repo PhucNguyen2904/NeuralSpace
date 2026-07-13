@@ -23,10 +23,8 @@ class WorkspaceRepository:
         workspace = Workspace(
             user_id=user_id,
             name=data.name,
-            tier="external-colab",
             dataset_ids=data.dataset_ids,
             model_ids=data.model_ids,
-            environment_config=data.environment.model_dump(),
         )
         db.add(workspace)
         await db.flush()

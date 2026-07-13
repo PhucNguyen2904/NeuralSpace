@@ -6,10 +6,8 @@ type BackendWorkspace = {
   user_id: string;
   name: string | null;
   status: WorkspaceStatus;
-  tier: Workspace["tier"];
   dataset_ids: string[];
   model_ids: string[];
-  environment_config: { python_version?: Workspace["pythonVersion"]; extra_packages?: string[] } | null;
   last_kernel_activity: string | null;
   created_at: string;
   updated_at: string;
@@ -29,9 +27,6 @@ const mapWorkspace = (w: BackendWorkspace): Workspace => {
     id: w.id,
     name: w.name ?? w.id,
     status: w.status,
-    tier: w.tier,
-    pythonVersion: w.environment_config?.python_version ?? "3.11",
-    packages: w.environment_config?.extra_packages ?? [],
     datasets: w.dataset_ids ?? [],
     models: w.model_ids ?? [],
     lastActiveAt: w.last_kernel_activity ?? w.updated_at,
@@ -57,13 +52,8 @@ export const getWorkspaceById = async (id: string) => {
 export const createWorkspace = async (input: CreateWorkspaceInput) => {
   const payload = {
     name: input.name,
-    tier: "external-colab",
     dataset_ids: input.datasets,
     model_ids: input.models,
-    environment: {
-      python_version: input.pythonVersion,
-      extra_packages: input.packages
-    }
   };
   const { data } = await apiClient.post<BackendWorkspaceCreateAccepted>("/workspaces", payload);
   const detail = await getWorkspaceById(data.workspace_id);

@@ -18,9 +18,7 @@ class WorkspaceStatus(str, Enum):
     """Logical project context state."""
 
     READY = "READY"
-    PROVISIONING = "PROVISIONING"
     RUNNING = "RUNNING"
-    STOPPING = "STOPPING"
     STOPPED = "STOPPED"
     ERROR = "ERROR"
 
@@ -37,7 +35,6 @@ class Workspace(TimestampMixin, Base):
             "auto_kill_at",
             postgresql_where=text("status = 'RUNNING'"),
         ),
-        Index("ix_workspaces_k8s_namespace_lookup", "k8s_namespace"),
     )
 
     id: Mapped[str] = mapped_column(String(20), primary_key=True, default=lambda: Workspace.generate_id())
@@ -55,11 +52,8 @@ class Workspace(TimestampMixin, Base):
         server_default=WorkspaceStatus.READY.value,
     )
     tier: Mapped[str] = mapped_column(String(30), nullable=False)
-    k8s_namespace: Mapped[str | None] = mapped_column(String(63), nullable=True)
-    k8s_pod_name: Mapped[str | None] = mapped_column(String(63), nullable=True)
-    pod_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     access_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    jupyter_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    passcode_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     dataset_ids: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
@@ -71,18 +65,6 @@ class Workspace(TimestampMixin, Base):
         nullable=False,
         default=list,
         server_default=text("'[]'::jsonb"),
-    )
-    environment_config: Mapped[dict[str, Any]] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb"),
-    )
-    resource_config: Mapped[dict[str, Any]] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=dict,
-        server_default=text("'{}'::jsonb"),
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

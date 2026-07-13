@@ -1,4 +1,4 @@
-export type WorkspaceStatus = "READY" | "PROVISIONING" | "RUNNING" | "STOPPING" | "STOPPED" | "ERROR";
+export type WorkspaceStatus = "READY" | "RUNNING" | "STOPPED" | "ERROR";
 
 export interface WorkspaceOwner {
   id: string;
@@ -11,9 +11,6 @@ export interface Workspace {
   id: string;
   name: string;
   status: WorkspaceStatus;
-  tier: "external-colab";
-  pythonVersion?: "3.10" | "3.11" | "3.12";
-  packages?: string[];
   datasets?: string[];
   models?: string[];
   lastActiveAt: string;
@@ -23,8 +20,6 @@ export interface Workspace {
 
 export interface CreateWorkspaceInput {
   name: string;
-  pythonVersion: "3.10" | "3.11" | "3.12";
-  packages: string[];
   datasets: string[];
   models: string[];
 }

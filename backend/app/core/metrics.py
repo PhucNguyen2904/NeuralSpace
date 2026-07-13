@@ -7,19 +7,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, ge
 workspace_created_total = Counter(
     "workspace_created_total",
     "Total number of workspace create attempts.",
-    labelnames=("tier", "status"),
+    labelnames=("status",),
 )
 
 workspace_active_gauge = Gauge(
     "workspace_active_gauge",
     "Current number of active running workspaces.",
-    labelnames=("tier",),
-)
-
-workspace_provisioning_duration_seconds = Histogram(
-    "workspace_provisioning_duration_seconds",
-    "Time spent provisioning a workspace.",
-    buckets=(1, 2, 5, 10, 20, 30, 60, 120, 300),
 )
 
 workspace_idle_kill_total = Counter(
